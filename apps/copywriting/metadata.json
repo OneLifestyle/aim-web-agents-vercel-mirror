@@ -1,0 +1,8 @@
+{
+  "name": "Real Estate AIM | Copywriter Agent",
+  "description": "An advanced AI-powered copywriting tool for real estate agents. It generates compelling property listings by analyzing property details, photos, and searching online data, providing a comprehensive and efficient content creation experience.",
+  "requestFramePermissions": [
+    "geolocation",
+    "microphone"
+  ]
+}
