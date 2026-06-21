@@ -4,7 +4,7 @@
 
 `aim-web-agents` is the future Real Estate AIM monorepo for web-based agent and tool surfaces. It exists for web-first interfaces, prototype lanes, source lanes, and reusable packages that support web agent experiences.
 
-This repository is scaffold-only for `WEBAGENTS-001`.
+This repository is currently documentation and planning only. No product application code has been created here.
 
 ## Relationship To aim-docs
 
@@ -94,8 +94,23 @@ This repo must not own:
 
 Copywriting is the first intended app lane.
 
-The existing Copywriting web app remains in its current repository for now. The first step is an audit of the existing app and its readiness. If appropriate, the current app should be launched, frozen, and tagged before any import.
+The existing Copywriting web app remains in its current repository for now and is already complete as a frozen standalone private-beta baseline. It works outside AI Studio, runs through Vercel, has beta gate protection, uses server-side Gemini calls, shows private-beta token and cost data, has been merged, tagged, and recorded, is not public yet, and is not yet imported into `aim-web-agents`.
 
-A later explicit import task may copy or move the Copywriting surface into `apps/copywriting`. It should not be moved into AIM Hub at this stage.
+A later explicit import task may copy or move the Copywriting surface into `apps/copywriting`. That task should be a monorepo landing task only and should not add Clerk, Hub integration, Stripe, Firebase, Cloudflare, OpenRouter, Vercel AI SDK, shared packages, production-domain work, auth, billing, provider routes, database integration, environment files, or secrets.
 
 Copywriting may become both a standalone web product and a source lane for a future iOS Copywriting Agent.
+
+## Source-Lift Sequence
+
+Source-lift one app at a time. Do not import all existing web apps immediately and do not build a giant shared root stack first.
+
+Recommended sequence:
+
+1. Copywriting Web, first import candidate into `apps/copywriting`.
+2. Appraisal Web, first new source-lift candidate after Copywriting.
+3. Photo Web, later AI upgrade and batch-production workstation.
+4. Website Agent Web, web-first by nature, likely from Vercel or v0 source.
+5. Video Web, later, using existing web source and old Vision Ken Burns logic as source mines.
+6. Measure Web, last, mostly editing, export, and report layer after mobile capture.
+
+Appraisal Web should not be the first app imported into the monorepo because it is evidence-sensitive, can be mistaken for valuation advice, depends on attribution and source quality, must avoid AVM framing, must avoid unapproved licensed Australian property data dependencies, and must remain private/internal first.
