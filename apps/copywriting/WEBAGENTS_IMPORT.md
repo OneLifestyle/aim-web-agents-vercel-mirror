@@ -36,6 +36,53 @@ Required environment variable names:
 - Decide whether package metadata should be adapted for monorepo workspace conventions.
 - Review standalone deployment notes before any future Web Agents deployment work.
 
+## Runtime Status
+
+Status date: `2026-06-21`
+
+- Package manager: `npm`
+- Framework: Vite with React
+- App package file: `apps/copywriting/package.json`
+- Root workspace configuration: none present in `aim-web-agents` at runtime proof time
+- Installed dependencies: yes, via `npm ci` from `apps/copywriting`
+- Scripts found: `dev`, `build`, `preview`
+- Scripts checked:
+  - `npm run build`: passed
+  - `npm run dev -- --host 127.0.0.1`: passed, served `http://127.0.0.1:3000/` with HTTP 200
+  - `npm run preview -- --host 127.0.0.1`: passed, served `http://127.0.0.1:4173/` with HTTP 200 after local sandbox port binding was elevated
+- Build status: passed; Vite output directory is `dist`
+- Dev server status: passed locally without secret values for static app serving
+- Known blockers: none for install, build, dev server, or preview server from `apps/copywriting`
+
+Required environment variable names:
+
+- `BETA_ACCESS_CODE`
+- `GEMINI_API_KEY`
+- `GOOGLE_GENERATIVE_AI_API_KEY`
+- `GEMINI_PRO_MODEL`
+- `GEMINI_FLASH_MODEL`
+
+## Vercel Preview Recommendation
+
+- Repository: `Singularealty/aim-web-agents`
+- Root Directory: `apps/copywriting`
+- Framework preset: Vite
+- Install command: `npm ci`
+- Build command: `npm run build`
+- Output directory: `dist`
+- Production domain: none for now
+- Beta gate: keep enabled
+
+Configure environment variables manually from the existing standalone Copywriting Vercel project in the Vercel dashboard. Do not commit values.
+
+Required variable names to configure in Vercel:
+
+- `BETA_ACCESS_CODE`
+- `GEMINI_API_KEY`
+- `GOOGLE_GENERATIVE_AI_API_KEY`
+- `GEMINI_PRO_MODEL`
+- `GEMINI_FLASH_MODEL`
+
 ## Non-Goals
 
 - No Clerk integration.
