@@ -28,6 +28,9 @@ Required environment variable names:
 - `GEMINI_FLASH_MODEL`
 - `GEMINI_API_KEY`
 - `GEMINI_PRO_MODEL`
+
+Optional supported fallback environment variable name:
+
 - `GOOGLE_GENERATIVE_AI_API_KEY`
 
 ## Known Next Steps
@@ -58,9 +61,12 @@ Required environment variable names:
 
 - `BETA_ACCESS_CODE`
 - `GEMINI_API_KEY`
-- `GOOGLE_GENERATIVE_AI_API_KEY`
 - `GEMINI_PRO_MODEL`
 - `GEMINI_FLASH_MODEL`
+
+Optional supported fallback environment variable name:
+
+- `GOOGLE_GENERATIVE_AI_API_KEY`
 
 ## Vercel Preview Recommendation
 
@@ -79,9 +85,24 @@ Required variable names to configure in Vercel:
 
 - `BETA_ACCESS_CODE`
 - `GEMINI_API_KEY`
-- `GOOGLE_GENERATIVE_AI_API_KEY`
 - `GEMINI_PRO_MODEL`
 - `GEMINI_FLASH_MODEL`
+
+Optional supported fallback variable name:
+
+- `GOOGLE_GENERATIVE_AI_API_KEY`
+
+## Product QA Status
+
+Status date: `2026-06-22`
+
+- Goal: `WEBAGENTS-COPYWRITING-PRODUCT-QA-001`
+- Review artifact: `docs/copywriting-product-qa-001.md`
+- Runtime behavior changed: no
+- Product code changed: no
+- Current model routing summary: Flash for address suggestions, image analysis, feature extraction, refinement, chat and most variants; Pro for property research, AI Strategy Analysis, full listing copy, brochure copy and long-form/blog copy.
+- Current cost display summary: Analysis Stream shows token-only estimates from provider usage metadata where available and explicitly excludes grounding/tool charges.
+- Next recommended sprint: strategy-analysis reliability, campaign-mutating action concurrency guards, usage aggregation tests, Campaign Build Log direction, and export assembly helpers.
 
 ## Non-Goals
 

@@ -4,9 +4,9 @@
 ## Web Agents Import Status
 
 This app was imported into `aim-web-agents/apps/copywriting` from the frozen standalone Copywriting Web baseline.
-Import provenance, safety notes, required environment variable names, known next steps, and non-goals are recorded in `WEBAGENTS_IMPORT.md`.
+Import provenance, safety notes, required environment variable names, runtime proof, deployment notes, and non-goals are recorded in `WEBAGENTS_IMPORT.md`.
 
-Dependencies were not installed and runtime verification was not attempted as part of the import task.
+After import, the app was proven locally with `npm ci`, `npm run build`, a dev server, and a preview server. It was pushed to `main`, mirrored to `OneLifestyle/aim-web-agents-vercel-mirror` for temporary Vercel Hobby deployment, and deployed in Vercel as `aim-web-agents-copywriting`.
 
 ## Project Overview
 
@@ -55,13 +55,15 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
 *   **Frontend:** React (v19), TypeScript, Vite.
 *   **Styling:** Tailwind CSS.
 *   **AI/LLM:** Google Gemini API (`@google/genai` SDK).
-    *   *Models:* server-configured through `GEMINI_FLASH_MODEL` for address suggestions and `GEMINI_PRO_MODEL` for reasoning, vision and grounded research.
+    *   *Models:* server-configured through `GEMINI_FLASH_MODEL` and `GEMINI_PRO_MODEL`.
+    *   *Current routing:* Flash is used for address suggestions, image analysis, feature extraction, refinement, chat and most copy variants. Pro is used for property research, AI Strategy Analysis, full listing copy, brochure copy and long-form/blog copy.
 *   **State Management:** React Hooks.
 
 ## Project Structure
 
 *   `index.tsx`: Entry point.
 *   `App.tsx`: Main application controller and UI layout.
-*   `services/geminiService.ts`: Core AI logic, prompt definitions, and API interaction.
+*   `services/geminiService.ts`: Browser-side API wrapper for copywriting operations.
+*   `api/copywriting.ts`: Server-side Gemini execution, beta gate, model routing, input validation, retry, and token-only usage estimates.
 *   `types.ts`: TypeScript interfaces for robust type safety.
 *   `constants.tsx`: UI constants, icons, and configuration lists.
