@@ -276,13 +276,19 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Pr
     }
 };
 
-const formatAIResponseList = (input: string | string[] | undefined, separator: string = ', '): string => {
-    if (!input) return '';
-    if (Array.isArray(input)) return input.join(separator);
-    return String(input).replace(/,([^\s])/g, ', $1').trim();
+const formatAIResponseList = (input: unknown, separator: string = ', '): string => {
+    if (input === null || input === undefined || input === '') return '';
+    if (Array.isArray(input)) {
+        return input
+            .map(item => String(item).trim())
+            .filter(Boolean)
+            .join(separator);
+    }
+    if (typeof input === 'string') return input.replace(/,([^\s])/g, ', $1').trim();
+    return String(input).trim();
 };
 
-const cleanMarkdown = (input: any): string => {
+const cleanMarkdown = (input: unknown): string => {
     if (input === null || input === undefined) return '';
 
     const text = typeof input === 'string' ? input :
@@ -300,7 +306,7 @@ const cleanMarkdown = (input: any): string => {
         .trim();
 };
 
-const parseRobustJSON = (text: string): any => {
+const parseRobustJSON = (text: string): unknown => {
     try {
         return JSON.parse(text.trim());
     } catch {
@@ -725,7 +731,7 @@ const researchProperty = async (payload: Record<string, any>): Promise<ServiceRe
             throw new Error('Empty response from AI researcher.');
         }
 
-        const data = parseRobustJSON(text);
+        const data = requireObject(parseRobustJSON(text), 'research response');
 
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
         const sources: GroundingSource[] = groundingChunks

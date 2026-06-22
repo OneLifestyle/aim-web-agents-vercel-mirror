@@ -13,11 +13,12 @@ type VersionSet = Partial<Record<PreviewTab, string>>;
 type SelectedAddress = {
     label: string;
 };
-type CampaignOperationId = 'research' | 'strategy' | 'features' | 'images' | 'generate' | 'generate-all' | 'refine' | 'download-full';
+type CampaignOperationId = 'propertyResearch' | 'copyContextAnalysis' | 'propertyFeaturesAnalysis' | 'imageAnalysis' | 'generateFullCopy' | 'generateAllVariations' | 'refineCopy' | 'exportFullCampaign';
 type ActiveCampaignOperation = {
     id: CampaignOperationId;
     label: string;
 };
+type AnalysisRunStatus = 'idle' | 'success' | 'error';
 
 const previewTabConfig: Record<string, PreviewTab[]> = {
     'Listing': ['Full Copy', 'Just Listed', 'Brochure Copy', 'Email', 'Flyer'],
@@ -29,6 +30,13 @@ const previewTabConfig: Record<string, PreviewTab[]> = {
 };
 const mainTabs = Object.keys(previewTabConfig);
 const ALL_CONTENT_TABS = Object.values(previewTabConfig).flat();
+const OUTPUT_MUTATING_OPERATIONS = new Set<CampaignOperationId>(['generateFullCopy', 'generateAllVariations', 'refineCopy', 'exportFullCampaign']);
+
+const campaignOperationsConflict = (nextOperation: CampaignOperationId, activeOperation: CampaignOperationId): boolean => {
+    if (nextOperation === activeOperation) return true;
+    if (nextOperation === 'propertyResearch' || activeOperation === 'propertyResearch') return true;
+    return OUTPUT_MUTATING_OPERATIONS.has(nextOperation) && OUTPUT_MUTATING_OPERATIONS.has(activeOperation);
+};
 
 const Section: React.FC<{ title: string; children: React.ReactNode; className?: string; rightElement?: React.ReactNode }> = ({ title, children, className, rightElement }) => (
   <div className={`bg-white p-6 rounded-lg shadow-sm border border-gray-200 flex flex-col ${className || ''}`}>
@@ -382,8 +390,14 @@ const App: React.FC = () => {
 
     const [isAnalyzingStrategy, setIsAnalyzingStrategy] = useState(false);
     const [isAnalyzingFeatures, setIsAnalyzingFeatures] = useState(false);
-    const [activeCampaignOperation, setActiveCampaignOperation] = useState<ActiveCampaignOperation | null>(null);
-    const activeCampaignOperationRef = useRef<ActiveCampaignOperation | null>(null);
+    const [copyContextAnalysisStatus, setCopyContextAnalysisStatus] = useState<AnalysisRunStatus>('idle');
+    const [propertyFeaturesAnalysisStatus, setPropertyFeaturesAnalysisStatus] = useState<AnalysisRunStatus>('idle');
+    const [copyContextAnalysisError, setCopyContextAnalysisError] = useState<string | null>(null);
+    const [propertyFeaturesAnalysisError, setPropertyFeaturesAnalysisError] = useState<string | null>(null);
+    const [activeCampaignOperations, setActiveCampaignOperations] = useState<ActiveCampaignOperation[]>([]);
+    const activeCampaignOperationsRef = useRef<Map<CampaignOperationId, ActiveCampaignOperation>>(new Map());
+    const addressLookupRequestRef = useRef(0);
+    const [isAddressLookupQueued, setIsAddressLookupQueued] = useState(false);
 
 
     const [notification, setNotification] = useState<string | null>(null);
@@ -423,22 +437,28 @@ const App: React.FC = () => {
     };
 
     const beginCampaignOperation = (id: CampaignOperationId, label: string): boolean => {
-        const activeOperation = activeCampaignOperationRef.current;
-        if (activeOperation) {
-            setNotification(`${activeOperation.label} is still running. Wait for it to finish before starting another campaign action.`);
+        const activeOperations: ActiveCampaignOperation[] = Array.from(activeCampaignOperationsRef.current.values());
+        const blockingOperation = activeOperations.find(operation => campaignOperationsConflict(id, operation.id));
+        if (blockingOperation) {
+            const actionDescription = blockingOperation.id === id ? 'that action' : 'a related campaign action';
+            setNotification(`${blockingOperation.label} is still running. Wait for ${actionDescription} to finish before starting this.`);
             return false;
         }
 
         const nextOperation = { id, label };
-        activeCampaignOperationRef.current = nextOperation;
-        setActiveCampaignOperation(nextOperation);
+        const nextOperations = new Map<CampaignOperationId, ActiveCampaignOperation>(activeCampaignOperationsRef.current);
+        nextOperations.set(id, nextOperation);
+        activeCampaignOperationsRef.current = nextOperations;
+        setActiveCampaignOperations(Array.from(activeCampaignOperationsRef.current.values()));
         return true;
     };
 
     const endCampaignOperation = (id: CampaignOperationId): void => {
-        if (activeCampaignOperationRef.current?.id !== id) return;
-        activeCampaignOperationRef.current = null;
-        setActiveCampaignOperation(null);
+        if (!activeCampaignOperationsRef.current.has(id)) return;
+        const nextOperations = new Map<CampaignOperationId, ActiveCampaignOperation>(activeCampaignOperationsRef.current);
+        nextOperations.delete(id);
+        activeCampaignOperationsRef.current = nextOperations;
+        setActiveCampaignOperations(Array.from(nextOperations.values()));
     };
 
     const handleChatUsage = (usage: UsageStats | undefined, prompt: string) => {
@@ -518,38 +538,54 @@ const App: React.FC = () => {
     }, [isBetaVerified]);
 
     useEffect(() => {
+        const query = address.trim();
+        const requestId = addressLookupRequestRef.current + 1;
+        addressLookupRequestRef.current = requestId;
+
         // Reset suggestions and loading state if the query is too short
-        if (!address.trim() || address.trim().length < 3) {
+        if (!query || query.length < 3) {
             setAddressSuggestions([]);
             setIsSuggesting(false);
+            setIsAddressLookupQueued(false);
             return;
         }
 
-        if (selectedAddress?.label === address.trim()) {
+        if (selectedAddress?.label === query) {
             setAddressSuggestions([]);
             setIsSuggesting(false);
+            setIsAddressLookupQueued(false);
             return;
         }
+
+        setAddressSuggestions([]);
+        setIsAddressLookupQueued(true);
+        setShowSuggestions(true);
 
         const handler = setTimeout(async () => {
+            if (addressLookupRequestRef.current !== requestId) return;
+            setIsAddressLookupQueued(false);
             setIsSuggesting(true);
             setShowSuggestions(true);
-            const logId = addLog({ stepName: 'Address Suggestions', status: 'pending', inputs: address.trim() });
+            const logId = addLog({ stepName: 'Address Suggestions', status: 'pending', inputs: query });
             try {
-                const result = await geminiService.suggestAddresses(address, userLocation);
-                // Only update if the query hasn't changed or been cleared since the request started
-                if (address.trim().length >= 3) {
+                const result = await geminiService.suggestAddresses(query, userLocation);
+                // Only update if the query hasn't changed or been cleared since the request started.
+                if (addressLookupRequestRef.current === requestId) {
                     setAddressSuggestions(result.data);
                 }
                 updateLog(logId, { status: 'success', outputs: `${result.data.length} suggestions returned`, usage: result.usage });
             } catch (error) {
                 console.error("Address suggestions error:", error);
-                setAddressSuggestions([]);
+                if (addressLookupRequestRef.current === requestId) {
+                    setAddressSuggestions([]);
+                }
                 updateLog(logId, { status: 'error', message: error instanceof Error ? error.message : 'Address suggestions failed.' });
             } finally {
-                setIsSuggesting(false);
+                if (addressLookupRequestRef.current === requestId) {
+                    setIsSuggesting(false);
+                }
             }
-        }, 500); // Debounce to prevent too many requests
+        }, 350); // Debounce to prevent too many requests while keeping lookup feedback responsive.
 
         return () => {
             clearTimeout(handler);
@@ -660,7 +696,7 @@ const App: React.FC = () => {
 
     const handleAnalyzeImages = async () => {
         if (imageFiles.length === 0) return;
-        if (!beginCampaignOperation('images', 'Photo analysis')) return;
+        if (!beginCampaignOperation('imageAnalysis', 'Photo analysis')) return;
 
         setIsAnalyzingImages(true);
         setImageAnalysis(null);
@@ -712,7 +748,7 @@ const App: React.FC = () => {
             }
         } finally {
             setIsAnalyzingImages(false);
-            endCampaignOperation('images');
+            endCampaignOperation('imageAnalysis');
         }
     };
 
@@ -791,7 +827,7 @@ const App: React.FC = () => {
             setResearchError("Please enter a property address to fetch details.");
             return;
         }
-        if (!beginCampaignOperation('research', 'Property research')) return;
+        if (!beginCampaignOperation('propertyResearch', 'Property research')) return;
         const logId = addLog({ stepName: 'Fetch Property Details', status: 'pending', inputs: addressForResearch });
         let location = userLocation;
         setIsResearching(true);
@@ -803,6 +839,10 @@ const App: React.FC = () => {
         setLastSoldDetails(null);
         setGroundingSources([]);
         setIsFetchComplete(false);
+        setCopyContextAnalysisStatus('idle');
+        setPropertyFeaturesAnalysisStatus('idle');
+        setCopyContextAnalysisError(null);
+        setPropertyFeaturesAnalysisError(null);
         try {
             if (locationStatus === 'pending') {
                 location = await requestLocation();
@@ -851,14 +891,15 @@ const App: React.FC = () => {
             updateLog(logId, { status: 'error', message: msg });
         } finally {
             setIsResearching(false);
-            endCampaignOperation('research');
+            endCampaignOperation('propertyResearch');
         }
     };
 
     const handleStrategyAnalysis = async () => {
         if (!researchData) return;
-        if (!beginCampaignOperation('strategy', 'AI Strategy Analysis')) return;
+        if (!beginCampaignOperation('copyContextAnalysis', 'Copy Context AI Analysis')) return;
         setIsAnalyzingStrategy(true);
+        setCopyContextAnalysisError(null);
         const logId = addLog({ stepName: 'AI Strategy Analysis', status: 'pending', inputs: 'Analyzing research for strategy' });
         try {
             const profileStr = profileData ? `Suburb: ${profileData.suburb}\nArea: ${profileData.area}` : null;
@@ -872,22 +913,26 @@ const App: React.FC = () => {
                 featuresToHighlight: analysis.featuresToHighlight,
                 thingsToAvoid: analysis.thingsToAvoid
             });
+            setCopyContextAnalysisStatus('success');
             updateLog(logId, { status: 'success', outputs: JSON.stringify(analysis), usage: result.usage });
         } catch (error) {
             console.error(error);
             const msg = error instanceof Error ? error.message : "Failed to analyze strategy.";
+            setCopyContextAnalysisStatus('error');
+            setCopyContextAnalysisError(msg);
             updateLog(logId, { status: 'error', message: msg });
             setNotification("Strategy analysis failed. Prior strategy settings were kept.");
         } finally {
             setIsAnalyzingStrategy(false);
-            endCampaignOperation('strategy');
+            endCampaignOperation('copyContextAnalysis');
         }
     };
 
     const handleFeatureAnalysis = async () => {
         if (!researchData) return;
-        if (!beginCampaignOperation('features', 'Feature extraction')) return;
+        if (!beginCampaignOperation('propertyFeaturesAnalysis', 'Property Features AI Analysis')) return;
         setIsAnalyzingFeatures(true);
+        setPropertyFeaturesAnalysisError(null);
         const logId = addLog({ stepName: 'AI Feature Extraction', status: 'pending', inputs: 'Extracting property features' });
         try {
             const result = await geminiService.analyzeFeatures(researchData, profileData ? `Suburb: ${profileData.suburb}\nArea: ${profileData.area}` : null, imageAnalysis);
@@ -895,15 +940,18 @@ const App: React.FC = () => {
             setPropertyFeatures(prev => {
                 return prev ? `${prev}\n${analysis.propertyFeatures}` : analysis.propertyFeatures;
             });
+            setPropertyFeaturesAnalysisStatus('success');
             updateLog(logId, { status: 'success', outputs: JSON.stringify(analysis), usage: result.usage });
         } catch (error) {
             console.error(error);
             const msg = error instanceof Error ? error.message : "Failed to extract features.";
+            setPropertyFeaturesAnalysisStatus('error');
+            setPropertyFeaturesAnalysisError(msg);
             updateLog(logId, { status: 'error', message: msg });
             setNotification("Failed to extract property features.");
         } finally {
             setIsAnalyzingFeatures(false);
-            endCampaignOperation('features');
+            endCampaignOperation('propertyFeaturesAnalysis');
         }
     };
 
@@ -926,7 +974,7 @@ const App: React.FC = () => {
     };
 
     const generateCopyForTab = async (tab: PreviewTab, isRegeneration = false) => {
-        if (!beginCampaignOperation('generate', tab === 'Full Copy' ? 'Listing copy generation' : `${tab} generation`)) return;
+        if (!beginCampaignOperation('generateFullCopy', tab === 'Full Copy' ? 'Listing copy generation' : `${tab} generation`)) return;
         setIsGenerating(true);
         setGeneratingTab(tab);
         setGenerationError(null);
@@ -940,6 +988,20 @@ const App: React.FC = () => {
         const currentVersion = versionSets[activeVersionIndex];
         const isVariant = tab !== 'Full Copy';
         const baseCopy = currentVersion ? currentVersion['Full Copy'] : undefined;
+        const generationParams: GenerationParams = {
+            address,
+            includeAddress,
+            details: propertyDetails,
+            context: copyContext,
+            features: propertyFeatures,
+            output: outputSettings,
+            imageAnalysis,
+            researchData,
+            profileData,
+            profileInclusion,
+            agentProfile,
+            openHouse
+        };
 
         if (isVariant && !baseCopy) {
             const msg = `Please generate the 'Full Copy' first for this version before creating a variation.`;
@@ -947,7 +1009,7 @@ const App: React.FC = () => {
             updateLog(logId, { status: 'error', message: msg });
             setIsGenerating(false);
             setGeneratingTab(null);
-            endCampaignOperation('generate');
+            endCampaignOperation('generateFullCopy');
             return;
         }
 
@@ -956,33 +1018,12 @@ const App: React.FC = () => {
             let usage: UsageStats | undefined;
 
             if (isVariant) {
-                const result = await geminiService.generateCopyVariant(baseCopy!, tab, {
-                    address,
-                    includeAddress,
-                    details: propertyDetails,
-                    context: copyContext,
-                    features: propertyFeatures,
-                    output: outputSettings,
-                    imageAnalysis,
-                    researchData,
-                    profileData,
-                    profileInclusion,
-                    agentProfile,
-                    openHouse
-                });
+                const result = await geminiService.generateCopyVariant(baseCopy!, tab, generationParams);
                 copy = result.data;
                 usage = result.usage;
                 updateCurrentVersion(copy, tab);
             } else {
-                const params: GenerationParams = {
-                    address, includeAddress, details: propertyDetails, context: copyContext,
-                    features: propertyFeatures, output: outputSettings,
-                    imageAnalysis,
-                    researchData, profileData, profileInclusion,
-                    agentProfile,
-                    openHouse
-                };
-                const result = await geminiService.generateCopy(params, 'Listing Copy');
+                const result = await geminiService.generateCopy(generationParams, 'Listing Copy');
                 copy = result.data;
                 usage = result.usage;
 
@@ -1010,7 +1051,7 @@ const App: React.FC = () => {
         } finally {
             setIsGenerating(false);
             setGeneratingTab(null);
-            endCampaignOperation('generate');
+            endCampaignOperation('generateFullCopy');
         }
     };
 
@@ -1020,9 +1061,23 @@ const App: React.FC = () => {
             setNotification("Please generate the 'Full Copy' first.");
             return;
         }
-        if (!beginCampaignOperation('generate-all', 'Campaign variation generation')) return;
+        if (!beginCampaignOperation('generateAllVariations', 'Campaign variation generation')) return;
 
         const missingTabs = ALL_CONTENT_TABS.filter(tab => !currentVersion[tab]);
+        const generationParams: GenerationParams = {
+            address,
+            includeAddress,
+            details: propertyDetails,
+            context: copyContext,
+            features: propertyFeatures,
+            output: outputSettings,
+            imageAnalysis,
+            researchData,
+            profileData,
+            profileInclusion,
+            agentProfile,
+            openHouse
+        };
 
         setIsGenerating(true);
         const logId = addLog({ stepName: 'Generate All Variations', status: 'pending', inputs: `Generating variations for ${missingTabs.length || 'all'} tabs` });
@@ -1033,20 +1088,7 @@ const App: React.FC = () => {
 
             for (const tab of tabsToProcess) {
                 setGeneratingTab(tab);
-                const result = await geminiService.generateCopyVariant(currentVersion['Full Copy']!, tab, {
-                    address,
-                    includeAddress,
-                    details: propertyDetails,
-                    context: copyContext,
-                    features: propertyFeatures,
-                    output: outputSettings,
-                    imageAnalysis,
-                    researchData,
-                    profileData,
-                    profileInclusion,
-                    agentProfile,
-                    openHouse
-                });
+                const result = await geminiService.generateCopyVariant(currentVersion['Full Copy']!, tab, generationParams);
                 childUsages.push(result.usage);
 
                 setVersionSets(prev => {
@@ -1071,7 +1113,7 @@ const App: React.FC = () => {
         } finally {
             setIsGenerating(false);
             setGeneratingTab(null);
-            endCampaignOperation('generate-all');
+            endCampaignOperation('generateAllVariations');
         }
     };
 
@@ -1129,7 +1171,7 @@ const App: React.FC = () => {
         const currentVersion = versionSets[activeVersionIndex];
         const currentCopy = currentVersion ? currentVersion[activeSubTab] : undefined;
         if (!currentCopy) return;
-        if (!beginCampaignOperation('refine', `${activeSubTab} refinement`)) return;
+        if (!beginCampaignOperation('refineCopy', `${activeSubTab} refinement`)) return;
         setIsRefining(true);
         setGenerationError(null);
         const logId = addLog({ stepName: 'Refine Copy', status: 'pending', inputs: instruction });
@@ -1152,7 +1194,7 @@ const App: React.FC = () => {
             updateLog(logId, { status: 'error', message: msg });
         } finally {
             setIsRefining(false);
-            endCampaignOperation('refine');
+            endCampaignOperation('refineCopy');
         }
     };
 
@@ -1230,7 +1272,7 @@ const App: React.FC = () => {
             setNotification("Please generate the 'Full Copy' for the current version first.");
             return;
         }
-        if (!beginCampaignOperation('download-full', 'Full campaign document download')) return;
+        if (!beginCampaignOperation('exportFullCampaign', 'Full campaign document download')) return;
         setIsDownloadingAll(true);
         setIsDownloadAllMenuOpen(false);
         setNotification("Preparing full campaign document...");
@@ -1238,26 +1280,27 @@ const App: React.FC = () => {
 
         // Capture a snapshot for current state
         let updatedCopies = { ...versionSets[activeVersionIndex] };
+        const generationParams: GenerationParams = {
+            address,
+            includeAddress,
+            details: propertyDetails,
+            context: copyContext,
+            features: propertyFeatures,
+            output: outputSettings,
+            imageAnalysis,
+            researchData,
+            profileData,
+            profileInclusion,
+            agentProfile,
+            openHouse
+        };
 
         try {
             const childUsages: Array<UsageStats | undefined> = [];
             for (const tab of ALL_CONTENT_TABS) {
                 if (!updatedCopies[tab]) {
                     setNotification(`Generating copy for ${tab}...`);
-                    const result = await geminiService.generateCopyVariant(updatedCopies['Full Copy']!, tab, {
-                        address,
-                        includeAddress,
-                        details: propertyDetails,
-                        context: copyContext,
-                        features: propertyFeatures,
-                        output: outputSettings,
-                        imageAnalysis,
-                        researchData,
-                        profileData,
-                        profileInclusion,
-                        agentProfile,
-                        openHouse
-                    });
+                    const result = await geminiService.generateCopyVariant(updatedCopies['Full Copy']!, tab, generationParams);
                     childUsages.push(result.usage);
                     updatedCopies[tab] = result.data;
 
@@ -1304,7 +1347,7 @@ const App: React.FC = () => {
             updateLog(logId, { status: 'error', message: msg });
         } finally {
             setIsDownloadingAll(false);
-            endCampaignOperation('download-full');
+            endCampaignOperation('exportFullCampaign');
         }
     };
 
@@ -1333,7 +1376,28 @@ const App: React.FC = () => {
     const currentVersionSet = versionSets[activeVersionIndex] || {};
     const currentCopy = currentVersionSet[activeSubTab] || '';
     const isEdited = editedStatus[activeSubTab];
-    const isCampaignBusy = activeCampaignOperation !== null;
+    const getCampaignOperationBlocker = (id: CampaignOperationId): ActiveCampaignOperation | null => {
+        return activeCampaignOperations.find(operation => campaignOperationsConflict(id, operation.id)) ?? null;
+    };
+    const getCampaignOperationTitle = (id: CampaignOperationId, fallback?: string): string | undefined => {
+        const blocker = getCampaignOperationBlocker(id);
+        if (blocker) return blocker.id === id ? `${blocker.label} is already running.` : `${blocker.label} is running. Try again when it finishes.`;
+        return fallback;
+    };
+    const getAnalysisButtonLabel = (isRunning: boolean, status: AnalysisRunStatus): string => {
+        if (isRunning) return 'Analyzing...';
+        if (status === 'error') return 'Retry AI Analysis';
+        if (status === 'success') return 'Redo AI Analysis';
+        return 'AI Analysis';
+    };
+    const copyContextAnalysisBlocker = getCampaignOperationBlocker('copyContextAnalysis');
+    const propertyFeaturesAnalysisBlocker = getCampaignOperationBlocker('propertyFeaturesAnalysis');
+    const imageAnalysisBlocker = getCampaignOperationBlocker('imageAnalysis');
+    const propertyResearchBlocker = getCampaignOperationBlocker('propertyResearch');
+    const generateCopyBlocker = getCampaignOperationBlocker('generateFullCopy');
+    const generateAllBlocker = getCampaignOperationBlocker('generateAllVariations');
+    const refineCopyBlocker = getCampaignOperationBlocker('refineCopy');
+    const exportFullCampaignBlocker = getCampaignOperationBlocker('exportFullCampaign');
 
     const allTabsGenerated = useMemo(() => {
         return ALL_CONTENT_TABS.every(tab => !!currentVersionSet[tab]);
@@ -1470,9 +1534,9 @@ const App: React.FC = () => {
                     </div>
                 </div>
             </header>
-            {activeCampaignOperation && (
+            {activeCampaignOperations.length > 0 && (
                 <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm text-amber-900">
-                    <span className="font-semibold">Campaign action in progress:</span> {activeCampaignOperation.label}
+                    <span className="font-semibold">Campaign action in progress:</span> {activeCampaignOperations.map(operation => operation.label).join(', ')}
                 </div>
             )}
 
@@ -1499,7 +1563,7 @@ const App: React.FC = () => {
                                         className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-red-500"
                                         autoComplete="off"
                                     />
-                                    {isSuggesting && <Spinner className="absolute top-2.5 right-3 text-gray-400" />}
+                                    {(isAddressLookupQueued || isSuggesting) && <Spinner className="absolute top-2.5 right-3 text-gray-400" />}
                                     {showSuggestions && addressSuggestions.length > 0 && (
                                         <ul className="absolute z-10 w-full bg-white border border-gray-300 rounded-md mt-1 shadow-lg max-h-60 overflow-y-auto">
                                             {addressSuggestions.map((s, i) => (
@@ -1512,6 +1576,11 @@ const App: React.FC = () => {
                                                 </li>
                                             ))}
                                         </ul>
+                                    )}
+                                    {showSuggestions && address.trim().length >= 3 && addressSuggestions.length === 0 && (isAddressLookupQueued || isSuggesting) && (
+                                        <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-md mt-1 shadow-lg p-2 text-sm text-gray-500">
+                                            Looking up address...
+                                        </div>
                                     )}
                                 </div>
                                 <div className="flex justify-between items-center">
@@ -1529,7 +1598,8 @@ const App: React.FC = () => {
                                     </div>
                                     <button
                                         onClick={handleFetchDetails}
-                                        disabled={isResearching || isCampaignBusy || !address.trim()}
+                                        disabled={isResearching || Boolean(propertyResearchBlocker) || !address.trim()}
+                                        title={getCampaignOperationTitle('propertyResearch', !address.trim() ? 'Enter a property address first.' : undefined)}
                                         className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-red-400 disabled:cursor-not-allowed w-auto justify-center"
                                     >
                                         {isResearching ? <Spinner className="mr-2" /> : <IconFileText className="mr-2"/>}
@@ -1718,11 +1788,12 @@ const App: React.FC = () => {
                                 <div className="flex flex-col items-end gap-1">
                                     <button
                                         onClick={handleStrategyAnalysis}
-                                        disabled={!isFetchComplete || isAnalyzingStrategy || isCampaignBusy}
+                                        disabled={!isFetchComplete || isAnalyzingStrategy || Boolean(copyContextAnalysisBlocker)}
+                                        title={getCampaignOperationTitle('copyContextAnalysis', !isFetchComplete ? 'Fetch property details before running analysis.' : undefined)}
                                         className="text-xs flex items-center gap-1 bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 hover:bg-red-100 disabled:opacity-50"
                                     >
                                         {isAnalyzingStrategy ? <Spinner className="w-3 h-3" /> : <IconSparkles className="w-3 h-3" />}
-                                        {copyContext.primaryTargetMarket !== 'Young Families' ? 'Redo AI Analysis' : 'AI Analysis'}
+                                        {getAnalysisButtonLabel(isAnalyzingStrategy, copyContextAnalysisStatus)}
                                     </button>
                                 </div>
                             }
@@ -1793,6 +1864,9 @@ const App: React.FC = () => {
                                     />
                                 </div>
                             </div>
+                            {copyContextAnalysisError && (
+                                <p className="mt-3 text-sm text-red-600">{copyContextAnalysisError}</p>
+                            )}
                         </Section>
 
                         <Section
@@ -1801,11 +1875,12 @@ const App: React.FC = () => {
                                 <div className="flex flex-col items-end gap-1">
                                     <button
                                         onClick={handleFeatureAnalysis}
-                                        disabled={!isFetchComplete || isAnalyzingFeatures || isCampaignBusy}
+                                        disabled={!isFetchComplete || isAnalyzingFeatures || Boolean(propertyFeaturesAnalysisBlocker)}
+                                        title={getCampaignOperationTitle('propertyFeaturesAnalysis', !isFetchComplete ? 'Fetch property details before running analysis.' : undefined)}
                                         className="text-xs flex items-center gap-1 bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 hover:bg-red-100 disabled:opacity-50"
                                     >
                                         {isAnalyzingFeatures ? <Spinner className="w-3 h-3" /> : <IconSparkles className="w-3 h-3" />}
-                                        {propertyFeatures ? 'Redo AI Analysis' : 'AI Analysis'}
+                                        {getAnalysisButtonLabel(isAnalyzingFeatures, propertyFeaturesAnalysisStatus)}
                                     </button>
                                 </div>
                             }
@@ -1817,6 +1892,9 @@ const App: React.FC = () => {
                                 placeholder="List features, lifestyle aspects, upgrades..."
                                 className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-red-500"
                             />
+                            {propertyFeaturesAnalysisError && (
+                                <p className="mt-3 text-sm text-red-600">{propertyFeaturesAnalysisError}</p>
+                            )}
                         </Section>
 
                         <Section title="Property Photos">
@@ -1856,10 +1934,18 @@ const App: React.FC = () => {
                                      <input type="checkbox" id="include-visuals" checked={includeVisualHighlights} onChange={(e) => setIncludeVisualHighlights(e.target.checked)} className="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500" />
                                      <label htmlFor="include-visuals" className="ml-2 block text-sm text-gray-900">Include visual analysis</label>
                                 </div>
-                                <button onClick={handleAnalyzeImages} disabled={imageFiles.length === 0 || isAnalyzingImages || isCampaignBusy} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400">
-                                    {isAnalyzingImages ? 'Analyzing...' : 'Analyze Photos'}
+                                <button
+                                    onClick={handleAnalyzeImages}
+                                    disabled={imageFiles.length === 0 || isAnalyzingImages || Boolean(imageAnalysisBlocker)}
+                                    title={getCampaignOperationTitle('imageAnalysis', imageFiles.length === 0 ? 'Upload photos before analysis.' : undefined)}
+                                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400"
+                                >
+                                    {isAnalyzingImages ? 'Analyzing...' : imageAnalysisError ? 'Retry Photo Analysis' : imageAnalysis ? 'Redo Photo Analysis' : 'Analyze Photos'}
                                 </button>
                             </div>
+                            {imageAnalysisError && (
+                                <p className="mt-3 text-sm text-red-600">{imageAnalysisError}</p>
+                            )}
                         </Section>
 
                         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 sticky bottom-6 z-10">
@@ -1867,7 +1953,12 @@ const App: React.FC = () => {
                                 <span className="text-sm font-medium text-gray-700">~{outputSettings.wordCount} words</span>
                                 <input type="range" min="50" max="1000" step="50" value={outputSettings.wordCount} onChange={(e) => setOutputSettings(prev => ({ ...prev, wordCount: parseInt(e.target.value) }))} className="w-1/2 h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-red-600" />
                             </div>
-                            <button onClick={() => generateCopyForTab(activeSubTab, true)} disabled={isGenerating || isCampaignBusy} className="w-full inline-flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 disabled:bg-red-400 transition-transform transform hover:scale-[1.01]">
+                            <button
+                                onClick={() => generateCopyForTab(activeSubTab, true)}
+                                disabled={isGenerating || Boolean(generateCopyBlocker)}
+                                title={getCampaignOperationTitle('generateFullCopy')}
+                                className="w-full inline-flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 disabled:bg-red-400 transition-transform transform hover:scale-[1.01]"
+                            >
                                 {isGenerating && generatingTab === activeSubTab ? <Spinner className="mr-2" /> : <IconSparkles className="mr-2 w-5 h-5" />}
                                 {currentCopy ? 'Regenerate Copy' : 'Generate Listing Copy'}
                             </button>
@@ -1969,7 +2060,8 @@ const App: React.FC = () => {
                                              <div className="flex items-center gap-2">
                                                  <button
                                                     onClick={handleGenerateAllMissing}
-                                                    disabled={isGenerating || isCampaignBusy || !currentVersionSet['Full Copy']}
+                                                    disabled={isGenerating || Boolean(generateAllBlocker) || !currentVersionSet['Full Copy']}
+                                                    title={getCampaignOperationTitle('generateAllVariations', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before campaign variations.' : undefined)}
                                                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold transition-all border ${allTabsGenerated ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50`}
                                                  >
                                                     <IconSparkles className="w-3 h-3" />
@@ -1979,7 +2071,8 @@ const App: React.FC = () => {
                                                  <div className="relative" ref={downloadAllMenuRef}>
                                                      <button
                                                         onClick={() => setIsDownloadAllMenuOpen(!isDownloadAllMenuOpen)}
-                                                        disabled={isDownloadingAll || isCampaignBusy || !currentVersionSet['Full Copy']}
+                                                        disabled={isDownloadingAll || Boolean(exportFullCampaignBlocker) || !currentVersionSet['Full Copy']}
+                                                        title={getCampaignOperationTitle('exportFullCampaign', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before downloading the full campaign.' : undefined)}
                                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white rounded-md font-bold hover:bg-slate-900 disabled:bg-slate-400 transition-all"
                                                      >
                                                          {isDownloadingAll ? <Spinner className="w-3 h-3" /> : <IconDownload className="w-3 h-3" />}
@@ -2011,7 +2104,14 @@ const App: React.FC = () => {
                                      <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col space-y-3">
                                          <div className="flex items-center gap-2">
                                              <input type="text" placeholder={`Refine this ${activeSubTab}...`} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm" onKeyDown={e => e.key === 'Enter' && (handleRefineCopy((e.target as any).value), (e.target as any).value = '')} />
-                                             <button disabled={!currentCopy || isRefining || isCampaignBusy} onClick={e => (handleRefineCopy((e.currentTarget.previousElementSibling as any).value), (e.currentTarget.previousElementSibling as any).value = '')} className="bg-gray-200 text-gray-700 p-2 rounded-md disabled:opacity-50">{isRefining ? <Spinner /> : <IconSend className="w-4 h-4" />}</button>
+                                             <button
+                                                disabled={!currentCopy || isRefining || Boolean(refineCopyBlocker)}
+                                                title={getCampaignOperationTitle('refineCopy', !currentCopy ? 'Generate copy before refining.' : undefined)}
+                                                onClick={e => (handleRefineCopy((e.currentTarget.previousElementSibling as any).value), (e.currentTarget.previousElementSibling as any).value = '')}
+                                                className="bg-gray-200 text-gray-700 p-2 rounded-md disabled:opacity-50"
+                                             >
+                                                {isRefining ? <Spinner /> : <IconSend className="w-4 h-4" />}
+                                             </button>
                                          </div>
 
                                          <div className="flex justify-between items-center">
