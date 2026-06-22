@@ -29,6 +29,14 @@ export interface CopyContext {
   thingsToAvoid: string;
 }
 
+export interface StrategyAnalysisResult {
+    primaryTargetMarket: string;
+    secondaryTargetMarket: string | null;
+    writingStyles: string[];
+    featuresToHighlight: string;
+    thingsToAvoid: string;
+}
+
 export interface OutputSettings {
   wordCount: number;
 }

@@ -5,11 +5,17 @@ import { TARGET_MARKETS, WRITING_STYLES, PROPERTY_TYPES, IconFileWord, IconFileP
 import { IconBuilding, IconCamera, IconChevronDown, IconClipboard, IconDownload, IconFileText, IconHome, IconLoader, IconMessage, IconMinus, IconPlus, IconSend, IconSparkles, IconTrash, IconUpload, IconX, IconWorld, IconMapPin, IconCheckCircle, IconExclamationCircle, IconChevronLeft, IconChevronRight } from './constants';
 import * as geminiService from './services/geminiService';
 import { fileToBase64 } from './utils/fileUtils';
+import { buildCampaignExportPlan, sanitizeFileNamePart } from './utils/exportAssembly';
 import { Spinner } from './components/Spinner';
 import { ChatBot } from './components/ChatBot';
 
 type VersionSet = Partial<Record<PreviewTab, string>>;
 type SelectedAddress = {
+    label: string;
+};
+type CampaignOperationId = 'research' | 'strategy' | 'features' | 'images' | 'generate' | 'generate-all' | 'refine' | 'download-full';
+type ActiveCampaignOperation = {
+    id: CampaignOperationId;
     label: string;
 };
 
@@ -161,7 +167,10 @@ const aggregateUsage = (operation: string, usages: Array<UsageStats | undefined>
     const presentUsages = usages.filter((usage): usage is UsageStats => Boolean(usage));
     const models = Array.from(new Set(presentUsages.map(usage => usage.model).filter(Boolean)));
     const excludedOperationCount = usages.length - presentUsages.length + presentUsages.filter(usage => usage.usageStatus === 'unavailable').length;
-    const unknownCostOperationCount = presentUsages.filter(usage => usage.pricingStatus === 'unknown' || usage.estimatedCost === null).length;
+    const unknownCostOperationCount = presentUsages.filter(usage => (
+        usage.pricingStatus === 'unknown' ||
+        (usage.usageStatus !== 'unavailable' && usage.estimatedCost === null)
+    )).length;
     const costValues = presentUsages
         .map(usage => usage.estimatedCost)
         .filter((cost): cost is number => typeof cost === 'number');
@@ -179,7 +188,12 @@ const aggregateUsage = (operation: string, usages: Array<UsageStats | undefined>
         mapsGroundingQueries: presentUsages.reduce((sum, usage) => addNullable(sum, usage.mapsGroundingQueries), null as number | null),
         estimatedCost: costValues.length > 0 ? costValues.reduce((sum, cost) => sum + cost, 0) : null,
         model: models.length === 0 ? fallbackModel : models.length === 1 ? models[0] : `mixed: ${models.join(', ')}`,
-        costDisclaimerFlags: Array.from(new Set(presentUsages.flatMap(usage => usage.costDisclaimerFlags))),
+        costDisclaimerFlags: Array.from(new Set([
+            'token_only_estimate',
+            'grounding_tool_charges_not_included',
+            'provider_usage_required',
+            ...presentUsages.flatMap(usage => usage.costDisclaimerFlags)
+        ])),
         excludedOperationCount,
         unknownCostOperationCount
     };
@@ -187,6 +201,21 @@ const aggregateUsage = (operation: string, usages: Array<UsageStats | undefined>
 
 const formatTokenCount = (value: number | null | undefined): string => {
     return typeof value === 'number' ? value.toLocaleString() : 'unavailable';
+};
+
+const getPublicStepName = (stepName: string): string => {
+    if (stepName.startsWith('Fetch Property Details')) return 'Reviewing property context';
+    if (stepName.startsWith('AI Strategy Analysis')) return 'Creating campaign strategy';
+    if (stepName.startsWith('AI Feature Extraction')) return 'Extracting property features';
+    if (stepName.startsWith('Analyze Photos')) return 'Analyzing uploaded photos';
+    if (stepName.startsWith('Generate Copy')) return 'Generating campaign copy';
+    if (stepName.startsWith('Generate All Variations')) return 'Creating campaign variations';
+    if (stepName.startsWith('Download Full Campaign')) return 'Preparing full campaign document';
+    if (stepName.startsWith('Download All')) return 'Preparing full campaign document';
+    if (stepName.startsWith('Refine Copy')) return 'Refining selected section';
+    if (stepName.startsWith('Address Suggestions')) return 'Finding matching addresses';
+    if (stepName.startsWith('Chat')) return 'Assistant reply';
+    return stepName;
 };
 
 const DebugPanel: React.FC<{ logs: DebugLogEntry[] }> = ({ logs }) => {
@@ -197,20 +226,23 @@ const DebugPanel: React.FC<{ logs: DebugLogEntry[] }> = ({ logs }) => {
     return (
         <div className="flex-1 flex flex-col bg-slate-900 text-slate-300 text-xs font-mono overflow-hidden rounded-lg border border-slate-700">
             <div className="p-3 border-b border-slate-700 bg-slate-800 font-bold text-white flex justify-between items-center">
-                <span>Analysis Stream</span>
+                <span>Campaign Build Log</span>
                 <div className="flex gap-1">
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                 </div>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-4">
-                {logs.length === 0 && <div className="text-center opacity-50 pt-10">No activity yet...</div>}
+                {logs.length === 0 && <div className="text-center opacity-50 pt-10">No campaign activity yet...</div>}
                 {logs.map((log) => (
                     <div key={log.id} className="border-l-2 border-slate-600 pl-3 relative">
                         <div className="absolute -left-[5px] top-0 w-2 h-2 rounded-full bg-slate-600" style={{ backgroundColor: log.status === 'success' ? '#10b981' : log.status === 'error' ? '#ef4444' : '#f59e0b' }}></div>
                         <div className="flex justify-between mb-1">
-                            <span className="font-bold text-white">{log.stepName}</span>
+                            <span className="font-bold text-white">{getPublicStepName(log.stepName)}</span>
                             <span className="opacity-60">{log.timestamp.toLocaleTimeString()}</span>
                         </div>
+                        {getPublicStepName(log.stepName) !== log.stepName && (
+                            <div className="mb-1 text-[10px] text-slate-500">Technical step: {log.stepName}</div>
+                        )}
                         {log.status === 'pending' && <span className="text-yellow-500 animate-pulse">Processing...</span>}
                         {log.status === 'error' && <span className="text-red-400">{log.message}</span>}
 
@@ -350,6 +382,8 @@ const App: React.FC = () => {
 
     const [isAnalyzingStrategy, setIsAnalyzingStrategy] = useState(false);
     const [isAnalyzingFeatures, setIsAnalyzingFeatures] = useState(false);
+    const [activeCampaignOperation, setActiveCampaignOperation] = useState<ActiveCampaignOperation | null>(null);
+    const activeCampaignOperationRef = useRef<ActiveCampaignOperation | null>(null);
 
 
     const [notification, setNotification] = useState<string | null>(null);
@@ -386,6 +420,25 @@ const App: React.FC = () => {
 
     const updateLog = (id: string, updates: Partial<DebugLogEntry>) => {
         setDebugLogs(prev => prev.map(log => log.id === id ? { ...log, ...updates } : log));
+    };
+
+    const beginCampaignOperation = (id: CampaignOperationId, label: string): boolean => {
+        const activeOperation = activeCampaignOperationRef.current;
+        if (activeOperation) {
+            setNotification(`${activeOperation.label} is still running. Wait for it to finish before starting another campaign action.`);
+            return false;
+        }
+
+        const nextOperation = { id, label };
+        activeCampaignOperationRef.current = nextOperation;
+        setActiveCampaignOperation(nextOperation);
+        return true;
+    };
+
+    const endCampaignOperation = (id: CampaignOperationId): void => {
+        if (activeCampaignOperationRef.current?.id !== id) return;
+        activeCampaignOperationRef.current = null;
+        setActiveCampaignOperation(null);
     };
 
     const handleChatUsage = (usage: UsageStats | undefined, prompt: string) => {
@@ -607,6 +660,7 @@ const App: React.FC = () => {
 
     const handleAnalyzeImages = async () => {
         if (imageFiles.length === 0) return;
+        if (!beginCampaignOperation('images', 'Photo analysis')) return;
 
         setIsAnalyzingImages(true);
         setImageAnalysis(null);
@@ -619,44 +673,47 @@ const App: React.FC = () => {
         let errorCount = 0;
         const childUsages: Array<UsageStats | undefined> = [];
 
-        for (let i = 0; i < pendingFiles.length; i++) {
-            setImageFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'processing' } : f));
+        try {
+            for (let i = 0; i < pendingFiles.length; i++) {
+                setImageFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'processing' } : f));
 
-            try {
-                const base64 = await fileToBase64(pendingFiles[i].file);
-                const result = await geminiService.analyzeSingleImage({
-                    base64,
-                    mimeType: pendingFiles[i].file.type
-                });
+                try {
+                    const base64 = await fileToBase64(pendingFiles[i].file);
+                    const result = await geminiService.analyzeSingleImage({
+                        base64,
+                        mimeType: pendingFiles[i].file.type
+                    });
 
-                results.push(`Image ${i + 1}: ${result.data}`);
+                    results.push(`Image ${i + 1}: ${result.data}`);
 
-                childUsages.push(result.usage);
+                    childUsages.push(result.usage);
 
-                setImageFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'success' } : f));
-            } catch (err) {
-                console.error(`Error analyzing image ${i}:`, err);
-                errorCount++;
-                childUsages.push(undefined);
-                setImageFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'error', error: 'Failed' } : f));
+                    setImageFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'success' } : f));
+                } catch (err) {
+                    console.error(`Error analyzing image ${i}:`, err);
+                    errorCount++;
+                    childUsages.push(undefined);
+                    setImageFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'error', error: 'Failed' } : f));
+                }
             }
-        }
 
-        if (results.length > 0) {
-            const combinedAnalysis = results.join('\n\n');
-            setImageAnalysis(combinedAnalysis);
-            updateLog(logId, {
-                status: 'success',
-                outputs: `Analyzed ${results.length} images using the configured Gemini Flash model.`,
-                message: errorCount > 0 ? `${errorCount} failures` : undefined,
-                usage: aggregateUsage('Analyze Photos Sequence', childUsages, geminiService.MODEL_VISION)
-            });
-        } else {
-            setImageAnalysisError("Failed to analyze any images.");
-            updateLog(logId, { status: 'error', message: 'All image analyses failed.' });
+            if (results.length > 0) {
+                const combinedAnalysis = results.join('\n\n');
+                setImageAnalysis(combinedAnalysis);
+                updateLog(logId, {
+                    status: 'success',
+                    outputs: `Analyzed ${results.length} images using the configured Gemini Flash model.`,
+                    message: errorCount > 0 ? `${errorCount} failures` : undefined,
+                    usage: aggregateUsage('Analyze Photos Sequence', childUsages, geminiService.MODEL_VISION)
+                });
+            } else {
+                setImageAnalysisError("Failed to analyze any images.");
+                updateLog(logId, { status: 'error', message: 'All image analyses failed.' });
+            }
+        } finally {
+            setIsAnalyzingImages(false);
+            endCampaignOperation('images');
         }
-
-        setIsAnalyzingImages(false);
     };
 
     const parseKeyFeatures = (featuresText: string) => {
@@ -734,11 +791,9 @@ const App: React.FC = () => {
             setResearchError("Please enter a property address to fetch details.");
             return;
         }
+        if (!beginCampaignOperation('research', 'Property research')) return;
         const logId = addLog({ stepName: 'Fetch Property Details', status: 'pending', inputs: addressForResearch });
         let location = userLocation;
-        if (locationStatus === 'pending') {
-            location = await requestLocation();
-        }
         setIsResearching(true);
         setResearchError(null);
         setResearchData(null);
@@ -749,6 +804,9 @@ const App: React.FC = () => {
         setGroundingSources([]);
         setIsFetchComplete(false);
         try {
+            if (locationStatus === 'pending') {
+                location = await requestLocation();
+            }
             const result = await geminiService.researchProperty(addressForResearch, location);
             const researchResult = result.data;
 
@@ -793,11 +851,13 @@ const App: React.FC = () => {
             updateLog(logId, { status: 'error', message: msg });
         } finally {
             setIsResearching(false);
+            endCampaignOperation('research');
         }
     };
 
     const handleStrategyAnalysis = async () => {
         if (!researchData) return;
+        if (!beginCampaignOperation('strategy', 'AI Strategy Analysis')) return;
         setIsAnalyzingStrategy(true);
         const logId = addLog({ stepName: 'AI Strategy Analysis', status: 'pending', inputs: 'Analyzing research for strategy' });
         try {
@@ -817,14 +877,16 @@ const App: React.FC = () => {
             console.error(error);
             const msg = error instanceof Error ? error.message : "Failed to analyze strategy.";
             updateLog(logId, { status: 'error', message: msg });
-            setNotification("Failed to analyze property strategy.");
+            setNotification("Strategy analysis failed. Prior strategy settings were kept.");
         } finally {
             setIsAnalyzingStrategy(false);
+            endCampaignOperation('strategy');
         }
     };
 
     const handleFeatureAnalysis = async () => {
         if (!researchData) return;
+        if (!beginCampaignOperation('features', 'Feature extraction')) return;
         setIsAnalyzingFeatures(true);
         const logId = addLog({ stepName: 'AI Feature Extraction', status: 'pending', inputs: 'Extracting property features' });
         try {
@@ -841,6 +903,7 @@ const App: React.FC = () => {
             setNotification("Failed to extract property features.");
         } finally {
             setIsAnalyzingFeatures(false);
+            endCampaignOperation('features');
         }
     };
 
@@ -863,6 +926,7 @@ const App: React.FC = () => {
     };
 
     const generateCopyForTab = async (tab: PreviewTab, isRegeneration = false) => {
+        if (!beginCampaignOperation('generate', tab === 'Full Copy' ? 'Listing copy generation' : `${tab} generation`)) return;
         setIsGenerating(true);
         setGeneratingTab(tab);
         setGenerationError(null);
@@ -883,6 +947,7 @@ const App: React.FC = () => {
             updateLog(logId, { status: 'error', message: msg });
             setIsGenerating(false);
             setGeneratingTab(null);
+            endCampaignOperation('generate');
             return;
         }
 
@@ -945,6 +1010,7 @@ const App: React.FC = () => {
         } finally {
             setIsGenerating(false);
             setGeneratingTab(null);
+            endCampaignOperation('generate');
         }
     };
 
@@ -954,6 +1020,7 @@ const App: React.FC = () => {
             setNotification("Please generate the 'Full Copy' first.");
             return;
         }
+        if (!beginCampaignOperation('generate-all', 'Campaign variation generation')) return;
 
         const missingTabs = ALL_CONTENT_TABS.filter(tab => !currentVersion[tab]);
 
@@ -1004,6 +1071,7 @@ const App: React.FC = () => {
         } finally {
             setIsGenerating(false);
             setGeneratingTab(null);
+            endCampaignOperation('generate-all');
         }
     };
 
@@ -1061,6 +1129,7 @@ const App: React.FC = () => {
         const currentVersion = versionSets[activeVersionIndex];
         const currentCopy = currentVersion ? currentVersion[activeSubTab] : undefined;
         if (!currentCopy) return;
+        if (!beginCampaignOperation('refine', `${activeSubTab} refinement`)) return;
         setIsRefining(true);
         setGenerationError(null);
         const logId = addLog({ stepName: 'Refine Copy', status: 'pending', inputs: instruction });
@@ -1083,6 +1152,7 @@ const App: React.FC = () => {
             updateLog(logId, { status: 'error', message: msg });
         } finally {
             setIsRefining(false);
+            endCampaignOperation('refine');
         }
     };
 
@@ -1109,7 +1179,7 @@ const App: React.FC = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${title.replace(/\s+/g, '-')}.doc`;
+        link.download = `${sanitizeFileNamePart(title)}.doc`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -1121,7 +1191,7 @@ const App: React.FC = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${title.replace(/\s+/g, '-')}.txt`;
+        link.download = `${sanitizeFileNamePart(title)}.txt`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -1160,10 +1230,11 @@ const App: React.FC = () => {
             setNotification("Please generate the 'Full Copy' for the current version first.");
             return;
         }
+        if (!beginCampaignOperation('download-full', 'Full campaign document download')) return;
         setIsDownloadingAll(true);
         setIsDownloadAllMenuOpen(false);
-        setNotification("Preparing campaign for download...");
-        const logId = addLog({ stepName: 'Download All', status: 'pending', inputs: 'Generating missing variants' });
+        setNotification("Preparing full campaign document...");
+        const logId = addLog({ stepName: 'Download Full Campaign Document', status: 'pending', inputs: 'Generating missing sections for one combined document' });
 
         // Capture a snapshot for current state
         let updatedCopies = { ...versionSets[activeVersionIndex] };
@@ -1201,33 +1272,29 @@ const App: React.FC = () => {
                 }
             }
 
-            let combinedContent = `Real Estate Copy for: ${address || 'Untitled Property'}\nVersion: ${activeVersionIndex + 1}\n\n`;
-            combinedContent += '====================================\n\n';
-            ALL_CONTENT_TABS.forEach(tab => {
-                if (updatedCopies[tab]) {
-                    combinedContent += `--- ${tab} ---\n\n`;
-                    let content = updatedCopies[tab]!;
-                    if (includeContactDetails && !content.includes(contactCard.trim())) {
-                        content += contactCard;
-                    }
-                    combinedContent += `${content}\n\n`;
-                    combinedContent += '====================================\n\n';
-                }
+            const exportPlan = buildCampaignExportPlan({
+                address,
+                versionNumber: activeVersionIndex + 1,
+                sections: updatedCopies,
+                orderedTabs: ALL_CONTENT_TABS,
+                selectedTab: activeSubTab,
+                includeContactDetails,
+                contactCard
             });
-            const filename = `${address || 'property'}-full-campaign-v${activeVersionIndex + 1}`;
-            if (format === 'word') handleExportWord(combinedContent, filename);
-            else if (format === 'txt') handleExportTxt(combinedContent, filename);
+
+            if (format === 'word') handleExportWord(exportPlan.masterDocument.content, exportPlan.masterDocument.fileBaseName);
+            else if (format === 'txt') handleExportTxt(exportPlan.masterDocument.content, exportPlan.masterDocument.fileBaseName);
             else if (format === 'pdf') {
                  const printArea = document.getElementById('print-render-area');
                  if (printArea) {
-                     printArea.innerText = combinedContent;
+                     printArea.innerText = exportPlan.masterDocument.content;
                      window.print();
                  }
             }
-            setNotification("Full campaign downloaded!");
+            setNotification("Full campaign document downloaded.");
             updateLog(logId, {
                 status: 'success',
-                message: 'Download complete',
+                message: `Full campaign document ready with ${exportPlan.generatedSections.length} generated section(s).`,
                 usage: aggregateUsage('Download All Missing Variants', childUsages, childUsages.length > 0 ? 'mixed variant models' : 'no model calls needed')
             });
         } catch (error) {
@@ -1237,6 +1304,7 @@ const App: React.FC = () => {
             updateLog(logId, { status: 'error', message: msg });
         } finally {
             setIsDownloadingAll(false);
+            endCampaignOperation('download-full');
         }
     };
 
@@ -1265,10 +1333,20 @@ const App: React.FC = () => {
     const currentVersionSet = versionSets[activeVersionIndex] || {};
     const currentCopy = currentVersionSet[activeSubTab] || '';
     const isEdited = editedStatus[activeSubTab];
+    const isCampaignBusy = activeCampaignOperation !== null;
 
     const allTabsGenerated = useMemo(() => {
         return ALL_CONTENT_TABS.every(tab => !!currentVersionSet[tab]);
     }, [currentVersionSet]);
+
+    const currentCampaignExportPlan = useMemo(() => buildCampaignExportPlan({
+        address,
+        versionNumber: activeVersionIndex + 1,
+        sections: currentVersionSet,
+        orderedTabs: ALL_CONTENT_TABS,
+        selectedTab: activeSubTab,
+    }), [address, activeVersionIndex, currentVersionSet, activeSubTab]);
+    const selectedSectionExportDocument = currentCampaignExportPlan.selectedSectionDocument;
 
     const renderVisualHighlights = () => {
         if (!imageAnalysis) return null;
@@ -1392,6 +1470,11 @@ const App: React.FC = () => {
                     </div>
                 </div>
             </header>
+            {activeCampaignOperation && (
+                <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm text-amber-900">
+                    <span className="font-semibold">Campaign action in progress:</span> {activeCampaignOperation.label}
+                </div>
+            )}
 
             <main id="app-main" className="container mx-auto px-4 py-6">
                  <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_minmax(0,1fr)] gap-6 h-[calc(100vh-120px)] items-start">
@@ -1446,7 +1529,7 @@ const App: React.FC = () => {
                                     </div>
                                     <button
                                         onClick={handleFetchDetails}
-                                        disabled={isResearching || !address.trim()}
+                                        disabled={isResearching || isCampaignBusy || !address.trim()}
                                         className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-red-400 disabled:cursor-not-allowed w-auto justify-center"
                                     >
                                         {isResearching ? <Spinner className="mr-2" /> : <IconFileText className="mr-2"/>}
@@ -1635,7 +1718,7 @@ const App: React.FC = () => {
                                 <div className="flex flex-col items-end gap-1">
                                     <button
                                         onClick={handleStrategyAnalysis}
-                                        disabled={!isFetchComplete || isAnalyzingStrategy}
+                                        disabled={!isFetchComplete || isAnalyzingStrategy || isCampaignBusy}
                                         className="text-xs flex items-center gap-1 bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 hover:bg-red-100 disabled:opacity-50"
                                     >
                                         {isAnalyzingStrategy ? <Spinner className="w-3 h-3" /> : <IconSparkles className="w-3 h-3" />}
@@ -1718,7 +1801,7 @@ const App: React.FC = () => {
                                 <div className="flex flex-col items-end gap-1">
                                     <button
                                         onClick={handleFeatureAnalysis}
-                                        disabled={!isFetchComplete || isAnalyzingFeatures}
+                                        disabled={!isFetchComplete || isAnalyzingFeatures || isCampaignBusy}
                                         className="text-xs flex items-center gap-1 bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 hover:bg-red-100 disabled:opacity-50"
                                     >
                                         {isAnalyzingFeatures ? <Spinner className="w-3 h-3" /> : <IconSparkles className="w-3 h-3" />}
@@ -1773,7 +1856,7 @@ const App: React.FC = () => {
                                      <input type="checkbox" id="include-visuals" checked={includeVisualHighlights} onChange={(e) => setIncludeVisualHighlights(e.target.checked)} className="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500" />
                                      <label htmlFor="include-visuals" className="ml-2 block text-sm text-gray-900">Include visual analysis</label>
                                 </div>
-                                <button onClick={handleAnalyzeImages} disabled={imageFiles.length === 0 || isAnalyzingImages} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400">
+                                <button onClick={handleAnalyzeImages} disabled={imageFiles.length === 0 || isAnalyzingImages || isCampaignBusy} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400">
                                     {isAnalyzingImages ? 'Analyzing...' : 'Analyze Photos'}
                                 </button>
                             </div>
@@ -1784,7 +1867,7 @@ const App: React.FC = () => {
                                 <span className="text-sm font-medium text-gray-700">~{outputSettings.wordCount} words</span>
                                 <input type="range" min="50" max="1000" step="50" value={outputSettings.wordCount} onChange={(e) => setOutputSettings(prev => ({ ...prev, wordCount: parseInt(e.target.value) }))} className="w-1/2 h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-red-600" />
                             </div>
-                            <button onClick={() => generateCopyForTab(activeSubTab, true)} disabled={isGenerating} className="w-full inline-flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 disabled:bg-red-400 transition-transform transform hover:scale-[1.01]">
+                            <button onClick={() => generateCopyForTab(activeSubTab, true)} disabled={isGenerating || isCampaignBusy} className="w-full inline-flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 disabled:bg-red-400 transition-transform transform hover:scale-[1.01]">
                                 {isGenerating && generatingTab === activeSubTab ? <Spinner className="mr-2" /> : <IconSparkles className="mr-2 w-5 h-5" />}
                                 {currentCopy ? 'Regenerate Copy' : 'Generate Listing Copy'}
                             </button>
@@ -1886,7 +1969,7 @@ const App: React.FC = () => {
                                              <div className="flex items-center gap-2">
                                                  <button
                                                     onClick={handleGenerateAllMissing}
-                                                    disabled={isGenerating || !currentVersionSet['Full Copy']}
+                                                    disabled={isGenerating || isCampaignBusy || !currentVersionSet['Full Copy']}
                                                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold transition-all border ${allTabsGenerated ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50`}
                                                  >
                                                     <IconSparkles className="w-3 h-3" />
@@ -1896,15 +1979,16 @@ const App: React.FC = () => {
                                                  <div className="relative" ref={downloadAllMenuRef}>
                                                      <button
                                                         onClick={() => setIsDownloadAllMenuOpen(!isDownloadAllMenuOpen)}
-                                                        disabled={isDownloadingAll || !currentVersionSet['Full Copy']}
+                                                        disabled={isDownloadingAll || isCampaignBusy || !currentVersionSet['Full Copy']}
                                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white rounded-md font-bold hover:bg-slate-900 disabled:bg-slate-400 transition-all"
                                                      >
                                                          {isDownloadingAll ? <Spinner className="w-3 h-3" /> : <IconDownload className="w-3 h-3" />}
-                                                         Download Full Campaign
+                                                         Download full campaign document
                                                      </button>
                                                      {isDownloadAllMenuOpen && (
-                                                         <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-md shadow-xl border border-gray-200 py-1.5 z-50">
-                                                             <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Select Format</p>
+                                                         <div className="absolute top-full right-0 mt-2 w-60 bg-white rounded-md shadow-xl border border-gray-200 py-1.5 z-50">
+                                                             <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">One combined document</p>
+                                                             <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Full campaign includes all generated sections in one document.</p>
                                                              <button onClick={() => handleDownloadAll('word')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFileWord className="w-4 h-4 mr-2 text-blue-600" /> Word (.doc)</button>
                                                              <button onClick={() => handleDownloadAll('txt')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFileTxt className="w-4 h-4 mr-2 text-gray-600" /> Text (.txt)</button>
                                                              <button onClick={() => handleDownloadAll('pdf')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFilePdf className="w-4 h-4 mr-2 text-red-600" /> Print / PDF</button>
@@ -1927,7 +2011,7 @@ const App: React.FC = () => {
                                      <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col space-y-3">
                                          <div className="flex items-center gap-2">
                                              <input type="text" placeholder={`Refine this ${activeSubTab}...`} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm" onKeyDown={e => e.key === 'Enter' && (handleRefineCopy((e.target as any).value), (e.target as any).value = '')} />
-                                             <button disabled={!currentCopy || isRefining} onClick={e => (handleRefineCopy((e.currentTarget.previousElementSibling as any).value), (e.currentTarget.previousElementSibling as any).value = '')} className="bg-gray-200 text-gray-700 p-2 rounded-md disabled:opacity-50">{isRefining ? <Spinner /> : <IconSend className="w-4 h-4" />}</button>
+                                             <button disabled={!currentCopy || isRefining || isCampaignBusy} onClick={e => (handleRefineCopy((e.currentTarget.previousElementSibling as any).value), (e.currentTarget.previousElementSibling as any).value = '')} className="bg-gray-200 text-gray-700 p-2 rounded-md disabled:opacity-50">{isRefining ? <Spinner /> : <IconSend className="w-4 h-4" />}</button>
                                          </div>
 
                                          <div className="flex justify-between items-center">
@@ -1935,15 +2019,15 @@ const App: React.FC = () => {
                                              <div className="flex gap-2">
                                                  <button onClick={() => handleCopyToClipboard(currentCopy)} title="Copy current to clipboard" className="p-2 text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"><IconClipboard /></button>
                                                  <div className="relative" ref={exportMenuRef}>
-                                                     <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} title="Export current tab" className="inline-flex items-center gap-1.5 px-3 py-2 text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors font-medium text-xs">
+                                                     <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} title="Download current section" className="inline-flex items-center gap-1.5 px-3 py-2 text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors font-medium text-xs">
                                                          <IconDownload className="w-4 h-4" />
-                                                         Export Current
+                                                         Download current section
                                                      </button>
                                                      {isExportMenuOpen && (
                                                          <div className="absolute bottom-full right-0 mb-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-20">
-                                                             <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Format</p>
-                                                             <button onClick={() => { handleExportWord(currentCopy, `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
-                                                             <button onClick={() => { handleExportTxt(currentCopy, `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
+                                                             <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Selected section only</p>
+                                                             <button onClick={() => { handleExportWord(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
+                                                             <button onClick={() => { handleExportTxt(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
                                                              <button onClick={() => { handleExportPdf(); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
                                                          </div>
                                                      )}

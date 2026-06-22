@@ -1,4 +1,4 @@
-import type { GenerationParams, ChatMessage, ImageContent, ResearchResult, PreviewTab, ServiceResponse } from '../types';
+import type { GenerationParams, ChatMessage, ImageContent, ResearchResult, PreviewTab, ServiceResponse, StrategyAnalysisResult } from '../types';
 
 export const MODEL_GROUNDING = 'server-configured Gemini Pro model';
 export const MODEL_FAST = 'server-configured Gemini Flash model';
@@ -100,13 +100,7 @@ export const analyzeStrategy = async (
     researchData: string,
     profileData: string | null,
     imageAnalysis: string | null
-): Promise<ServiceResponse<{
-    primaryTargetMarket: string;
-    secondaryTargetMarket: string | null;
-    writingStyles: string[];
-    featuresToHighlight: string;
-    thingsToAvoid: string;
-}>> => {
+): Promise<ServiceResponse<StrategyAnalysisResult>> => {
     return postCopywritingOperation('analyzeStrategy', { researchData, profileData, imageAnalysis });
 };
 

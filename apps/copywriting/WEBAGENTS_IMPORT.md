@@ -104,6 +104,23 @@ Status date: `2026-06-22`
 - Current cost display summary: Analysis Stream shows token-only estimates from provider usage metadata where available and explicitly excludes grounding/tool charges.
 - Next recommended sprint: strategy-analysis reliability, campaign-mutating action concurrency guards, usage aggregation tests, Campaign Build Log direction, and export assembly helpers.
 
+## Reliability And Export UX Status
+
+Status date: `2026-06-22`
+
+- Goal: `WEBAGENTS-COPYWRITING-RELIABILITY-EXPORT-UX-001`
+- Review artifact: `docs/reliability-export-ux-001.md`
+- Export contract artifact: `docs/export-assembly-contract.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- AI Strategy Analysis model changed: no. It remains on the server-configured Gemini Pro model.
+- Image analysis model changed: no. It remains on the server-configured Gemini Flash model.
+- Current reliability summary: strategy JSON is parsed robustly, validated by shape, repaired once on malformed/invalid output, and never applied on invalid final output.
+- Current concurrency summary: campaign-mutating actions are guarded so one protected operation can run at a time; chat and address suggestions remain independent.
+- Current build log summary: the visible shell is now `Campaign Build Log`, with plain-language labels and technical beta details retained.
+- Current export summary: selected-section download and full-campaign document download are labelled separately; full campaign still exports one combined document and does not create a ZIP.
+- Future recommended sprint: single-column Campaign Outputs layout direction, export assembly tests, usage aggregation tests, and staged ZIP export if a packaging dependency or endpoint is approved.
+
 ## Non-Goals
 
 - No Clerk integration.

@@ -1,6 +1,6 @@
 import { GoogleGenAI, GenerateContentParameters, GenerateContentResponse } from '@google/genai';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
-import type { GenerationParams, ChatMessage, ImageContent, GroundingSource, ResearchResult, PreviewTab, UsageStats, ServiceResponse } from '../types';
+import type { GenerationParams, ChatMessage, ImageContent, GroundingSource, ResearchResult, PreviewTab, UsageStats, ServiceResponse, StrategyAnalysisResult } from '../types';
 
 const BETA_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
@@ -228,6 +228,41 @@ const extractUsage = (response: any, model: string, operation: CopywritingOperat
     };
 };
 
+const addNullableUsageValue = (current: number | null, next: number | null | undefined): number | null => {
+    if (next === null || next === undefined) return current;
+    return (current ?? 0) + next;
+};
+
+const aggregateServerUsage = (operation: CopywritingOperation, usages: UsageStats[], fallbackModel: string): UsageStats => {
+    const models = Array.from(new Set(usages.map(usage => usage.model).filter(Boolean)));
+    const excludedOperationCount = usages.filter(usage => usage.usageStatus === 'unavailable').length;
+    const unknownCostOperationCount = usages.filter(usage => (
+        usage.pricingStatus === 'unknown' ||
+        (usage.usageStatus !== 'unavailable' && usage.estimatedCost === null)
+    )).length;
+    const costValues = usages
+        .map(usage => usage.estimatedCost)
+        .filter((cost): cost is number => typeof cost === 'number');
+
+    return {
+        operation,
+        usageStatus: excludedOperationCount > 0 || unknownCostOperationCount > 0 ? 'partial' : 'available',
+        pricingStatus: unknownCostOperationCount > 0 ? 'unknown' : 'priced',
+        promptTokens: usages.reduce((sum, usage) => addNullableUsageValue(sum, usage.promptTokens), null as number | null),
+        candidatesTokens: usages.reduce((sum, usage) => addNullableUsageValue(sum, usage.candidatesTokens), null as number | null),
+        totalTokens: usages.reduce((sum, usage) => addNullableUsageValue(sum, usage.totalTokens), null as number | null),
+        thinkingTokens: usages.reduce((sum, usage) => addNullableUsageValue(sum, usage.thinkingTokens), null as number | null),
+        cachedTokens: usages.reduce((sum, usage) => addNullableUsageValue(sum, usage.cachedTokens), null as number | null),
+        groundingQueries: usages.reduce((sum, usage) => addNullableUsageValue(sum, usage.groundingQueries), null as number | null),
+        mapsGroundingQueries: usages.reduce((sum, usage) => addNullableUsageValue(sum, usage.mapsGroundingQueries), null as number | null),
+        estimatedCost: costValues.length > 0 ? costValues.reduce((sum, cost) => sum + cost, 0) : null,
+        model: models.length === 0 ? fallbackModel : models.length === 1 ? models[0] : `mixed: ${models.join(', ')}`,
+        costDisclaimerFlags: TOKEN_COST_DISCLAIMER_FLAGS,
+        excludedOperationCount,
+        unknownCostOperationCount
+    };
+};
+
 const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
     try {
         return await fn();
@@ -299,6 +334,70 @@ const parseRobustJSON = (text: string): any => {
         }
         throw new Error('No JSON found in AI response.');
     }
+};
+
+const normalizeStringArray = (value: unknown, fieldName: string): string[] => {
+    if (Array.isArray(value)) {
+        const items = value.map(item => String(item).trim()).filter(Boolean);
+        if (items.length > 0) return items;
+    }
+    if (typeof value === 'string' && value.trim()) return [value.trim()];
+    throw new Error(`${fieldName} must contain at least one value.`);
+};
+
+const validateStrategyAnalysisResult = (value: unknown): StrategyAnalysisResult => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('Strategy response must be a JSON object.');
+    }
+
+    const result = value as Record<string, unknown>;
+    const primaryTargetMarket = typeof result.primaryTargetMarket === 'string'
+        ? result.primaryTargetMarket.trim()
+        : '';
+    if (!TARGET_MARKETS.includes(primaryTargetMarket as any)) {
+        throw new Error('Strategy response primaryTargetMarket is missing or invalid.');
+    }
+
+    let secondaryTargetMarket: string | null = null;
+    if (typeof result.secondaryTargetMarket === 'string' && result.secondaryTargetMarket.trim()) {
+        const candidate = result.secondaryTargetMarket.trim();
+        if (!TARGET_MARKETS.includes(candidate as any)) {
+            throw new Error('Strategy response secondaryTargetMarket is invalid.');
+        }
+        if (candidate !== primaryTargetMarket) secondaryTargetMarket = candidate;
+    }
+
+    const rawWritingStyles = normalizeStringArray(result.writingStyles, 'writingStyles');
+    if (rawWritingStyles.length > 2) {
+        throw new Error('Strategy response writingStyles must not include more than two styles.');
+    }
+    const writingStyles = rawWritingStyles.filter(style => WRITING_STYLES.includes(style as any));
+    if (writingStyles.length !== rawWritingStyles.length) {
+        throw new Error('Strategy response writingStyles includes unsupported styles.');
+    }
+    if (writingStyles.length < 1 || writingStyles.length > 2) {
+        throw new Error('Strategy response writingStyles must include one or two supported styles.');
+    }
+
+    const featuresToHighlight = formatAIResponseList(result.featuresToHighlight);
+    if (!featuresToHighlight) {
+        throw new Error('Strategy response featuresToHighlight is required.');
+    }
+
+    return {
+        primaryTargetMarket,
+        secondaryTargetMarket,
+        writingStyles,
+        featuresToHighlight,
+        thingsToAvoid: formatAIResponseList(result.thingsToAvoid)
+    };
+};
+
+const parseStrategyAnalysisText = (text: string | undefined): StrategyAnalysisResult => {
+    if (!text || !text.trim()) {
+        throw new Error('Strategy response was empty.');
+    }
+    return validateStrategyAnalysisResult(parseRobustJSON(text));
 };
 
 const readJsonBody = async (req: any): Promise<any> => {
@@ -651,42 +750,68 @@ const researchProperty = async (payload: Record<string, any>): Promise<ServiceRe
     }
 };
 
-const analyzeStrategy = async (payload: Record<string, any>): Promise<ServiceResponse<{
-    primaryTargetMarket: string;
-    secondaryTargetMarket: string | null;
-    writingStyles: string[];
-    featuresToHighlight: string;
-    thingsToAvoid: string;
-}>> => {
+const analyzeStrategy = async (payload: Record<string, any>): Promise<ServiceResponse<StrategyAnalysisResult>> => {
     const researchData = requireString(payload.researchData, 'researchData', 80000);
     const profileData = optionalString(payload.profileData, 'profileData', 80000);
     const imageAnalysis = optionalString(payload.imageAnalysis, 'imageAnalysis', 50000);
     const prompt = `Analyze: Research: ${researchData}, Profile: ${profileData}, Images: ${imageAnalysis}.
     Return JSON: primaryTargetMarket, secondaryTargetMarket, writingStyles, featuresToHighlight, thingsToAvoid.
     IMPORTANT: Pick EXACTLY 1 or 2 writing styles from this list: ${JSON.stringify(WRITING_STYLES)}. DO NOT pick more than 2.
-    Markets: ${JSON.stringify(TARGET_MARKETS)}.`;
+    Markets: ${JSON.stringify(TARGET_MARKETS)}.
+    featuresToHighlight and thingsToAvoid may be strings or arrays of strings.
+    Return strictly valid JSON only.`;
     try {
         const model = resolveModelForOperation('analyzeStrategy');
         if (!model) throw new ApiError(500, 'No model configured for strategy analysis.');
-        const response: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({
+
+        const request: GenerateContentParameters = {
             model,
             contents: prompt,
             config: { responseMimeType: 'application/json' }
-        }));
-        const result = JSON.parse(response.text || '{}');
+        };
+        const response: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent(request));
+        const firstUsage = extractUsage(response, model, 'analyzeStrategy');
+
+        let analysis: StrategyAnalysisResult;
+        let usage = firstUsage;
+        try {
+            analysis = parseStrategyAnalysisText(response.text);
+        } catch (parseError: any) {
+            const repairPrompt = `The previous AI Strategy Analysis response was invalid.
+
+Validation error: ${parseError?.message || 'Invalid JSON shape.'}
+
+Repair the response using the original task and source context below. Return only valid JSON with this exact shape:
+{
+  "primaryTargetMarket": one of ${JSON.stringify(TARGET_MARKETS)},
+  "secondaryTargetMarket": one of ${JSON.stringify(TARGET_MARKETS)} or null,
+  "writingStyles": one or two values from ${JSON.stringify(WRITING_STYLES)},
+  "featuresToHighlight": "plain text or array of strings",
+  "thingsToAvoid": "plain text or array of strings"
+}
+
+Original task:
+${prompt}
+
+Invalid response:
+${response.text || '[empty response]'}`;
+
+            const repairResponse: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({
+                model,
+                contents: repairPrompt,
+                config: { responseMimeType: 'application/json' }
+            }), 1);
+            analysis = parseStrategyAnalysisText(repairResponse.text);
+            usage = aggregateServerUsage('analyzeStrategy', [firstUsage, extractUsage(repairResponse, model, 'analyzeStrategy')], model);
+        }
+
         return {
-            data: {
-                primaryTargetMarket: result.primaryTargetMarket || 'Young Families',
-                secondaryTargetMarket: result.secondaryTargetMarket || '',
-                writingStyles: (result.writingStyles || ['Professional']).slice(0, 2),
-                featuresToHighlight: formatAIResponseList(result.featuresToHighlight),
-                thingsToAvoid: formatAIResponseList(result.thingsToAvoid)
-            },
-            usage: extractUsage(response, model, 'analyzeStrategy')
+            data: analysis,
+            usage
         };
     } catch (e: any) {
         console.error('Strategy analysis error:', e?.message || e);
-        throw new Error('Strategy analysis failed.');
+        throw new Error(`Strategy analysis failed: ${e instanceof Error ? e.message : 'The AI response could not be validated.'}`);
     }
 };
 

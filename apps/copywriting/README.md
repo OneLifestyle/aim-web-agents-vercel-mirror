@@ -45,10 +45,10 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
 *   **Format Compliance:** Built-in rules to strictly avoid "AI-tells" like em-dashes.
 
 ### 6. Workflow & Export
-*   **Analysis Stream (Debug Panel):** A real-time log of AI operations, token usage, and costs.
+*   **Campaign Build Log:** A real-time log of AI operations with public-facing step names plus beta-visible technical details, token usage, and token-only cost estimates.
 *   **Timeline:** Saves generation history locally for easy retrieval.
 *   **Export Options:** PDF, Microsoft Word, Plain Text, and Copy to Clipboard.
-*   **Download All:** Batch generation and download of all copy variants in a single document.
+*   **Download full campaign document:** Batch generation and download of all copy variants in one combined document.
 
 ## Technology Stack
 
