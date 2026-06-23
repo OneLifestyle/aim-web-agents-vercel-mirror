@@ -121,6 +121,19 @@ Status date: `2026-06-22`
 - Current export summary: selected-section download and full-campaign document download are labelled separately; full campaign still exports one combined document and does not create a ZIP.
 - Future recommended sprint: single-column Campaign Outputs layout direction, export assembly tests, usage aggregation tests, and staged ZIP export if a packaging dependency or endpoint is approved.
 
+## Campaign Outputs UX Status
+
+Status date: `2026-06-23`
+
+- Goal: `WEBAGENTS-COPYWRITING-CAMPAIGN-OUTPUTS-UX-001`
+- Review artifact: `docs/campaign-outputs-ux-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current output summary: the former generated-output `Preview` panel is now a `Campaign Outputs` workspace with section navigation, ready/missing/generating/needs-generation states, selected-section description, clearer refine controls, and separated current-section versus full-campaign download actions.
+- Current action summary: active campaign operations now appear as clearer status chips in the top status strip.
+- Current export summary: selected-section and full-campaign document exports are preserved; ZIP export remains deferred.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

@@ -23,6 +23,17 @@ type AddressSuggestionCacheEntry = {
     suggestions: string[];
     usage?: UsageStats;
 };
+type CampaignOutputStatus = 'ready' | 'missing' | 'generating' | 'needs-generation';
+type CampaignOutputSectionMeta = {
+    id: PreviewTab;
+    label: PreviewTab;
+    shortLabel: string;
+    group: string;
+    description: string;
+    slug: string;
+    canDownload: boolean;
+    canRefine: boolean;
+};
 
 const previewTabConfig: Record<string, PreviewTab[]> = {
     'Listing': ['Full Copy', 'Just Listed', 'Brochure Copy', 'Email', 'Flyer'],
@@ -34,6 +45,110 @@ const previewTabConfig: Record<string, PreviewTab[]> = {
 };
 const mainTabs = Object.keys(previewTabConfig);
 const ALL_CONTENT_TABS = Object.values(previewTabConfig).flat();
+const CAMPAIGN_OUTPUT_SECTION_META: Record<PreviewTab, Omit<CampaignOutputSectionMeta, 'id' | 'label' | 'group' | 'slug'>> = {
+    'Full Copy': {
+        shortLabel: 'Full copy',
+        description: 'Primary listing copy and the source for campaign variations.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Just Listed': {
+        shortLabel: 'Just listed',
+        description: 'Launch copy for newly listed property announcements.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Brochure Copy': {
+        shortLabel: 'Brochure',
+        description: 'Longer-form brochure text for printed and digital collateral.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Email': {
+        shortLabel: 'Email',
+        description: 'Email campaign copy for database and buyer follow-up.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Flyer': {
+        shortLabel: 'Flyer',
+        description: 'Concise flyer copy for local print and handout use.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Coming Soon Teaser': {
+        shortLabel: 'Teaser',
+        description: 'Pre-market teaser copy before the full campaign launch.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Coming Soon Email': {
+        shortLabel: 'Coming email',
+        description: 'Pre-market email copy for early buyer interest.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Coming Soon SMS': {
+        shortLabel: 'SMS',
+        description: 'Short pre-market SMS copy.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Facebook': {
+        shortLabel: 'Facebook',
+        description: 'Facebook post copy for campaign promotion.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Facebook Marketplace': {
+        shortLabel: 'Marketplace',
+        description: 'Marketplace-ready property description copy.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Instagram': {
+        shortLabel: 'Instagram',
+        description: 'Instagram caption copy with social-first framing.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'X (Twitter)': {
+        shortLabel: 'X',
+        description: 'Short-form social copy for X.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Google Business': {
+        shortLabel: 'Google',
+        description: 'Google Business profile update copy.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'TikTok': {
+        shortLabel: 'TikTok',
+        description: 'Short video social caption or hook copy.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Open House': {
+        shortLabel: 'Open house',
+        description: 'Open home event copy and invitation text.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Long-form / Blog': {
+        shortLabel: 'Blog',
+        description: 'Long-form article copy for content marketing.',
+        canDownload: true,
+        canRefine: true,
+    },
+    'Video Script': {
+        shortLabel: 'Video',
+        description: 'Property video script and direction notes.',
+        canDownload: true,
+        canRefine: true,
+    },
+};
 const OUTPUT_MUTATING_OPERATIONS = new Set<CampaignOperationId>(['generateFullCopy', 'generateAllVariations', 'refineCopy', 'exportFullCampaign']);
 const ADDRESS_LOOKUP_MIN_CHARS = 5;
 const ADDRESS_LOOKUP_DEBOUNCE_MS = 450;
@@ -1522,6 +1637,45 @@ const App: React.FC = () => {
         selectedTab: activeSubTab,
     }), [address, activeVersionIndex, currentVersionSet, activeSubTab]);
     const selectedSectionExportDocument = currentCampaignExportPlan.selectedSectionDocument;
+    const campaignOutputSections = useMemo(() => {
+        return currentCampaignExportPlan.sectionDocuments.map(section => {
+            const group = mainTabs.find(tabGroup => previewTabConfig[tabGroup].includes(section.tab)) || 'Campaign';
+            const configuredMeta = CAMPAIGN_OUTPUT_SECTION_META[section.tab];
+            const status: CampaignOutputStatus = generatingTab === section.tab
+                ? 'generating'
+                : section.generated
+                    ? 'ready'
+                    : section.tab === 'Full Copy' || !currentVersionSet['Full Copy']
+                        ? 'needs-generation'
+                        : 'missing';
+
+            return {
+                id: section.tab,
+                label: section.tab,
+                group,
+                slug: section.slug,
+                ...configuredMeta,
+                generated: section.generated,
+                selected: activeSubTab === section.tab,
+                status,
+            };
+        });
+    }, [activeSubTab, currentCampaignExportPlan.sectionDocuments, currentVersionSet, generatingTab]);
+    const selectedCampaignOutput = campaignOutputSections.find(section => section.id === activeSubTab);
+    const readyOutputCount = currentCampaignExportPlan.generatedSections.length;
+    const missingOutputCount = currentCampaignExportPlan.missingSections.length;
+    const getCampaignOutputStatusLabel = (status: CampaignOutputStatus): string => {
+        if (status === 'ready') return 'Ready';
+        if (status === 'generating') return 'Generating';
+        if (status === 'missing') return 'Missing';
+        return 'Needs generation';
+    };
+    const getCampaignOutputStatusClass = (status: CampaignOutputStatus): string => {
+        if (status === 'ready') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        if (status === 'generating') return 'bg-amber-50 text-amber-800 border-amber-200';
+        if (status === 'missing') return 'bg-gray-100 text-gray-600 border-gray-200';
+        return 'bg-red-50 text-red-700 border-red-200';
+    };
 
     const renderVisualHighlights = () => {
         if (!imageAnalysis) return null;
@@ -1646,8 +1800,18 @@ const App: React.FC = () => {
                 </div>
             </header>
             {activeCampaignOperations.length > 0 && (
-                <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm text-amber-900">
-                    <span className="font-semibold">Campaign action in progress:</span> {activeCampaignOperations.map(operation => operation.label).join(', ')}
+                <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm text-amber-950">
+                    <div className="container mx-auto flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-2 font-semibold">
+                            <IconLoader className="w-4 h-4 animate-spin" />
+                            Current campaign action
+                        </span>
+                        {activeCampaignOperations.map(operation => (
+                            <span key={operation.id} className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-medium text-amber-900">
+                                {operation.label}
+                            </span>
+                        ))}
+                    </div>
                 </div>
             )}
 
@@ -2143,112 +2307,168 @@ const App: React.FC = () => {
                              {imageAnalysis ? renderVisualHighlights() : <Placeholder icon={<IconCamera />} title="Visual Analysis" description="Analyze photos to see features." />}
                          </Section>
 
-                         <Section title="Preview">
-                             {!currentCopy && !generatingTab ? (
-                                 <Placeholder icon={<IconSparkles />} title="Generated Copy" description="Generated content will appear here." />
-                             ) : (
-                                 <div className="flex flex-col">
-                                     <div className="border-b border-gray-200 mb-4 pb-4">
-                                         <div className="flex overflow-x-auto no-scrollbar border-b border-gray-100 mb-2">
-                                             {mainTabs.map(tab => (
-                                                 <button key={tab} onClick={() => handleTabClick(tab, previewTabConfig[tab][0])} className={`px-4 py-2 text-sm font-medium border-b-2 ${activeMainTab === tab ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500'}`}>{tab}</button>
-                                             ))}
+                         <Section title="Campaign Outputs">
+                             <div className="flex flex-col gap-5">
+                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                         <div>
+                                             <p className="text-sm font-semibold text-slate-900">Review, refine and download the campaign material for this property.</p>
+                                             <p className="mt-1 text-xs leading-relaxed text-slate-600">Use the section navigation to move between generated outputs. Download the current section for quick handoff, or download the full campaign document when the set is ready.</p>
                                          </div>
-                                         <div className="flex overflow-x-auto no-scrollbar py-2 gap-2 mb-2">
-                                             {previewTabConfig[activeMainTab].map(subTab => (
-                                                 <button key={subTab} onClick={() => handleTabClick(activeMainTab, subTab)} className={`px-3 py-1.5 text-xs font-medium rounded-full ${activeSubTab === subTab ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{subTab}</button>
-                                             ))}
+                                         <div className="flex shrink-0 gap-2 text-xs">
+                                             <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 font-semibold text-emerald-700">{readyOutputCount} ready</span>
+                                             <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-600">{missingOutputCount} missing</span>
                                          </div>
+                                     </div>
+                                 </div>
 
-                                         {/* Version & Campaign Control Bar */}
-                                         <div className="flex flex-wrap justify-between items-center gap-3 text-xs text-gray-600 bg-gray-50 p-2.5 rounded border border-gray-100 mb-4">
-                                             <div className="flex items-center gap-2">
-                                                 <button onClick={() => setActiveVersionIndex(v => Math.max(0, v - 1))} disabled={activeVersionIndex === 0} className="p-1 rounded hover:bg-white disabled:opacity-20"><IconChevronLeft className="w-4 h-4" /></button>
-                                                 <span className="font-bold text-gray-700 min-w-[70px] text-center">Version {activeVersionIndex + 1} / {Math.max(1, versionSets.length)}</span>
-                                                 <button onClick={() => setActiveVersionIndex(v => Math.min(versionSets.length - 1, v + 1))} disabled={activeVersionIndex >= versionSets.length - 1} className="p-1 rounded hover:bg-white disabled:opacity-20"><IconChevronRight className="w-4 h-4" /></button>
+                                 <div className="space-y-3">
+                                     <div className="flex overflow-x-auto no-scrollbar border-b border-gray-100">
+                                         {mainTabs.map(tab => (
+                                             <button key={tab} onClick={() => handleTabClick(tab, previewTabConfig[tab][0])} className={`px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${activeMainTab === tab ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>{tab}</button>
+                                         ))}
+                                     </div>
+
+                                     <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                                         <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+                                             {campaignOutputSections.map(section => (
+                                                 <button
+                                                    key={section.id}
+                                                    onClick={() => handleTabClick(section.group, section.id)}
+                                                    className={`min-h-[68px] rounded-md border p-3 text-left transition-colors ${section.selected ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
+                                                 >
+                                                     <div className="flex items-start justify-between gap-2">
+                                                         <div>
+                                                             <div className={`text-sm font-semibold ${section.selected ? 'text-red-800' : 'text-gray-800'}`}>{section.shortLabel}</div>
+                                                             <div className="mt-0.5 text-[11px] text-gray-500">{section.group}</div>
+                                                         </div>
+                                                         <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${getCampaignOutputStatusClass(section.status)}`}>
+                                                             {getCampaignOutputStatusLabel(section.status)}
+                                                         </span>
+                                                     </div>
+                                                     <p className="mt-2 line-clamp-2 text-xs leading-snug text-gray-600">{section.description}</p>
+                                                 </button>
+                                             ))}
+                                         </div>
+                                     </div>
+                                 </div>
+
+                                 <div className="rounded-lg border border-gray-200 bg-white">
+                                     <div className="border-b border-gray-100 p-4">
+                                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                             <div>
+                                                 <div className="flex flex-wrap items-center gap-2">
+                                                     <h3 className="text-base font-semibold text-gray-900">{selectedCampaignOutput?.label || activeSubTab}</h3>
+                                                     {selectedCampaignOutput && (
+                                                         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${getCampaignOutputStatusClass(selectedCampaignOutput.status)}`}>
+                                                             {getCampaignOutputStatusLabel(selectedCampaignOutput.status)}
+                                                         </span>
+                                                     )}
+                                                     {isEdited && <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">Edited</span>}
+                                                     {saveStatus !== 'idle' && <span className="text-xs font-medium text-gray-500">{saveStatus === 'saving' ? 'Saving...' : 'Saved'}</span>}
+                                                 </div>
+                                                 <p className="mt-1 text-xs leading-relaxed text-gray-500">{selectedCampaignOutput?.description || 'Campaign output section.'}</p>
                                              </div>
 
-                                             <div className="flex items-center gap-2">
-                                                 <button
-                                                    onClick={handleGenerateAllMissing}
-                                                    disabled={isGenerating || Boolean(generateAllBlocker) || !currentVersionSet['Full Copy']}
-                                                    title={getCampaignOperationTitle('generateAllVariations', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before campaign variations.' : undefined)}
-                                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold transition-all border ${allTabsGenerated ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50`}
-                                                 >
-                                                    <IconSparkles className="w-3 h-3" />
-                                                    {allTabsGenerated ? 'Regenerate Campaign' : 'Generate Missing Tabs'}
-                                                 </button>
-
-                                                 <div className="relative" ref={downloadAllMenuRef}>
-                                                     <button
-                                                        onClick={() => setIsDownloadAllMenuOpen(!isDownloadAllMenuOpen)}
-                                                        disabled={isDownloadingAll || Boolean(exportFullCampaignBlocker) || !currentVersionSet['Full Copy']}
-                                                        title={getCampaignOperationTitle('exportFullCampaign', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before downloading the full campaign.' : undefined)}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white rounded-md font-bold hover:bg-slate-900 disabled:bg-slate-400 transition-all"
-                                                     >
-                                                         {isDownloadingAll ? <Spinner className="w-3 h-3" /> : <IconDownload className="w-3 h-3" />}
-                                                         Download full campaign document
-                                                     </button>
-                                                     {isDownloadAllMenuOpen && (
-                                                         <div className="absolute top-full right-0 mt-2 w-60 bg-white rounded-md shadow-xl border border-gray-200 py-1.5 z-50">
-                                                             <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">One combined document</p>
-                                                             <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Full campaign includes all generated sections in one document.</p>
-                                                             <button onClick={() => handleDownloadAll('word')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFileWord className="w-4 h-4 mr-2 text-blue-600" /> Word (.doc)</button>
-                                                             <button onClick={() => handleDownloadAll('txt')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFileTxt className="w-4 h-4 mr-2 text-gray-600" /> Text (.txt)</button>
-                                                             <button onClick={() => handleDownloadAll('pdf')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFilePdf className="w-4 h-4 mr-2 text-red-600" /> Print / PDF</button>
-                                                         </div>
-                                                     )}
-                                                 </div>
+                                             <div className="flex items-center gap-2 text-xs text-gray-600">
+                                                 <button onClick={() => setActiveVersionIndex(v => Math.max(0, v - 1))} disabled={activeVersionIndex === 0} className="p-1 rounded hover:bg-gray-100 disabled:opacity-20" title="Previous version"><IconChevronLeft className="w-4 h-4" /></button>
+                                                 <span className="font-bold text-gray-700 min-w-[78px] text-center">Version {activeVersionIndex + 1} / {Math.max(1, versionSets.length)}</span>
+                                                 <button onClick={() => setActiveVersionIndex(v => Math.min(versionSets.length - 1, v + 1))} disabled={activeVersionIndex >= versionSets.length - 1} className="p-1 rounded hover:bg-gray-100 disabled:opacity-20" title="Next version"><IconChevronRight className="w-4 h-4" /></button>
                                              </div>
                                          </div>
                                      </div>
 
-                                     {generatingTab && generatingTab === activeSubTab ? (
-                                         <div className="h-64 flex flex-col items-center justify-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                             <Spinner className="w-8 h-8 text-red-600 mb-3" />
-                                             <p className="text-gray-500 text-sm">Generating {generatingTab}...</p>
-                                         </div>
-                                     ) : (
-                                         <textarea className="w-full p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-gray-800 leading-relaxed text-sm min-h-[400px] shadow-sm font-sans" value={currentCopy} onChange={handleCopyEdit} placeholder="Your copy will appear here..." />
-                                     )}
+                                     <div className="p-4">
+                                         {generatingTab && generatingTab === activeSubTab ? (
+                                             <div className="h-64 flex flex-col items-center justify-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                                 <Spinner className="w-8 h-8 text-red-600 mb-3" />
+                                                 <p className="text-gray-500 text-sm">Generating {generatingTab}...</p>
+                                             </div>
+                                         ) : currentCopy ? (
+                                             <textarea className="w-full resize-y rounded-lg border border-gray-300 bg-white p-4 font-sans text-sm leading-relaxed text-gray-800 shadow-sm min-h-[480px] focus:outline-none focus:ring-2 focus:ring-red-500" value={currentCopy} onChange={handleCopyEdit} placeholder="Your campaign section will appear here..." />
+                                         ) : (
+                                             <Placeholder icon={<IconSparkles />} title="No output for this section yet" description={activeSubTab === 'Full Copy' ? 'Generate Listing Copy to create the campaign baseline.' : 'Generate Full Copy first, then create this campaign section.'} />
+                                         )}
+                                     </div>
 
-                                     <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col space-y-3">
-                                         <div className="flex items-center gap-2">
-                                             <input type="text" placeholder={`Refine this ${activeSubTab}...`} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm" onKeyDown={e => e.key === 'Enter' && (handleRefineCopy((e.target as any).value), (e.target as any).value = '')} />
-                                             <button
-                                                disabled={!currentCopy || isRefining || Boolean(refineCopyBlocker)}
-                                                title={getCampaignOperationTitle('refineCopy', !currentCopy ? 'Generate copy before refining.' : undefined)}
-                                                onClick={e => (handleRefineCopy((e.currentTarget.previousElementSibling as any).value), (e.currentTarget.previousElementSibling as any).value = '')}
-                                                className="bg-gray-200 text-gray-700 p-2 rounded-md disabled:opacity-50"
-                                             >
-                                                {isRefining ? <Spinner /> : <IconSend className="w-4 h-4" />}
-                                             </button>
-                                         </div>
-
-                                         <div className="flex justify-between items-center">
-                                             <button onClick={() => handleToggleContactDetails(!includeContactDetails)} className={`px-3 py-2 border text-sm font-medium rounded-md ${includeContactDetails ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-300 text-gray-700'}`}>Contact Card</button>
-                                             <div className="flex gap-2">
-                                                 <button onClick={() => handleCopyToClipboard(currentCopy)} title="Copy current to clipboard" className="p-2 text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"><IconClipboard /></button>
-                                                 <div className="relative" ref={exportMenuRef}>
-                                                     <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} title="Download current section" className="inline-flex items-center gap-1.5 px-3 py-2 text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors font-medium text-xs">
-                                                         <IconDownload className="w-4 h-4" />
-                                                         Download current section
+                                     <div className="border-t border-gray-100 bg-gray-50 p-4">
+                                         <div className="flex flex-col gap-4">
+                                             <div>
+                                                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-500">Refine this section</label>
+                                                 <div className="flex items-center gap-2">
+                                                     <input type="text" placeholder={`Refine ${activeSubTab}, e.g. warmer, shorter or more premium`} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm" onKeyDown={e => e.key === 'Enter' && (handleRefineCopy((e.target as any).value), (e.target as any).value = '')} />
+                                                     <button
+                                                        disabled={!currentCopy || isRefining || Boolean(refineCopyBlocker)}
+                                                        title={getCampaignOperationTitle('refineCopy', !currentCopy ? 'Generate copy before refining.' : undefined)}
+                                                        onClick={e => (handleRefineCopy((e.currentTarget.previousElementSibling as any).value), (e.currentTarget.previousElementSibling as any).value = '')}
+                                                        className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                                                     >
+                                                        {isRefining ? <Spinner className="w-4 h-4" /> : <IconSend className="w-4 h-4" />}
+                                                        Refine this section
                                                      </button>
-                                                     {isExportMenuOpen && (
-                                                         <div className="absolute bottom-full right-0 mb-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-20">
-                                                             <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Selected section only</p>
-                                                             <button onClick={() => { handleExportWord(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
-                                                             <button onClick={() => { handleExportTxt(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
-                                                             <button onClick={() => { handleExportPdf(); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
-                                                         </div>
-                                                     )}
                                                  </div>
-                                                 <button onClick={() => handleSaveToTimeline(currentCopy)} title="Save current to timeline" className="p-2 text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"><IconClock /></button>
+                                                 <p className="mt-1 text-xs text-gray-500">For full editing, download the section or campaign document and continue in Word, Google Docs, CRM, email or agent systems.</p>
+                                             </div>
+
+                                             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                                                 <div className="flex flex-wrap items-center gap-2">
+                                                     <button
+                                                        onClick={handleGenerateAllMissing}
+                                                        disabled={isGenerating || Boolean(generateAllBlocker) || !currentVersionSet['Full Copy']}
+                                                        title={getCampaignOperationTitle('generateAllVariations', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before campaign variations.' : undefined)}
+                                                        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-bold transition-all border ${allTabsGenerated ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                     >
+                                                        <IconSparkles className="w-4 h-4" />
+                                                        {allTabsGenerated ? 'Regenerate Campaign' : 'Generate Missing Tabs'}
+                                                     </button>
+                                                     <button onClick={() => handleToggleContactDetails(!includeContactDetails)} className={`px-3 py-2 border text-sm font-medium rounded-md ${includeContactDetails ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>Contact Card</button>
+                                                     <button onClick={() => handleCopyToClipboard(currentCopy)} disabled={!currentCopy} title="Copy current section to clipboard" className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"><IconClipboard className="w-4 h-4" /> Copy section</button>
+                                                     <button onClick={() => handleSaveToTimeline(currentCopy)} disabled={!currentCopy} title="Save current section to timeline" className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"><IconClock className="w-4 h-4" /> Save</button>
+                                                 </div>
+
+                                                 <div className="flex flex-wrap items-center gap-2">
+                                                     <div className="relative" ref={exportMenuRef}>
+                                                         <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} disabled={!currentCopy} title="Download current section" className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-gray-800 border border-gray-300 bg-white rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                                             <IconDownload className="w-4 h-4" />
+                                                             Download current section
+                                                         </button>
+                                                         {isExportMenuOpen && (
+                                                             <div className="absolute bottom-full right-0 mb-2 w-56 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-20">
+                                                                 <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Selected section only</p>
+                                                                 <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports {activeSubTab} only.</p>
+                                                                 <button onClick={() => { handleExportWord(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
+                                                                 <button onClick={() => { handleExportTxt(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
+                                                                 <button onClick={() => { handleExportPdf(); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
+                                                             </div>
+                                                         )}
+                                                     </div>
+
+                                                     <div className="relative" ref={downloadAllMenuRef}>
+                                                         <button
+                                                            onClick={() => setIsDownloadAllMenuOpen(!isDownloadAllMenuOpen)}
+                                                            disabled={isDownloadingAll || Boolean(exportFullCampaignBlocker) || !currentVersionSet['Full Copy']}
+                                                            title={getCampaignOperationTitle('exportFullCampaign', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before downloading the full campaign.' : undefined)}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 text-white rounded-md text-sm font-bold hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all"
+                                                         >
+                                                             {isDownloadingAll ? <Spinner className="w-4 h-4" /> : <IconDownload className="w-4 h-4" />}
+                                                             Download full campaign document
+                                                         </button>
+                                                         {isDownloadAllMenuOpen && (
+                                                             <div className="absolute bottom-full right-0 mb-2 w-64 bg-white rounded-md shadow-xl border border-gray-200 py-1.5 z-50">
+                                                                 <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">One combined document</p>
+                                                                 <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Full campaign includes all generated sections in one document. ZIP packaging remains a future export option.</p>
+                                                                 <button onClick={() => handleDownloadAll('word')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFileWord className="w-4 h-4 mr-2 text-blue-600" /> Word (.doc)</button>
+                                                                 <button onClick={() => handleDownloadAll('txt')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFileTxt className="w-4 h-4 mr-2 text-gray-600" /> Text (.txt)</button>
+                                                                 <button onClick={() => handleDownloadAll('pdf')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFilePdf className="w-4 h-4 mr-2 text-red-600" /> Print / PDF</button>
+                                                             </div>
+                                                         )}
+                                                     </div>
+                                                 </div>
                                              </div>
                                          </div>
                                      </div>
                                  </div>
-                             )}
+                             </div>
                          </Section>
                     </div>
                  </div>
