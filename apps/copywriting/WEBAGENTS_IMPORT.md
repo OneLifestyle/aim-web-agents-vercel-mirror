@@ -148,6 +148,20 @@ Status date: `2026-06-23`
 - Current status/activity summary: Campaign Status now shows compact stage chips, and affected panels show lightweight activity states during research, analysis, image, output generation, refine and export work.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Campaign Outputs UX 003 Status
+
+Status date: `2026-06-23`
+
+- Goal: `WEBAGENTS-COPYWRITING-CAMPAIGN-OUTPUTS-UX-003`
+- Review artifact: `docs/campaign-outputs-ux-003.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current action summary: current-output actions now sit in the selected output card header, category download sits beside the selected category summary, and full-campaign actions sit in the Campaign Outputs summary.
+- Current generation summary: missing outputs can be generated from the selected output card, and additional clicked missing outputs queue safely behind the active output mutation.
+- Current activity summary: Copy Context and Property Features keep affected-card active styling while the button itself owns the only visible `Analyzing...` state.
+- Current layout summary: the desktop workspace uses a wider max width and safer `xl` three-column breakpoints, with lightweight Campaign Status scroll anchors.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.
