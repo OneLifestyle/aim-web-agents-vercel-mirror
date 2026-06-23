@@ -134,6 +134,20 @@ Status date: `2026-06-23`
 - Current export summary: selected-section and full-campaign document exports are preserved; ZIP export remains deferred.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Campaign Outputs UX 002 Status
+
+Status date: `2026-06-23`
+
+- Goal: `WEBAGENTS-COPYWRITING-CAMPAIGN-OUTPUTS-UX-002`
+- Review artifact: `docs/campaign-outputs-ux-002.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current output summary: Campaign Outputs now has an All/category filter that controls the tile grid, larger wrap-grid navigation, clearer current output/current category/full campaign terminology, and a grouped output action panel.
+- Current duplicate-output summary: the single `Open House` output item is now owned by Events only; the Social Media duplicate mapping was removed.
+- Current edit/refine summary: generated outputs are read-only by default, local editing is explicit, and free-form refine is demoted behind `Advanced refine (beta)` with user-content risk documented.
+- Current status/activity summary: Campaign Status now shows compact stage chips, and affected panels show lightweight activity states during research, analysis, image, output generation, refine and export work.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

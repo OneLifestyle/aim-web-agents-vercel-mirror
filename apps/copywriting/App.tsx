@@ -34,16 +34,18 @@ type CampaignOutputSectionMeta = {
     canDownload: boolean;
     canRefine: boolean;
 };
+type CampaignOutputCategoryFilter = 'All' | string;
 
 const previewTabConfig: Record<string, PreviewTab[]> = {
     'Listing': ['Full Copy', 'Just Listed', 'Brochure Copy', 'Email', 'Flyer'],
     'Coming Soon': ['Coming Soon Teaser', 'Coming Soon Email', 'Coming Soon SMS'],
-    'Social Media': ['Facebook', 'Facebook Marketplace', 'Instagram', 'X (Twitter)', 'Google Business', 'TikTok', 'Open House'],
+    'Social Media': ['Facebook', 'Facebook Marketplace', 'Instagram', 'X (Twitter)', 'Google Business', 'TikTok'],
     'Events': ['Open House'],
     'Blog': ['Long-form / Blog'],
     'Video': ['Video Script']
 };
 const mainTabs = Object.keys(previewTabConfig);
+const categoryFilters: CampaignOutputCategoryFilter[] = ['All', ...mainTabs];
 const ALL_CONTENT_TABS = Object.values(previewTabConfig).flat();
 const CAMPAIGN_OUTPUT_SECTION_META: Record<PreviewTab, Omit<CampaignOutputSectionMeta, 'id' | 'label' | 'group' | 'slug'>> = {
     'Full Copy': {
@@ -162,11 +164,26 @@ const campaignOperationsConflict = (nextOperation: CampaignOperationId, activeOp
     return OUTPUT_MUTATING_OPERATIONS.has(nextOperation) && OUTPUT_MUTATING_OPERATIONS.has(activeOperation);
 };
 
-const Section: React.FC<{ title: string; children: React.ReactNode; className?: string; rightElement?: React.ReactNode }> = ({ title, children, className, rightElement }) => (
-  <div className={`bg-white p-6 rounded-lg shadow-sm border border-gray-200 flex flex-col ${className || ''}`}>
+const Section: React.FC<{
+    title: string;
+    children: React.ReactNode;
+    className?: string;
+    rightElement?: React.ReactNode;
+    isActive?: boolean;
+    activeLabel?: string;
+}> = ({ title, children, className, rightElement, isActive = false, activeLabel = 'Updating...' }) => (
+  <div className={`bg-white p-6 rounded-lg shadow-sm border flex flex-col transition-colors ${isActive ? 'border-amber-300 ring-2 ring-amber-100' : 'border-gray-200'} ${className || ''}`}>
     <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
-        {rightElement}
+        <div className="flex items-center gap-2">
+            {isActive && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                    <Spinner className="w-3 h-3" />
+                    {activeLabel}
+                </span>
+            )}
+            {rightElement}
+        </div>
     </div>
     {children}
   </div>
@@ -505,8 +522,12 @@ const App: React.FC = () => {
 
     const [activeMainTab, setActiveMainTab] = useState<string>('Listing');
     const [activeSubTab, setActiveSubTab] = useState<PreviewTab>('Full Copy');
+    const [selectedOutputCategory, setSelectedOutputCategory] = useState<CampaignOutputCategoryFilter>('All');
     const [generatingTab, setGeneratingTab] = useState<PreviewTab | null>(null);
     const [editedStatus, setEditedStatus] = useState<Partial<Record<PreviewTab, boolean>>>({});
+    const [isLocalEditEnabled, setIsLocalEditEnabled] = useState(false);
+    const [isAdvancedRefineOpen, setIsAdvancedRefineOpen] = useState(false);
+    const refineInputRef = useRef<HTMLInputElement>(null);
 
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
     const saveTimeoutRef = useRef<number | null>(null);
@@ -532,10 +553,12 @@ const App: React.FC = () => {
     const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
     const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+    const [isCategoryExportMenuOpen, setIsCategoryExportMenuOpen] = useState(false);
     const [isDownloadAllMenuOpen, setIsDownloadAllMenuOpen] = useState(false);
     const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
     const [isDownloadingAll, setIsDownloadingAll] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
+    const categoryExportMenuRef = useRef<HTMLDivElement>(null);
     const downloadAllMenuRef = useRef<HTMLDivElement>(null);
 
     const [includeContactDetails, setIncludeContactDetails] = useState(false);
@@ -654,6 +677,9 @@ const App: React.FC = () => {
         const handleClickOutside = (event: MouseEvent) => {
             if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
                 setIsExportMenuOpen(false);
+            }
+            if (categoryExportMenuRef.current && !categoryExportMenuRef.current.contains(event.target as Node)) {
+                setIsCategoryExportMenuOpen(false);
             }
             if (downloadAllMenuRef.current && !downloadAllMenuRef.current.contains(event.target as Node)) {
                 setIsDownloadAllMenuOpen(false);
@@ -1347,10 +1373,16 @@ const App: React.FC = () => {
         setActiveMainTab(mainTab);
         setActiveSubTab(subTab);
         setIncludeContactDetails(false);
+        setIsLocalEditEnabled(false);
+        setIsAdvancedRefineOpen(false);
         const currentVersion = versionSets[activeVersionIndex];
         if (currentVersion && !currentVersion[subTab]) {
             generateCopyForTab(subTab);
         }
+    };
+
+    const handleCategoryFilterClick = (category: CampaignOutputCategoryFilter) => {
+        setSelectedOutputCategory(category);
     };
 
     const contactCard = `\n\n---\nFor more information or to arrange a private inspection, please contact:\n\n${agentProfile.name || '[Agent Name]'}\n${agentProfile.agency || '[Agency Name]'}\n${agentProfile.phone || '[Phone]'}\n${agentProfile.email || '[Email]'}`;
@@ -1473,6 +1505,54 @@ const App: React.FC = () => {
             printArea.innerText = currentCopy;
             window.print();
         }
+    };
+
+    const handleDownloadCurrentCategory = (format: 'pdf' | 'word' | 'txt') => {
+        if (selectedOutputCategory === 'All') {
+            setNotification('Choose a category before downloading the current category.');
+            return;
+        }
+
+        const categoryTabs = previewTabConfig[selectedOutputCategory] || [];
+        const generatedCategorySections = currentCampaignExportPlan.sectionDocuments.filter(section => (
+            categoryTabs.includes(section.tab) && section.generated
+        ));
+
+        if (generatedCategorySections.length === 0) {
+            setNotification(`No generated outputs in ${selectedOutputCategory} yet.`);
+            return;
+        }
+
+        const propertyName = address.trim() || 'Untitled Property';
+        const content = [
+            `Real Estate Copy for: ${propertyName}`,
+            `Category: ${selectedOutputCategory}`,
+            `Version: ${activeVersionIndex + 1}`,
+            '',
+            '====================================',
+            '',
+            ...generatedCategorySections.flatMap(section => [
+                `--- ${section.title} ---`,
+                '',
+                section.content,
+                '',
+                '====================================',
+                '',
+            ]),
+        ].join('\n');
+        const fileBaseName = `${sanitizeFileNamePart(address || 'property')}-v${activeVersionIndex + 1}-${sanitizeFileNamePart(selectedOutputCategory)}`;
+
+        if (format === 'word') handleExportWord(content, fileBaseName);
+        else if (format === 'txt') handleExportTxt(content, fileBaseName);
+        else {
+            const printArea = document.getElementById('print-render-area');
+            if (printArea) {
+                printArea.innerText = content;
+                window.print();
+            }
+        }
+
+        setIsCategoryExportMenuOpen(false);
     };
 
     const handleSaveToTimeline = (copy: string) => {
@@ -1664,6 +1744,36 @@ const App: React.FC = () => {
     const selectedCampaignOutput = campaignOutputSections.find(section => section.id === activeSubTab);
     const readyOutputCount = currentCampaignExportPlan.generatedSections.length;
     const missingOutputCount = currentCampaignExportPlan.missingSections.length;
+    const filteredCampaignOutputSections = useMemo(() => {
+        if (selectedOutputCategory === 'All') return campaignOutputSections;
+        return campaignOutputSections.filter(section => section.group === selectedOutputCategory);
+    }, [campaignOutputSections, selectedOutputCategory]);
+    const selectedCategoryStats = useMemo(() => {
+        const sections = selectedOutputCategory === 'All'
+            ? campaignOutputSections
+            : campaignOutputSections.filter(section => section.group === selectedOutputCategory);
+        const ready = sections.filter(section => section.status === 'ready').length;
+        const generating = sections.filter(section => section.status === 'generating').length;
+        const missing = sections.length - ready - generating;
+        return {
+            total: sections.length,
+            ready,
+            missing,
+            generating,
+            complete: sections.length > 0 && ready === sections.length,
+        };
+    }, [campaignOutputSections, selectedOutputCategory]);
+    const getCategoryStats = (category: CampaignOutputCategoryFilter) => {
+        const sections = category === 'All'
+            ? campaignOutputSections
+            : campaignOutputSections.filter(section => section.group === category);
+        const ready = sections.filter(section => section.status === 'ready').length;
+        const generating = sections.filter(section => section.status === 'generating').length;
+        const missing = sections.length - ready - generating;
+        return { total: sections.length, ready, missing, generating };
+    };
+    const hasGeneratedOutputsInSelectedCategory = selectedOutputCategory !== 'All' && filteredCampaignOutputSections.some(section => section.generated);
+    const isCampaignOutputsActive = isGenerating || isDownloadingAll || isRefining;
     const getCampaignOutputStatusLabel = (status: CampaignOutputStatus): string => {
         if (status === 'ready') return 'Ready';
         if (status === 'generating') return 'Generating';
@@ -1675,6 +1785,25 @@ const App: React.FC = () => {
         if (status === 'generating') return 'bg-amber-50 text-amber-800 border-amber-200';
         if (status === 'missing') return 'bg-gray-100 text-gray-600 border-gray-200';
         return 'bg-red-50 text-red-700 border-red-200';
+    };
+    const campaignStatusSteps = [
+        { label: 'Address', state: address.trim() ? 'complete' : 'missing' },
+        { label: 'Research', state: isResearching ? 'current' : isFetchComplete ? 'complete' : 'missing' },
+        { label: 'Strategy', state: isAnalyzingStrategy ? 'current' : copyContextAnalysisStatus === 'success' ? 'complete' : 'missing' },
+        { label: 'Features', state: isAnalyzingFeatures ? 'current' : propertyFeatures.trim() ? 'complete' : 'missing' },
+        { label: 'Images', state: isAnalyzingImages ? 'current' : imageAnalysis ? 'complete' : 'missing' },
+        { label: 'Outputs', state: isCampaignOutputsActive ? 'current' : readyOutputCount > 0 ? 'complete' : 'missing' },
+        { label: 'Review', state: allTabsGenerated ? 'complete' : readyOutputCount > 0 ? 'current' : 'missing' },
+    ] as const;
+    const campaignStatusLabel = activeCampaignOperations.length > 0
+        ? 'Working'
+        : readyOutputCount > 0
+            ? allTabsGenerated ? 'Ready for review' : 'Draft in progress'
+            : 'Idle';
+    const getCampaignStepClass = (state: 'complete' | 'current' | 'missing') => {
+        if (state === 'complete') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+        if (state === 'current') return 'border-amber-200 bg-amber-50 text-amber-800';
+        return 'border-gray-200 bg-white text-gray-500';
     };
 
     const renderVisualHighlights = () => {
@@ -1799,12 +1928,13 @@ const App: React.FC = () => {
                     </div>
                 </div>
             </header>
-            {activeCampaignOperations.length > 0 && (
-                <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm text-amber-950">
-                    <div className="container mx-auto flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-2 font-semibold">
-                            <IconLoader className="w-4 h-4 animate-spin" />
-                            Current campaign action
+            <div className="border-b border-gray-200 bg-white px-6 py-3 text-sm">
+                <div className="container mx-auto flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-gray-900">Campaign Status</span>
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${activeCampaignOperations.length > 0 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}>
+                            {activeCampaignOperations.length > 0 && <IconLoader className="w-3 h-3 animate-spin" />}
+                            {campaignStatusLabel}
                         </span>
                         {activeCampaignOperations.map(operation => (
                             <span key={operation.id} className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-medium text-amber-900">
@@ -1812,8 +1942,15 @@ const App: React.FC = () => {
                             </span>
                         ))}
                     </div>
+                    <div className="flex flex-wrap gap-1.5">
+                        {campaignStatusSteps.map(step => (
+                            <span key={step.label} className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getCampaignStepClass(step.state)}`}>
+                                {step.label}
+                            </span>
+                        ))}
+                    </div>
                 </div>
-            )}
+            </div>
 
             <main id="app-main" className="container mx-auto px-4 py-6">
                  <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_minmax(0,1fr)] gap-6 h-[calc(100vh-120px)] items-start">
@@ -1998,11 +2135,11 @@ const App: React.FC = () => {
                                         className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                                     />
                                 </div>
-                                <p className="text-xs text-gray-500">Provide these to generate specific Open House social media and event collateral.</p>
+                                <p className="text-xs text-gray-500">Provide these to generate specific Open House event collateral.</p>
                             </div>
                         </Section>
 
-                        <Section title="Property Details">
+                        <Section title="Property Details" isActive={isResearching} activeLabel="Fetching...">
                             {isFetchComplete && address && (
                                 <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
                                     <p className="font-semibold text-gray-800 text-sm">{address}</p>
@@ -2059,6 +2196,8 @@ const App: React.FC = () => {
 
                         <Section
                             title="Copy Context"
+                            isActive={isAnalyzingStrategy}
+                            activeLabel="Analyzing..."
                             rightElement={
                                 <div className="flex flex-col items-end gap-1">
                                     <button
@@ -2146,6 +2285,8 @@ const App: React.FC = () => {
 
                         <Section
                             title="Property Features"
+                            isActive={isAnalyzingFeatures}
+                            activeLabel="Analyzing..."
                             rightElement={
                                 <div className="flex flex-col items-end gap-1">
                                     <button
@@ -2172,7 +2313,7 @@ const App: React.FC = () => {
                             )}
                         </Section>
 
-                        <Section title="Property Photos">
+                        <Section title="Property Photos" isActive={isAnalyzingImages} activeLabel="Analyzing...">
                             <div
                                 onDrop={handleImageDrop}
                                 onDragOver={handleDragOver}
@@ -2241,7 +2382,7 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="h-full flex flex-col space-y-6 overflow-y-auto pr-2">
-                         <Section title="Property Overview">
+                         <Section title="Property Overview" isActive={isResearching} activeLabel="Fetching...">
                              {researchData ? (
                                  <div>
                                      <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{researchData}</p>
@@ -2261,7 +2402,7 @@ const App: React.FC = () => {
                              )}
                          </Section>
 
-                         <Section title="Suburb & Area Profile">
+                         <Section title="Suburb & Area Profile" isActive={isResearching} activeLabel="Fetching...">
                              {profileData ? (
                                  <div>
                                     <div className="flex flex-col gap-2 mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
@@ -2303,17 +2444,17 @@ const App: React.FC = () => {
                              )}
                          </Section>
 
-                         <Section title="Visual Highlights">
+                         <Section title="Visual Highlights" isActive={isAnalyzingImages} activeLabel="Analyzing...">
                              {imageAnalysis ? renderVisualHighlights() : <Placeholder icon={<IconCamera />} title="Visual Analysis" description="Analyze photos to see features." />}
                          </Section>
 
-                         <Section title="Campaign Outputs">
+                         <Section title="Campaign Outputs" isActive={isCampaignOutputsActive} activeLabel={isDownloadingAll ? 'Preparing...' : isRefining ? 'Refining...' : 'Generating...'}>
                              <div className="flex flex-col gap-5">
                                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                          <div>
-                                             <p className="text-sm font-semibold text-slate-900">Review, refine and download the campaign material for this property.</p>
-                                             <p className="mt-1 text-xs leading-relaxed text-slate-600">Use the section navigation to move between generated outputs. Download the current section for quick handoff, or download the full campaign document when the set is ready.</p>
+                                             <p className="text-sm font-semibold text-slate-900">Review and package campaign outputs for this property.</p>
+                                             <p className="mt-1 text-xs leading-relaxed text-slate-600">Filter the output tiles by category, review the current output, then copy or download the current output, current category, or full campaign document.</p>
                                          </div>
                                          <div className="flex shrink-0 gap-2 text-xs">
                                              <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 font-semibold text-emerald-700">{readyOutputCount} ready</span>
@@ -2323,19 +2464,45 @@ const App: React.FC = () => {
                                  </div>
 
                                  <div className="space-y-3">
-                                     <div className="flex overflow-x-auto no-scrollbar border-b border-gray-100">
-                                         {mainTabs.map(tab => (
-                                             <button key={tab} onClick={() => handleTabClick(tab, previewTabConfig[tab][0])} className={`px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap ${activeMainTab === tab ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>{tab}</button>
-                                         ))}
+                                     <div className="flex flex-wrap gap-2">
+                                         {categoryFilters.map(category => {
+                                             const stats = getCategoryStats(category);
+                                             const isSelected = selectedOutputCategory === category;
+                                             return (
+                                                 <button
+                                                    key={category}
+                                                    onClick={() => handleCategoryFilterClick(category)}
+                                                    className={`rounded-full border px-3 py-2 text-left text-xs font-semibold transition-colors ${isSelected ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
+                                                 >
+                                                     <span>{category}</span>
+                                                     <span className="ml-2 font-medium text-gray-500">{stats.ready}/{stats.total} ready</span>
+                                                     {stats.generating > 0 && <span className="ml-1 text-amber-700">Generating</span>}
+                                                 </button>
+                                             );
+                                         })}
                                      </div>
 
-                                     <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
-                                         <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-                                             {campaignOutputSections.map(section => (
+                                     <div className="rounded-lg border border-gray-200 bg-white p-3">
+                                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                             <div>
+                                                 <p className="text-xs font-bold uppercase tracking-wider text-gray-500">{selectedOutputCategory === 'All' ? 'All output items' : `${selectedOutputCategory} outputs`}</p>
+                                                 <p className="mt-0.5 text-xs text-gray-500">
+                                                     {selectedCategoryStats.complete
+                                                        ? 'All outputs in this view are ready.'
+                                                        : `${selectedCategoryStats.ready} ready, ${selectedCategoryStats.missing} missing${selectedCategoryStats.generating ? `, ${selectedCategoryStats.generating} generating` : ''}.`}
+                                                 </p>
+                                             </div>
+                                             <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${selectedCategoryStats.complete ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                                                 {selectedCategoryStats.complete ? 'Category ready' : 'In progress'}
+                                             </span>
+                                         </div>
+
+                                         <div className="grid grid-cols-1 gap-2 xl:grid-cols-2 2xl:grid-cols-3">
+                                             {filteredCampaignOutputSections.map(section => (
                                                  <button
                                                     key={section.id}
                                                     onClick={() => handleTabClick(section.group, section.id)}
-                                                    className={`min-h-[68px] rounded-md border p-3 text-left transition-colors ${section.selected ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
+                                                    className={`min-h-[82px] rounded-md border p-3 text-left transition-colors ${section.selected ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
                                                  >
                                                      <div className="flex items-start justify-between gap-2">
                                                          <div>
@@ -2348,8 +2515,8 @@ const App: React.FC = () => {
                                                      </div>
                                                      <p className="mt-2 line-clamp-2 text-xs leading-snug text-gray-600">{section.description}</p>
                                                  </button>
-                                             ))}
-                                         </div>
+                                         ))}
+                                     </div>
                                      </div>
                                  </div>
 
@@ -2385,60 +2552,58 @@ const App: React.FC = () => {
                                                  <p className="text-gray-500 text-sm">Generating {generatingTab}...</p>
                                              </div>
                                          ) : currentCopy ? (
-                                             <textarea className="w-full resize-y rounded-lg border border-gray-300 bg-white p-4 font-sans text-sm leading-relaxed text-gray-800 shadow-sm min-h-[480px] focus:outline-none focus:ring-2 focus:ring-red-500" value={currentCopy} onChange={handleCopyEdit} placeholder="Your campaign section will appear here..." />
+                                             <textarea
+                                                readOnly={!isLocalEditEnabled}
+                                                className={`w-full resize-y rounded-lg border p-4 font-sans text-sm leading-relaxed text-gray-800 shadow-sm min-h-[520px] focus:outline-none focus:ring-2 ${isLocalEditEnabled ? 'border-blue-300 bg-white focus:ring-blue-500' : 'border-gray-200 bg-gray-50 focus:ring-gray-300'}`}
+                                                value={currentCopy}
+                                                onChange={handleCopyEdit}
+                                                placeholder="Your campaign output will appear here..."
+                                             />
                                          ) : (
-                                             <Placeholder icon={<IconSparkles />} title="No output for this section yet" description={activeSubTab === 'Full Copy' ? 'Generate Listing Copy to create the campaign baseline.' : 'Generate Full Copy first, then create this campaign section.'} />
+                                             <Placeholder icon={<IconSparkles />} title="No output for this item yet" description={activeSubTab === 'Full Copy' ? 'Generate Listing Copy to create the campaign baseline.' : 'Generate Full Copy first, then create this campaign output.'} />
                                          )}
                                      </div>
 
                                      <div className="border-t border-gray-100 bg-gray-50 p-4">
                                          <div className="flex flex-col gap-4">
-                                             <div>
-                                                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-500">Refine this section</label>
-                                                 <div className="flex items-center gap-2">
-                                                     <input type="text" placeholder={`Refine ${activeSubTab}, e.g. warmer, shorter or more premium`} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm" onKeyDown={e => e.key === 'Enter' && (handleRefineCopy((e.target as any).value), (e.target as any).value = '')} />
-                                                     <button
-                                                        disabled={!currentCopy || isRefining || Boolean(refineCopyBlocker)}
-                                                        title={getCampaignOperationTitle('refineCopy', !currentCopy ? 'Generate copy before refining.' : undefined)}
-                                                        onClick={e => (handleRefineCopy((e.currentTarget.previousElementSibling as any).value), (e.currentTarget.previousElementSibling as any).value = '')}
-                                                        className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
-                                                     >
-                                                        {isRefining ? <Spinner className="w-4 h-4" /> : <IconSend className="w-4 h-4" />}
-                                                        Refine this section
-                                                     </button>
-                                                 </div>
-                                                 <p className="mt-1 text-xs text-gray-500">For full editing, download the section or campaign document and continue in Word, Google Docs, CRM, email or agent systems.</p>
-                                             </div>
-
-                                             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                                                 <div className="flex flex-wrap items-center gap-2">
-                                                     <button
-                                                        onClick={handleGenerateAllMissing}
-                                                        disabled={isGenerating || Boolean(generateAllBlocker) || !currentVersionSet['Full Copy']}
-                                                        title={getCampaignOperationTitle('generateAllVariations', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before campaign variations.' : undefined)}
-                                                        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-bold transition-all border ${allTabsGenerated ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                                                     >
-                                                        <IconSparkles className="w-4 h-4" />
-                                                        {allTabsGenerated ? 'Regenerate Campaign' : 'Generate Missing Tabs'}
-                                                     </button>
-                                                     <button onClick={() => handleToggleContactDetails(!includeContactDetails)} className={`px-3 py-2 border text-sm font-medium rounded-md ${includeContactDetails ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>Contact Card</button>
-                                                     <button onClick={() => handleCopyToClipboard(currentCopy)} disabled={!currentCopy} title="Copy current section to clipboard" className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"><IconClipboard className="w-4 h-4" /> Copy section</button>
-                                                     <button onClick={() => handleSaveToTimeline(currentCopy)} disabled={!currentCopy} title="Save current section to timeline" className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"><IconClock className="w-4 h-4" /> Save</button>
-                                                 </div>
-
-                                                 <div className="flex flex-wrap items-center gap-2">
+                                             <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+                                                 <div>
+                                                     <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Output actions</p>
+                                                     <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                         <button onClick={() => handleCopyToClipboard(currentCopy)} disabled={!currentCopy} title="Copy current output to clipboard" className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"><IconClipboard className="w-4 h-4" /> Copy current output</button>
                                                      <div className="relative" ref={exportMenuRef}>
-                                                         <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} disabled={!currentCopy} title="Download current section" className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-gray-800 border border-gray-300 bg-white rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                                         <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} disabled={!currentCopy} title="Download current output" className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
                                                              <IconDownload className="w-4 h-4" />
-                                                             Download current section
+                                                             Download current output
                                                          </button>
                                                          {isExportMenuOpen && (
                                                              <div className="absolute bottom-full right-0 mb-2 w-56 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-20">
-                                                                 <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Selected section only</p>
+                                                                 <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Current output only</p>
                                                                  <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports {activeSubTab} only.</p>
                                                                  <button onClick={() => { handleExportWord(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
                                                                  <button onClick={() => { handleExportTxt(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
                                                                  <button onClick={() => { handleExportPdf(); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
+                                                             </div>
+                                                         )}
+                                                     </div>
+
+                                                     <div className="relative" ref={categoryExportMenuRef}>
+                                                         <button
+                                                            onClick={() => setIsCategoryExportMenuOpen(!isCategoryExportMenuOpen)}
+                                                            disabled={selectedOutputCategory === 'All' || !hasGeneratedOutputsInSelectedCategory}
+                                                            title={selectedOutputCategory === 'All' ? 'Choose a category before downloading the current category.' : !hasGeneratedOutputsInSelectedCategory ? `No generated ${selectedOutputCategory} outputs yet.` : `Download generated ${selectedOutputCategory} outputs.`}
+                                                            className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                         >
+                                                             <IconDownload className="w-4 h-4" />
+                                                             Download current category
+                                                         </button>
+                                                         {isCategoryExportMenuOpen && (
+                                                             <div className="absolute bottom-full right-0 mb-2 w-60 rounded-md border border-gray-200 bg-white py-1 shadow-lg z-20">
+                                                                 <p className="px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 border-b border-gray-50 mb-1">{selectedOutputCategory} category</p>
+                                                                 <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports generated outputs in this category only.</p>
+                                                                 <button onClick={() => handleDownloadCurrentCategory('word')} className="flex w-full items-center px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
+                                                                 <button onClick={() => handleDownloadCurrentCategory('txt')} className="flex w-full items-center px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
+                                                                 <button onClick={() => handleDownloadCurrentCategory('pdf')} className="flex w-full items-center px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
                                                              </div>
                                                          )}
                                                      </div>
@@ -2448,7 +2613,7 @@ const App: React.FC = () => {
                                                             onClick={() => setIsDownloadAllMenuOpen(!isDownloadAllMenuOpen)}
                                                             disabled={isDownloadingAll || Boolean(exportFullCampaignBlocker) || !currentVersionSet['Full Copy']}
                                                             title={getCampaignOperationTitle('exportFullCampaign', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before downloading the full campaign.' : undefined)}
-                                                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 text-white rounded-md text-sm font-bold hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all"
+                                                            className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-slate-800 px-3 py-2 text-sm font-bold text-white transition-all hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
                                                          >
                                                              {isDownloadingAll ? <Spinner className="w-4 h-4" /> : <IconDownload className="w-4 h-4" />}
                                                              Download full campaign document
@@ -2464,10 +2629,80 @@ const App: React.FC = () => {
                                                          )}
                                                      </div>
                                                  </div>
+
+                                                     <p className="mt-2 text-xs text-gray-500">Current category download includes generated outputs only. Use the full campaign document when all missing outputs should be generated first.</p>
+                                                 </div>
+
+                                                 <div>
+                                                     <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Generation</p>
+                                                     <div className="mt-2 flex flex-wrap items-center gap-2 xl:justify-end">
+                                                         <button
+                                                            onClick={handleGenerateAllMissing}
+                                                            disabled={isGenerating || Boolean(generateAllBlocker) || !currentVersionSet['Full Copy']}
+                                                            title={getCampaignOperationTitle('generateAllVariations', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before campaign variations.' : undefined)}
+                                                            className={`inline-flex min-h-10 items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-bold transition-all ${allTabsGenerated ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                         >
+                                                            <IconSparkles className="w-4 h-4" />
+                                                            {allTabsGenerated ? 'Regenerate Campaign' : 'Generate Missing Tabs'}
+                                                         </button>
+                                                         <button onClick={() => handleToggleContactDetails(!includeContactDetails)} className={`inline-flex min-h-10 items-center rounded-md border px-3 py-2 text-sm font-medium ${includeContactDetails ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>Contact Card</button>
+                                                     </div>
+                                                 </div>
                                              </div>
-                                         </div>
+
+                                             <div className="rounded-md border border-gray-200 bg-white p-3">
+                                                 <div className="flex flex-wrap items-center justify-between gap-2">
+                                                     <div>
+                                                         <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Local editing and beta refine</p>
+                                                         <p className="mt-1 text-xs leading-relaxed text-gray-500">Generated output is read-only by default. Local edits are browser-only review changes; advanced refine sends the current output and instruction back through the model.</p>
+                                                     </div>
+                                                     <div className="flex flex-wrap items-center gap-2">
+                                                         <button onClick={() => setIsLocalEditEnabled(value => !value)} disabled={!currentCopy} className={`inline-flex min-h-9 items-center rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${isLocalEditEnabled ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
+                                                             {isLocalEditEnabled ? 'Lock local copy' : 'Edit local copy'}
+                                                         </button>
+                                                         <button onClick={() => setIsAdvancedRefineOpen(value => !value)} disabled={!currentCopy} className="inline-flex min-h-9 items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                                                             Advanced refine (beta)
+                                                         </button>
+                                                         <button onClick={() => handleSaveToTimeline(currentCopy)} disabled={!currentCopy} title="Save current output to local timeline" className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"><IconClock className="w-4 h-4" /> Save to timeline</button>
+                                                     </div>
+                                                 </div>
+                                                 {isAdvancedRefineOpen && (
+                                                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                                         <input
+                                                            ref={refineInputRef}
+                                                            type="text"
+                                                            placeholder={`Refine ${activeSubTab}, e.g. warmer, shorter or more premium`}
+                                                            className="min-h-10 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                                                            onKeyDown={e => {
+                                                                if (e.key === 'Enter') {
+                                                                    const instruction = e.currentTarget.value.trim();
+                                                                    if (instruction) {
+                                                                        handleRefineCopy(instruction);
+                                                                        e.currentTarget.value = '';
+                                                                    }
+                                                                }
+                                                            }}
+                                                         />
+                                                         <button
+                                                            disabled={!currentCopy || isRefining || Boolean(refineCopyBlocker)}
+                                                            title={getCampaignOperationTitle('refineCopy', !currentCopy ? 'Generate copy before refining.' : undefined)}
+                                                            onClick={() => {
+                                                                const instruction = refineInputRef.current?.value.trim() || '';
+                                                                if (!instruction) return;
+                                                                handleRefineCopy(instruction);
+                                                                if (refineInputRef.current) refineInputRef.current.value = '';
+                                                            }}
+                                                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                                                         >
+                                                            {isRefining ? <Spinner className="w-4 h-4" /> : <IconSend className="w-4 h-4" />}
+                                                            Run beta refine
+                                                         </button>
+                                                     </div>
+                                                 )}
+                                             </div>
                                      </div>
                                  </div>
+                             </div>
                              </div>
                          </Section>
                     </div>
