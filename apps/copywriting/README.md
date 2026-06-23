@@ -17,7 +17,7 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
 ## Key Features
 
 ### 1. Property Research & Data Gathering
-*   **Address Autocomplete & Validation:** Google Maps-integrated address search.
+*   **Address Suggestions:** Gemini-backed Australian address suggestions through the server endpoint. This is not Google Maps or Google Places autocomplete yet.
 *   **Automated Research:** Fetches property details, sales history, and local insights using the server-configured Gemini Pro model with Google Search Grounding.
 *   **Suburb & Area Profiles:** Automatically extracts and summarizes suburb and regional lifestyle data.
 

@@ -49,7 +49,11 @@ const parseErrorMessage = async (response: Response): Promise<string> => {
     return response.statusText || 'Copywriting request failed.';
 };
 
-const postCopywritingOperation = async <T>(operation: CopywritingOperation, payload: unknown): Promise<T> => {
+const postCopywritingOperation = async <T>(
+    operation: CopywritingOperation,
+    payload: unknown,
+    options: { signal?: AbortSignal } = {}
+): Promise<T> => {
     const betaToken = getStoredBetaToken();
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (betaToken) headers['x-beta-access-code'] = betaToken;
@@ -58,6 +62,7 @@ const postCopywritingOperation = async <T>(operation: CopywritingOperation, payl
         method: 'POST',
         headers,
         body: JSON.stringify({ operation, payload }),
+        signal: options.signal,
     });
 
     if (!response.ok) {
@@ -88,8 +93,12 @@ export const verifyBetaAccess = async (code: string): Promise<void> => {
     setStoredBetaToken(token);
 };
 
-export const suggestAddresses = async (query: string, userLocation?: {latitude: number, longitude: number}): Promise<ServiceResponse<string[]>> => {
-    return postCopywritingOperation<ServiceResponse<string[]>>('suggestAddresses', { query, userLocation });
+export const suggestAddresses = async (
+    query: string,
+    userLocation?: {latitude: number, longitude: number},
+    signal?: AbortSignal
+): Promise<ServiceResponse<string[]>> => {
+    return postCopywritingOperation<ServiceResponse<string[]>>('suggestAddresses', { query, userLocation }, { signal });
 };
 
 export const researchProperty = async (address: string, userLocation?: {latitude: number, longitude: number}): Promise<ServiceResponse<ResearchResult>> => {

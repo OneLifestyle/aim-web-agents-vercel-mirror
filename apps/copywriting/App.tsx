@@ -19,6 +19,10 @@ type ActiveCampaignOperation = {
     label: string;
 };
 type AnalysisRunStatus = 'idle' | 'success' | 'error';
+type AddressSuggestionCacheEntry = {
+    suggestions: string[];
+    usage?: UsageStats;
+};
 
 const previewTabConfig: Record<string, PreviewTab[]> = {
     'Listing': ['Full Copy', 'Just Listed', 'Brochure Copy', 'Email', 'Flyer'],
@@ -31,6 +35,11 @@ const previewTabConfig: Record<string, PreviewTab[]> = {
 const mainTabs = Object.keys(previewTabConfig);
 const ALL_CONTENT_TABS = Object.values(previewTabConfig).flat();
 const OUTPUT_MUTATING_OPERATIONS = new Set<CampaignOperationId>(['generateFullCopy', 'generateAllVariations', 'refineCopy', 'exportFullCampaign']);
+const ADDRESS_LOOKUP_MIN_CHARS = 5;
+const ADDRESS_LOOKUP_DEBOUNCE_MS = 450;
+const ADDRESS_SUGGESTION_CACHE_LIMIT = 20;
+
+const normalizeAddressLookupQuery = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
 const campaignOperationsConflict = (nextOperation: CampaignOperationId, activeOperation: CampaignOperationId): boolean => {
     if (nextOperation === activeOperation) return true;
@@ -397,6 +406,10 @@ const App: React.FC = () => {
     const [activeCampaignOperations, setActiveCampaignOperations] = useState<ActiveCampaignOperation[]>([]);
     const activeCampaignOperationsRef = useRef<Map<CampaignOperationId, ActiveCampaignOperation>>(new Map());
     const addressLookupRequestRef = useRef(0);
+    const activeAddressLookupAbortRef = useRef<AbortController | null>(null);
+    const addressSuggestionCacheRef = useRef<Map<string, AddressSuggestionCacheEntry>>(new Map());
+    const addressSuggestionLogIdRef = useRef<string | null>(null);
+    const lastAddressLookupQueryRef = useRef<string | null>(null);
     const [isAddressLookupQueued, setIsAddressLookupQueued] = useState(false);
 
 
@@ -434,6 +447,31 @@ const App: React.FC = () => {
 
     const updateLog = (id: string, updates: Partial<DebugLogEntry>) => {
         setDebugLogs(prev => prev.map(log => log.id === id ? { ...log, ...updates } : log));
+    };
+
+    const upsertAddressSuggestionLog = (updates: Partial<DebugLogEntry> & { status: 'pending' | 'success' | 'error' }): string => {
+        if (addressSuggestionLogIdRef.current) {
+            const logId = addressSuggestionLogIdRef.current;
+            setDebugLogs(prev => {
+                const existing = prev.find(log => log.id === logId);
+                if (!existing) return prev;
+                const updated = {
+                    ...existing,
+                    stepName: 'Address Suggestions',
+                    timestamp: new Date(),
+                    ...updates
+                };
+                return [updated, ...prev.filter(log => log.id !== logId)];
+            });
+            return logId;
+        }
+
+        const logId = addLog({
+            stepName: 'Address Suggestions',
+            ...updates
+        });
+        addressSuggestionLogIdRef.current = logId;
+        return logId;
     };
 
     const beginCampaignOperation = (id: CampaignOperationId, label: string): boolean => {
@@ -539,25 +577,51 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const query = address.trim();
+        const normalizedQuery = normalizeAddressLookupQuery(query);
         const requestId = addressLookupRequestRef.current + 1;
         addressLookupRequestRef.current = requestId;
+        activeAddressLookupAbortRef.current?.abort();
+        activeAddressLookupAbortRef.current = null;
 
         // Reset suggestions and loading state if the query is too short
-        if (!query || query.length < 3) {
+        if (!normalizedQuery || normalizedQuery.length < ADDRESS_LOOKUP_MIN_CHARS) {
             setAddressSuggestions([]);
             setIsSuggesting(false);
+            setIsAddressLookupQueued(false);
+            lastAddressLookupQueryRef.current = null;
+            return;
+        }
+
+        if (selectedAddress && normalizeAddressLookupQuery(selectedAddress.label) === normalizedQuery) {
+            setAddressSuggestions([]);
+            setIsSuggesting(false);
+            setIsAddressLookupQueued(false);
+            lastAddressLookupQueryRef.current = normalizedQuery;
+            return;
+        }
+
+        const cached = addressSuggestionCacheRef.current.get(normalizedQuery);
+        if (cached) {
+            setAddressSuggestions(cached.suggestions);
+            setIsSuggesting(false);
+            setIsAddressLookupQueued(false);
+            setShowSuggestions(true);
+            lastAddressLookupQueryRef.current = normalizedQuery;
+            upsertAddressSuggestionLog({
+                status: 'success',
+                inputs: query,
+                outputs: `${cached.suggestions.length} cached suggestions shown`,
+                usage: cached.usage
+            });
+            return;
+        }
+
+        if (lastAddressLookupQueryRef.current === normalizedQuery) {
+            setShowSuggestions(true);
             setIsAddressLookupQueued(false);
             return;
         }
 
-        if (selectedAddress?.label === query) {
-            setAddressSuggestions([]);
-            setIsSuggesting(false);
-            setIsAddressLookupQueued(false);
-            return;
-        }
-
-        setAddressSuggestions([]);
         setIsAddressLookupQueued(true);
         setShowSuggestions(true);
 
@@ -566,40 +630,79 @@ const App: React.FC = () => {
             setIsAddressLookupQueued(false);
             setIsSuggesting(true);
             setShowSuggestions(true);
-            const logId = addLog({ stepName: 'Address Suggestions', status: 'pending', inputs: query });
+            const abortController = new AbortController();
+            activeAddressLookupAbortRef.current = abortController;
+            upsertAddressSuggestionLog({
+                status: 'pending',
+                inputs: query,
+                outputs: 'Latest address lookup in progress'
+            });
             try {
-                const result = await geminiService.suggestAddresses(query, userLocation);
+                const result = await geminiService.suggestAddresses(query, userLocation, abortController.signal);
                 // Only update if the query hasn't changed or been cleared since the request started.
                 if (addressLookupRequestRef.current === requestId) {
+                    addressSuggestionCacheRef.current.set(normalizedQuery, {
+                        suggestions: result.data,
+                        usage: result.usage
+                    });
+                    if (addressSuggestionCacheRef.current.size > ADDRESS_SUGGESTION_CACHE_LIMIT) {
+                        const oldestKey = addressSuggestionCacheRef.current.keys().next().value;
+                        if (oldestKey) addressSuggestionCacheRef.current.delete(oldestKey);
+                    }
+                    lastAddressLookupQueryRef.current = normalizedQuery;
                     setAddressSuggestions(result.data);
+                    upsertAddressSuggestionLog({
+                        status: 'success',
+                        inputs: query,
+                        outputs: `${result.data.length} suggestions returned for latest query`,
+                        usage: result.usage
+                    });
                 }
-                updateLog(logId, { status: 'success', outputs: `${result.data.length} suggestions returned`, usage: result.usage });
             } catch (error) {
+                if (error instanceof DOMException && error.name === 'AbortError') return;
                 console.error("Address suggestions error:", error);
                 if (addressLookupRequestRef.current === requestId) {
                     setAddressSuggestions([]);
+                    upsertAddressSuggestionLog({
+                        status: 'error',
+                        inputs: query,
+                        message: error instanceof Error ? error.message : 'Address suggestions failed.',
+                    });
                 }
-                updateLog(logId, { status: 'error', message: error instanceof Error ? error.message : 'Address suggestions failed.' });
             } finally {
                 if (addressLookupRequestRef.current === requestId) {
                     setIsSuggesting(false);
                 }
+                if (activeAddressLookupAbortRef.current === abortController) {
+                    activeAddressLookupAbortRef.current = null;
+                }
             }
-        }, 350); // Debounce to prevent too many requests while keeping lookup feedback responsive.
+        }, ADDRESS_LOOKUP_DEBOUNCE_MS);
 
         return () => {
             clearTimeout(handler);
+            activeAddressLookupAbortRef.current?.abort();
         };
     }, [address, selectedAddress, userLocation]);
 
     const handleSuggestionClick = (suggestion: string) => {
         const confirmedAddress = suggestion.trim();
+        addressLookupRequestRef.current += 1;
+        activeAddressLookupAbortRef.current?.abort();
+        activeAddressLookupAbortRef.current = null;
+        lastAddressLookupQueryRef.current = normalizeAddressLookupQuery(confirmedAddress);
         setSelectedAddress({ label: confirmedAddress });
         setAddress(confirmedAddress);
         setAddressSuggestions([]);
         setShowSuggestions(false);
         setIsSuggesting(false);
+        setIsAddressLookupQueued(false);
         setIsFetchComplete(false);
+        upsertAddressSuggestionLog({
+            status: 'success',
+            inputs: confirmedAddress,
+            outputs: 'Address selected for research',
+        });
     };
 
     const handleAddressChange = (value: string) => {
@@ -820,24 +923,31 @@ const App: React.FC = () => {
     };
 
     const handleFetchDetails = async () => {
-        const confirmedAddress = selectedAddress?.label;
-        const addressForResearch = confirmedAddress || address.trim();
+        const typedAddressSnapshot = address.trim();
+        const selectedAddressSnapshot = selectedAddress &&
+            normalizeAddressLookupQuery(selectedAddress.label) === normalizeAddressLookupQuery(typedAddressSnapshot)
+            ? selectedAddress.label.trim()
+            : null;
+        const addressForResearch = selectedAddressSnapshot || typedAddressSnapshot;
 
         if (!addressForResearch) {
             setResearchError("Please enter a property address to fetch details.");
             return;
         }
+        addressLookupRequestRef.current += 1;
+        activeAddressLookupAbortRef.current?.abort();
+        activeAddressLookupAbortRef.current = null;
+        lastAddressLookupQueryRef.current = normalizeAddressLookupQuery(addressForResearch);
+        setAddress(addressForResearch);
+        setAddressSuggestions([]);
+        setShowSuggestions(false);
+        setIsSuggesting(false);
+        setIsAddressLookupQueued(false);
         if (!beginCampaignOperation('propertyResearch', 'Property research')) return;
         const logId = addLog({ stepName: 'Fetch Property Details', status: 'pending', inputs: addressForResearch });
         let location = userLocation;
         setIsResearching(true);
         setResearchError(null);
-        setResearchData(null);
-        setKeyFeatures(null);
-        setProfileData(null);
-        setPriceGuide(null);
-        setLastSoldDetails(null);
-        setGroundingSources([]);
         setIsFetchComplete(false);
         setCopyContextAnalysisStatus('idle');
         setPropertyFeaturesAnalysisStatus('idle');
@@ -889,6 +999,7 @@ const App: React.FC = () => {
             setResearchError(msg);
             setIsFetchComplete(false);
             updateLog(logId, { status: 'error', message: msg });
+            setNotification("Research failed. Existing property details were kept.");
         } finally {
             setIsResearching(false);
             endCampaignOperation('propertyResearch');
@@ -1557,7 +1668,7 @@ const App: React.FC = () => {
                                         type="text"
                                         value={address}
                                         onChange={(e) => handleAddressChange(e.target.value)}
-                                        onFocus={() => { if (address.length >= 3) setShowSuggestions(true); }}
+                                        onFocus={() => { if (normalizeAddressLookupQuery(address).length >= ADDRESS_LOOKUP_MIN_CHARS) setShowSuggestions(true); }}
                                         onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                                         placeholder="Start typing a property address..."
                                         className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -1577,7 +1688,7 @@ const App: React.FC = () => {
                                             ))}
                                         </ul>
                                     )}
-                                    {showSuggestions && address.trim().length >= 3 && addressSuggestions.length === 0 && (isAddressLookupQueued || isSuggesting) && (
+                                    {showSuggestions && normalizeAddressLookupQuery(address).length >= ADDRESS_LOOKUP_MIN_CHARS && addressSuggestions.length === 0 && (isAddressLookupQueued || isSuggesting) && (
                                         <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-md mt-1 shadow-lg p-2 text-sm text-gray-500">
                                             Looking up address...
                                         </div>

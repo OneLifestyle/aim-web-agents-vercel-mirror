@@ -406,6 +406,65 @@ const parseStrategyAnalysisText = (text: string | undefined): StrategyAnalysisRe
     return validateStrategyAnalysisResult(parseRobustJSON(text));
 };
 
+const normalizeNullableNumber = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value !== 'string') return null;
+    const numeric = Number(value.replace(/,/g, '').trim());
+    return Number.isFinite(numeric) ? numeric : null;
+};
+
+const normalizeNullableText = (value: unknown): string | null => {
+    if (value === null || value === undefined) return null;
+    const text = cleanMarkdown(value);
+    return text || null;
+};
+
+const requireResearchTextField = (value: unknown, fieldName: string): string => {
+    const text = cleanMarkdown(value);
+    if (!text) throw new Error(`Research response ${fieldName} is missing or empty.`);
+    return text;
+};
+
+const validateResearchPropertyResult = (value: unknown): Omit<ResearchResult, 'fullText' | 'sources'> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('Research response must be a JSON object.');
+    }
+
+    const result = value as Record<string, unknown>;
+    const specsInput = result.specs;
+    if (!specsInput || typeof specsInput !== 'object' || Array.isArray(specsInput)) {
+        throw new Error('Research response specs must be a JSON object.');
+    }
+    const specsRecord = specsInput as Record<string, unknown>;
+
+    return {
+        summary: requireResearchTextField(result.summary, 'summary'),
+        keyFeatures: requireResearchTextField(
+            Array.isArray(result.keyFeatures) ? result.keyFeatures.join('\n') : result.keyFeatures,
+            'keyFeatures'
+        ),
+        suburbProfile: requireResearchTextField(result.suburbProfile, 'suburbProfile'),
+        regionalProfile: requireResearchTextField(result.regionalProfile, 'regionalProfile'),
+        specs: {
+            beds: normalizeNullableNumber(specsRecord.beds),
+            baths: normalizeNullableNumber(specsRecord.baths),
+            cars: normalizeNullableNumber(specsRecord.cars),
+            landSize: normalizeNullableNumber(specsRecord.landSize),
+            propertyType: normalizeNullableText(specsRecord.propertyType) || 'House',
+            priceGuide: normalizeNullableText(specsRecord.priceGuide),
+            lastSold: normalizeNullableText(specsRecord.lastSold),
+        }
+    };
+};
+
+const parseResearchPropertyText = (text: string | undefined): Omit<ResearchResult, 'fullText' | 'sources'> => {
+    if (!text || !text.trim()) {
+        throw new Error('Research response was empty.');
+    }
+    return validateResearchPropertyResult(parseRobustJSON(text));
+};
+
 const readJsonBody = async (req: any): Promise<any> => {
     const lengthHeader = req.headers?.['content-length'];
     const declaredLength = typeof lengthHeader === 'string' ? Number(lengthHeader) : 0;
@@ -726,12 +785,54 @@ const researchProperty = async (payload: Record<string, any>): Promise<ServiceRe
 
     try {
         const response: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent(request));
-        const text = response.text;
-        if (!text) {
-            throw new Error('Empty response from AI researcher.');
-        }
+        const firstUsage = extractUsage(response, model, 'researchProperty');
+        let responseText = response.text;
+        let data: Omit<ResearchResult, 'fullText' | 'sources'>;
+        let usage = firstUsage;
 
-        const data = requireObject(parseRobustJSON(text), 'research response');
+        try {
+            data = parseResearchPropertyText(responseText);
+        } catch (parseError: any) {
+            const repairPrompt = `The previous property research response was not valid for the app.
+
+Validation error: ${parseError?.message || 'Invalid JSON shape.'}
+
+Repair the response using the original task and source context below. Return only valid JSON with this exact shape:
+{
+  "summary": "multi-paragraph narrative text",
+  "keyFeatures": "detailed bullet list text or array of strings",
+  "suburbProfile": "narrative text",
+  "regionalProfile": "narrative text",
+  "specs": {
+    "beds": number or null,
+    "baths": number or null,
+    "cars": number or null,
+    "landSize": number or null,
+    "propertyType": "string",
+    "priceGuide": "string or null",
+    "lastSold": "string or null"
+  }
+}
+
+Original task:
+${prompt}
+
+Invalid response:
+${responseText || '[empty response]'}`;
+
+            try {
+                const repairResponse: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({
+                    model,
+                    contents: repairPrompt,
+                    config: { responseMimeType: 'application/json' }
+                }), 1);
+                data = parseResearchPropertyText(repairResponse.text);
+                responseText = repairResponse.text || responseText;
+                usage = aggregateServerUsage('researchProperty', [firstUsage, extractUsage(repairResponse, model, 'researchProperty')], model);
+            } catch (repairError: any) {
+                throw new Error(`The AI research response could not be repaired into valid JSON. ${repairError?.message || 'Please retry Fetch Details.'}`);
+            }
+        }
 
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
         const sources: GroundingSource[] = groundingChunks
@@ -740,15 +841,15 @@ const researchProperty = async (payload: Record<string, any>): Promise<ServiceRe
 
         return {
             data: {
-                fullText: text,
-                summary: cleanMarkdown(data.summary),
-                keyFeatures: Array.isArray(data.keyFeatures) ? data.keyFeatures.join('\n') : cleanMarkdown(data.keyFeatures),
-                suburbProfile: cleanMarkdown(data.suburbProfile),
-                regionalProfile: cleanMarkdown(data.regionalProfile),
+                fullText: responseText || '',
+                summary: data.summary,
+                keyFeatures: data.keyFeatures,
+                suburbProfile: data.suburbProfile,
+                regionalProfile: data.regionalProfile,
                 specs: data.specs,
                 sources
             },
-            usage: extractUsage(response, model, 'researchProperty')
+            usage
         };
     } catch (e: any) {
         console.error('Research property error:', e?.message || e);
