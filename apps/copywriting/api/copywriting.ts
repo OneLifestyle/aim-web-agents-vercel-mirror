@@ -1137,18 +1137,9 @@ RULES: Use emojis as in template. Bullet points must be concise. No em-dashes. R
 };
 
 const refineCopy = async (payload: Record<string, any>): Promise<ServiceResponse<string>> => {
-    const copy = requireString(payload.copy, 'copy', 80000);
-    const instruction = requireString(payload.instruction, 'instruction', 5000);
-    const prompt = `Refine this copy based on: ${instruction}. No em-dashes. Return ONLY the refined copy.\n\n${copy}`;
-    try {
-        const model = resolveModelForOperation('refineCopy');
-        if (!model) throw new ApiError(500, 'No model configured for refinement.');
-        const response: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({ model, contents: prompt }));
-        return { data: cleanMarkdown(response.text), usage: extractUsage(response, model, 'refineCopy') };
-    } catch (e: any) {
-        console.error('Refine copy error:', e?.message || e);
-        throw new Error('Refine failed.');
-    }
+    requireString(payload.copy, 'copy', 80000);
+    requireString(payload.instruction, 'instruction', 5000);
+    throw new ApiError(410, 'Advanced refinement is not available in Copywriting v1. Update the campaign inputs and regenerate outputs instead.');
 };
 
 const getChatbotResponse = async (payload: Record<string, any>): Promise<ServiceResponse<string>> => {

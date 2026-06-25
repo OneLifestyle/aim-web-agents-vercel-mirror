@@ -6,6 +6,8 @@ Date: 2026-06-25
 
 Scope: focused UX refinement for the Copywriting Web Agent selected output card and nearby action controls. This goal changed only Copywriting UI and documentation. It did not add dependencies, platform integrations, auth, Hub, billing, storage, database schema, provider routing, environment files, secrets, ZIP packaging, or a redesigned export model.
 
+Current status note: `WEBAGENTS-COPYWRITING-V1-OUTPUT-SIMPLIFICATION-001` supersedes the edit/refine/save timeline portions of this document. Campaign Outputs v1 now treats generated outputs as read-only drafts and removes reachable local edit, advanced refine, run refine, save timeline, and timeline viewer controls from the primary UI.
+
 ## Selected Output Contact Card
 
 The `Contact card` control now sits inside the selected output card content area, above the generated copy field. It behaves like an inclusion option for the current output instead of a peer action beside copy and download controls.

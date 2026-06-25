@@ -177,6 +177,22 @@ Status date: `2026-06-25`
 - Deferred product decision: later design work should decide whether campaign export should become a selected-output model, whether V1 should bias harder toward a simple appliance-like workflow, and how Hub retrieval, prior jobs, timeline state, and asset-based re-entry should affect export semantics.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## V1 Output Simplification 001 Status
+
+Status date: `2026-06-25`
+
+- Goal: `WEBAGENTS-COPYWRITING-V1-OUTPUT-SIMPLIFICATION-001`
+- Review artifact: `docs/v1-output-simplification-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current output summary: generated Campaign Outputs are read-only by design in the primary v1 UI. The selected output renders as review text rather than an editable generated-output textarea.
+- Current action summary: `Edit local copy`, `Advanced refine beta`, `Run refine`, `Save local timeline`, and the local timeline viewer are no longer reachable from the primary UI. The selected output keeps `Copy`, `Download`, and the `Contact card` checkbox.
+- Current guidance summary: the output footer now tells users to update property details, features, audience or style and regenerate, then copy/download drafts for final editing outside Real Estate AIM.
+- Current refine summary: the dormant `refineCopy` API validates the old payload shape but returns a v1-unavailable response before any provider call.
+- Current generation summary: Generate Listing Copy, Generate missing outputs, queued missing-output generation, on-demand missing output generation, category filters, output tiles, status chips, Campaign Build Log, current category download, and campaign download remain on existing paths.
+- Deferred product decision: post-generation editing, advanced refine/chat-style editing, Canvas-style focus mode, Hub-based asset retrieval/re-entry, selected-output export bundles, provenance/versioning, and review/approval workflow are deferred to later v2/export-pack work.
+- Current model routing summary: unchanged for required routes. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

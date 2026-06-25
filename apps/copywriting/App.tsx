@@ -1,8 +1,8 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import type { PropertyDetails, AgentProfile, CopyContext, OutputSettings, ImageFile, PreviewTab, GroundingSource, ImageContent, TimelineItem, ResearchResult, GenerationParams, DebugLogEntry, UsageStats, OpenHouseDetails } from './types';
-import { TARGET_MARKETS, WRITING_STYLES, PROPERTY_TYPES, IconFileWord, IconFilePdf, IconClock, IconFileTxt } from './constants';
-import { IconBuilding, IconCamera, IconChevronDown, IconClipboard, IconDownload, IconFileText, IconHome, IconLoader, IconMessage, IconMinus, IconPlus, IconSend, IconSparkles, IconTrash, IconUpload, IconX, IconWorld, IconMapPin, IconCheckCircle, IconExclamationCircle, IconChevronLeft, IconChevronRight } from './constants';
+import type { PropertyDetails, AgentProfile, CopyContext, OutputSettings, ImageFile, PreviewTab, GroundingSource, ImageContent, ResearchResult, GenerationParams, DebugLogEntry, UsageStats, OpenHouseDetails } from './types';
+import { TARGET_MARKETS, WRITING_STYLES, PROPERTY_TYPES, IconFileWord, IconFilePdf, IconFileTxt } from './constants';
+import { IconBuilding, IconCamera, IconChevronDown, IconClipboard, IconDownload, IconFileText, IconHome, IconLoader, IconMessage, IconMinus, IconPlus, IconSparkles, IconTrash, IconUpload, IconWorld, IconMapPin, IconCheckCircle, IconExclamationCircle, IconChevronLeft, IconChevronRight } from './constants';
 import * as geminiService from './services/geminiService';
 import { fileToBase64 } from './utils/fileUtils';
 import { buildCampaignExportPlan, sanitizeFileNamePart } from './utils/exportAssembly';
@@ -13,7 +13,7 @@ type VersionSet = Partial<Record<PreviewTab, string>>;
 type SelectedAddress = {
     label: string;
 };
-type CampaignOperationId = 'propertyResearch' | 'copyContextAnalysis' | 'propertyFeaturesAnalysis' | 'imageAnalysis' | 'generateFullCopy' | 'generateAllVariations' | 'refineCopy' | 'exportFullCampaign';
+type CampaignOperationId = 'propertyResearch' | 'copyContextAnalysis' | 'propertyFeaturesAnalysis' | 'imageAnalysis' | 'generateFullCopy' | 'generateAllVariations' | 'exportFullCampaign';
 type ActiveCampaignOperation = {
     id: CampaignOperationId;
     label: string;
@@ -32,7 +32,6 @@ type CampaignOutputSectionMeta = {
     description: string;
     slug: string;
     canDownload: boolean;
-    canRefine: boolean;
 };
 type CampaignOutputCategoryFilter = 'All' | string;
 
@@ -52,111 +51,93 @@ const CAMPAIGN_OUTPUT_SECTION_META: Record<PreviewTab, Omit<CampaignOutputSectio
         shortLabel: 'Full copy',
         description: 'Primary listing copy and the source for campaign variations.',
         canDownload: true,
-        canRefine: true,
     },
     'Just Listed': {
         shortLabel: 'Just listed',
         description: 'Launch copy for newly listed property announcements.',
         canDownload: true,
-        canRefine: true,
     },
     'Brochure Copy': {
         shortLabel: 'Brochure',
         description: 'Longer-form brochure text for printed and digital collateral.',
         canDownload: true,
-        canRefine: true,
     },
     'Email': {
         shortLabel: 'Email',
         description: 'Email campaign copy for database and buyer follow-up.',
         canDownload: true,
-        canRefine: true,
     },
     'Flyer': {
         shortLabel: 'Flyer',
         description: 'Concise flyer copy for local print and handout use.',
         canDownload: true,
-        canRefine: true,
     },
     'Coming Soon Teaser': {
         shortLabel: 'Teaser',
         description: 'Pre-market teaser copy before the full campaign launch.',
         canDownload: true,
-        canRefine: true,
     },
     'Coming Soon Email': {
         shortLabel: 'Coming email',
         description: 'Pre-market email copy for early buyer interest.',
         canDownload: true,
-        canRefine: true,
     },
     'Coming Soon SMS': {
         shortLabel: 'SMS',
         description: 'Short pre-market SMS copy.',
         canDownload: true,
-        canRefine: true,
     },
     'Facebook': {
         shortLabel: 'Facebook',
         description: 'Facebook post copy for campaign promotion.',
         canDownload: true,
-        canRefine: true,
     },
     'Facebook Marketplace': {
         shortLabel: 'Marketplace',
         description: 'Marketplace-ready property description copy.',
         canDownload: true,
-        canRefine: true,
     },
     'Instagram': {
         shortLabel: 'Instagram',
         description: 'Instagram caption copy with social-first framing.',
         canDownload: true,
-        canRefine: true,
     },
     'X (Twitter)': {
         shortLabel: 'X',
         description: 'Short-form social copy for X.',
         canDownload: true,
-        canRefine: true,
     },
     'Google Business': {
         shortLabel: 'Google',
         description: 'Google Business profile update copy.',
         canDownload: true,
-        canRefine: true,
     },
     'TikTok': {
         shortLabel: 'TikTok',
         description: 'Short video social caption or hook copy.',
         canDownload: true,
-        canRefine: true,
     },
     'Open House': {
         shortLabel: 'Open house',
         description: 'Open home event copy and invitation text.',
         canDownload: true,
-        canRefine: true,
     },
     'Long-form / Blog': {
         shortLabel: 'Blog',
         description: 'Long-form article copy for content marketing.',
         canDownload: true,
-        canRefine: true,
     },
     'Video Script': {
         shortLabel: 'Video',
         description: 'Property video script and direction notes.',
         canDownload: true,
-        canRefine: true,
     },
 };
-const OUTPUT_MUTATING_OPERATIONS = new Set<CampaignOperationId>(['generateFullCopy', 'generateAllVariations', 'refineCopy', 'exportFullCampaign']);
+const OUTPUT_MUTATING_OPERATIONS = new Set<CampaignOperationId>(['generateFullCopy', 'generateAllVariations', 'exportFullCampaign']);
 const ADDRESS_LOOKUP_MIN_CHARS = 5;
 const ADDRESS_LOOKUP_DEBOUNCE_MS = 450;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 20;
 const compactActionButtonClass = 'inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50';
-const compactSecondaryActionButtonClass = 'inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50';
 
 const normalizeAddressLookupQuery = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -518,7 +499,6 @@ const App: React.FC = () => {
     const [groundingSources, setGroundingSources] = useState<GroundingSource[]>([]);
 
     const [isGenerating, setIsGenerating] = useState(false);
-    const [isRefining, setIsRefining] = useState(false);
     const [generationError, setGenerationError] = useState<string | null>(null);
 
     const [versionSets, setVersionSets] = useState<VersionSet[]>([]);
@@ -529,15 +509,6 @@ const App: React.FC = () => {
     const [selectedOutputCategory, setSelectedOutputCategory] = useState<CampaignOutputCategoryFilter>('All');
     const [generatingTab, setGeneratingTab] = useState<PreviewTab | null>(null);
     const [queuedOutputTabs, setQueuedOutputTabs] = useState<PreviewTab[]>([]);
-    const [editedStatus, setEditedStatus] = useState<Partial<Record<PreviewTab, boolean>>>({});
-    const [isLocalEditEnabled, setIsLocalEditEnabled] = useState(false);
-    const [isAdvancedRefineOpen, setIsAdvancedRefineOpen] = useState(false);
-    const refineInputRef = useRef<HTMLInputElement>(null);
-
-    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
-    const saveTimeoutRef = useRef<number | null>(null);
-    const hideSaveStatusTimeoutRef = useRef<number | null>(null);
-
     const [isAnalyzingStrategy, setIsAnalyzingStrategy] = useState(false);
     const [isAnalyzingFeatures, setIsAnalyzingFeatures] = useState(false);
     const [copyContextAnalysisStatus, setCopyContextAnalysisStatus] = useState<AnalysisRunStatus>('idle');
@@ -555,12 +526,10 @@ const App: React.FC = () => {
 
 
     const [notification, setNotification] = useState<string | null>(null);
-    const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
     const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
     const [isCategoryExportMenuOpen, setIsCategoryExportMenuOpen] = useState(false);
     const [isDownloadAllMenuOpen, setIsDownloadAllMenuOpen] = useState(false);
-    const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
     const [isDownloadingAll, setIsDownloadingAll] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
     const categoryExportMenuRef = useRef<HTMLDivElement>(null);
@@ -659,17 +628,6 @@ const App: React.FC = () => {
     const handleOpenHouseChange = (field: keyof OpenHouseDetails, value: string) => {
         setOpenHouse(prev => ({ ...prev, [field]: value }));
     };
-
-    useEffect(() => {
-        const storedTimeline = localStorage.getItem('copywritingTimeline');
-        if (storedTimeline) {
-            setTimeline(JSON.parse(storedTimeline));
-        }
-    }, []);
-
-    useEffect(() => {
-        localStorage.setItem('copywritingTimeline', JSON.stringify(timeline));
-    }, [timeline]);
 
     useEffect(() => {
         if (notification) {
@@ -1217,7 +1175,6 @@ const App: React.FC = () => {
         const updatedVersionSets = [...versionSets, newVersion].slice(-3);
         setVersionSets(updatedVersionSets);
         setActiveVersionIndex(updatedVersionSets.length - 1);
-        setEditedStatus(prev => ({ ...prev, [copyType]: false }));
         setIncludeContactDetails(false);
     };
 
@@ -1227,7 +1184,6 @@ const App: React.FC = () => {
         currentVersion[copyType] = newCopy;
         updatedVersionSets[activeVersionIndex] = currentVersion;
         setVersionSets(updatedVersionSets);
-        setEditedStatus(prev => ({ ...prev, [copyType]: false }));
     };
 
     const generateCopyForTab = async (tab: PreviewTab, isRegeneration = false) => {
@@ -1401,8 +1357,6 @@ const App: React.FC = () => {
         setActiveMainTab(mainTab);
         setActiveSubTab(subTab);
         setIncludeContactDetails(false);
-        setIsLocalEditEnabled(false);
-        setIsAdvancedRefineOpen(false);
         const currentVersion = versionSets[activeVersionIndex];
         if (currentVersion && !currentVersion[subTab]) {
             handleGenerateThisOutput(subTab);
@@ -1415,27 +1369,6 @@ const App: React.FC = () => {
 
     const contactCard = `\n\n---\nFor more information or to arrange a private inspection, please contact:\n\n${agentProfile.name || '[Agent Name]'}\n${agentProfile.agency || '[Agency Name]'}\n${agentProfile.phone || '[Phone]'}\n${agentProfile.email || '[Email]'}`;
     const contactCardRegex = new RegExp(`\\s*---\\s*For more information.*`, 's');
-
-    const handleCopyEdit = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const newValue = e.target.value;
-        setVersionSets(prev => {
-            const allVersions = [...prev];
-            const currentVersion = { ...allVersions[activeVersionIndex] };
-            currentVersion[activeSubTab] = newValue;
-            allVersions[activeVersionIndex] = currentVersion;
-            return allVersions;
-        });
-        setEditedStatus(prev => ({ ...prev, [activeSubTab]: true }));
-        setSaveStatus('saving');
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        if (hideSaveStatusTimeoutRef.current) clearTimeout(hideSaveStatusTimeoutRef.current);
-        saveTimeoutRef.current = window.setTimeout(() => {
-            setSaveStatus('saved');
-            hideSaveStatusTimeoutRef.current = window.setTimeout(() => {
-                setSaveStatus('idle');
-            }, 2000);
-        }, 750);
-    };
 
     const handleToggleContactDetails = (shouldInclude: boolean) => {
         setIncludeContactDetails(shouldInclude);
@@ -1451,37 +1384,6 @@ const App: React.FC = () => {
         }
 
         updateCurrentVersion(newCopy, activeSubTab);
-    };
-
-    const handleRefineCopy = async (instruction: string) => {
-        const currentVersion = versionSets[activeVersionIndex];
-        const currentCopy = currentVersion ? currentVersion[activeSubTab] : undefined;
-        if (!currentCopy) return;
-        if (!beginCampaignOperation('refineCopy', `${activeSubTab} refinement`)) return;
-        setIsRefining(true);
-        setGenerationError(null);
-        const logId = addLog({ stepName: 'Refine Copy', status: 'pending', inputs: instruction });
-        try {
-            const result = await geminiService.refineCopy(currentCopy, instruction);
-            const refinedCopy = result.data;
-            if (activeSubTab === 'Full Copy') {
-                // If master copy is refined, we effectively treat it like a new baseline
-                const updatedVersionSets = [...versionSets];
-                updatedVersionSets[activeVersionIndex] = { [activeSubTab]: refinedCopy };
-                setVersionSets(updatedVersionSets);
-            } else {
-                updateCurrentVersion(refinedCopy, activeSubTab);
-            }
-            updateLog(logId, { status: 'success', outputs: refinedCopy.substring(0, 100) + '...', usage: result.usage });
-        } catch (error) {
-            console.error(error);
-            const msg = error instanceof Error ? error.message : "An error occurred while refining copy.";
-            setGenerationError(msg);
-            updateLog(logId, { status: 'error', message: msg });
-        } finally {
-            setIsRefining(false);
-            endCampaignOperation('refineCopy');
-        }
     };
 
     const handleCopyToClipboard = (text: string) => {
@@ -1581,23 +1483,6 @@ const App: React.FC = () => {
         }
 
         setIsCategoryExportMenuOpen(false);
-    };
-
-    const handleSaveToTimeline = (copy: string) => {
-        const newItem: TimelineItem = {
-            id: new Date().toISOString(),
-            date: new Date().toLocaleDateString(),
-            address: address || 'Untitled',
-            copyType: activeSubTab,
-            copy: copy
-        };
-        setTimeline(prev => [newItem, ...prev]);
-        setNotification('Saved to Timeline!');
-    };
-
-    const handleDeleteFromTimeline = (id: string) => {
-        setTimeline(prev => prev.filter(item => item.id !== id));
-        setNotification('Removed from Timeline.');
     };
 
     const handleDownloadAll = async (format: 'pdf' | 'word' | 'txt') => {
@@ -1709,7 +1594,6 @@ const App: React.FC = () => {
 
     const currentVersionSet = versionSets[activeVersionIndex] || {};
     const currentCopy = currentVersionSet[activeSubTab] || '';
-    const isEdited = editedStatus[activeSubTab];
     const getCampaignOperationBlocker = (id: CampaignOperationId): ActiveCampaignOperation | null => {
         return activeCampaignOperations.find(operation => campaignOperationsConflict(id, operation.id)) ?? null;
     };
@@ -1730,7 +1614,6 @@ const App: React.FC = () => {
     const propertyResearchBlocker = getCampaignOperationBlocker('propertyResearch');
     const generateCopyBlocker = getCampaignOperationBlocker('generateFullCopy');
     const generateAllBlocker = getCampaignOperationBlocker('generateAllVariations');
-    const refineCopyBlocker = getCampaignOperationBlocker('refineCopy');
     const exportFullCampaignBlocker = getCampaignOperationBlocker('exportFullCampaign');
 
     useEffect(() => {
@@ -1815,7 +1698,7 @@ const App: React.FC = () => {
         return { total: sections.length, ready, missing, generating };
     };
     const hasGeneratedOutputsInSelectedCategory = selectedOutputCategory !== 'All' && filteredCampaignOutputSections.some(section => section.generated);
-    const isCampaignOutputsActive = isGenerating || isDownloadingAll || isRefining;
+    const isCampaignOutputsActive = isGenerating || isDownloadingAll;
     const getCampaignOutputStatusLabel = (status: CampaignOutputStatus): string => {
         if (status === 'ready') return 'Ready';
         if (status === 'generating') return 'Generating';
@@ -1976,12 +1859,7 @@ const App: React.FC = () => {
                             <span className="font-light text-gray-600"> | Copywriting Agent</span>
                         </h1>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <button onClick={() => setIsTimelineModalOpen(true)} className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-red-600 transition-colors">
-                           <IconClock />
-                           <span>Timeline ({timeline.length})</span>
-                        </button>
-                    </div>
+                    <div aria-hidden="true" />
                 </div>
             </header>
             <div className="border-b border-gray-200 bg-white px-6 py-3 text-sm">
@@ -2514,7 +2392,7 @@ const App: React.FC = () => {
                              {imageAnalysis ? renderVisualHighlights() : <Placeholder icon={<IconCamera />} title="Visual Analysis" description="Analyze photos to see features." />}
                          </Section>
 
-                         <Section id="campaign-outputs" title="Campaign Outputs" isActive={isCampaignOutputsActive} activeLabel={isDownloadingAll ? 'Preparing...' : isRefining ? 'Refining...' : 'Generating...'}>
+                         <Section id="campaign-outputs" title="Campaign Outputs" isActive={isCampaignOutputsActive} activeLabel={isDownloadingAll ? 'Preparing...' : 'Generating...'}>
                              <div className="flex flex-col gap-5">
                                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                                      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
@@ -2695,13 +2573,14 @@ const App: React.FC = () => {
                                                      </label>
                                                      <p id="contact-card-helper" className="text-[11px] leading-snug text-gray-500">Include the agent profile/contact details with this output.</p>
                                                  </div>
-                                                 <textarea
-                                                    readOnly={!isLocalEditEnabled}
-                                                    className={`w-full resize-y rounded-lg border p-4 font-sans text-sm leading-relaxed text-gray-800 shadow-sm min-h-[520px] focus:outline-none focus:ring-2 ${isLocalEditEnabled ? 'border-blue-300 bg-white focus:ring-blue-500' : 'border-gray-200 bg-gray-50 focus:ring-gray-300'}`}
-                                                    value={currentCopy}
-                                                    onChange={handleCopyEdit}
-                                                    placeholder="Your campaign output will appear here..."
-                                                 />
+                                                 <div
+                                                    role="region"
+                                                    aria-label={`${activeSubTab} generated output`}
+                                                    tabIndex={0}
+                                                    className="min-h-[520px] w-full whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-4 font-sans text-sm leading-relaxed text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                                                 >
+                                                    {currentCopy}
+                                                 </div>
                                              </>
                                          ) : (
                                              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
@@ -2724,10 +2603,6 @@ const App: React.FC = () => {
                                      <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
                                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                              <div className="flex flex-wrap items-center gap-2">
-                                                 <button onClick={() => setIsLocalEditEnabled(value => !value)} disabled={!currentCopy} title="Edit local copy" aria-label="Edit local copy" className={`inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isLocalEditEnabled ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}>
-                                                     <IconFileText className="w-4 h-4" />
-                                                     {isLocalEditEnabled ? 'Lock' : 'Edit'}
-                                                 </button>
                                                  <button onClick={() => handleCopyToClipboard(currentCopy)} disabled={!currentCopy} title="Copy current output" aria-label="Copy current output" className={compactActionButtonClass}><IconClipboard className="w-4 h-4" /> Copy</button>
                                                  <div className="relative" ref={exportMenuRef}>
                                                      <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} disabled={!currentCopy} title="Download current output" aria-label="Download current output" className={compactActionButtonClass}>
@@ -2744,54 +2619,11 @@ const App: React.FC = () => {
                                                          </div>
                                                      )}
                                                  </div>
-                                                 <button onClick={() => handleSaveToTimeline(currentCopy)} disabled={!currentCopy} title="Save to timeline" aria-label="Save to timeline" className={compactSecondaryActionButtonClass}><IconClock className="w-4 h-4" /> Save</button>
-                                             </div>
-                                             <div className="flex flex-wrap items-center gap-2">
-                                                 <button onClick={() => setIsAdvancedRefineOpen(value => !value)} disabled={!currentCopy} title="Advanced refine beta" aria-label="Advanced refine beta" className={compactSecondaryActionButtonClass}>
-                                                     <IconSparkles className="w-4 h-4" />
-                                                     Refine beta
-                                                 </button>
-                                                 {isEdited && <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">Edited</span>}
-                                                 {saveStatus !== 'idle' && <span className="text-xs font-medium text-gray-500">{saveStatus === 'saving' ? 'Saving...' : 'Saved'}</span>}
                                              </div>
                                          </div>
-                                         <p className="mt-2 text-[11px] leading-snug text-gray-500">Read-only until Edit is enabled. Save is local; Refine beta uses the model.</p>
-                                         {isAdvancedRefineOpen && (
-                                             <div className="mt-3 rounded-md border border-gray-200 bg-white p-3">
-                                                 <div className="flex flex-col gap-2 sm:flex-row">
-                                                     <input
-                                                        ref={refineInputRef}
-                                                        type="text"
-                                                        placeholder={`Refine ${activeSubTab}, e.g. warmer, shorter or more premium`}
-                                                        className="min-h-10 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                                                        onKeyDown={e => {
-                                                            if (e.key === 'Enter') {
-                                                                const instruction = e.currentTarget.value.trim();
-                                                                if (instruction) {
-                                                                    handleRefineCopy(instruction);
-                                                                    e.currentTarget.value = '';
-                                                                }
-                                                            }
-                                                        }}
-                                                     />
-                                                     <button
-                                                        disabled={!currentCopy || isRefining || Boolean(refineCopyBlocker)}
-                                                        title={getCampaignOperationTitle('refineCopy', !currentCopy ? 'Generate copy before refining.' : undefined)}
-                                                        aria-label="Run advanced refine beta"
-                                                        onClick={() => {
-                                                            const instruction = refineInputRef.current?.value.trim() || '';
-                                                            if (!instruction) return;
-                                                            handleRefineCopy(instruction);
-                                                            if (refineInputRef.current) refineInputRef.current.value = '';
-                                                        }}
-                                                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
-                                                     >
-                                                        {isRefining ? <Spinner className="w-4 h-4" /> : <IconSend className="w-4 h-4" />}
-                                                        Run refine
-                                                     </button>
-                                                 </div>
-                                             </div>
-                                         )}
+                                         <p className="mt-2 max-w-3xl text-[11px] leading-snug text-gray-500">
+                                             To change the copy, update the property details, features, audience or style, then regenerate. Outputs are generated drafts; copy or download them for final editing in your CRM, Word, Google Docs or email system.
+                                         </p>
                                      </div>
                                  </div>
                              </div>
@@ -2805,27 +2637,6 @@ const App: React.FC = () => {
 
                  <ChatBot onUsage={handleChatUsage} />
 
-                 {isTimelineModalOpen && (
-                     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                         <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-                             <div className="p-4 border-b flex justify-between items-center">
-                                 <h3 className="text-lg font-bold">Timeline</h3>
-                                 <button onClick={() => setIsTimelineModalOpen(false)}><IconX /></button>
-                             </div>
-                             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                 {timeline.length === 0 ? <div className="text-center py-10">No saved items.</div> : timeline.map(item => (
-                                     <div key={item.id} className="border rounded-lg p-4 hover:bg-gray-50">
-                                         <div className="flex justify-between items-start mb-2">
-                                             <div><h4 className="font-bold">{item.address}</h4><span className="text-xs">{item.copyType} • {item.date}</span></div>
-                                             <button onClick={() => handleDeleteFromTimeline(item.id)} className="text-red-500"><IconTrash className="w-4 h-4" /></button>
-                                         </div>
-                                         <p className="text-sm line-clamp-3">{item.copy}</p>
-                                     </div>
-                                 ))}
-                             </div>
-                         </div>
-                     </div>
-                 )}
                  <div id="print-render-area" className="hidden"></div>
             </main>
         </div>
