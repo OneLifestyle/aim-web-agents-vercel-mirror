@@ -155,6 +155,8 @@ const OUTPUT_MUTATING_OPERATIONS = new Set<CampaignOperationId>(['generateFullCo
 const ADDRESS_LOOKUP_MIN_CHARS = 5;
 const ADDRESS_LOOKUP_DEBOUNCE_MS = 450;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 20;
+const compactActionButtonClass = 'inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50';
+const compactSecondaryActionButtonClass = 'inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50';
 
 const normalizeAddressLookupQuery = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -2515,10 +2517,9 @@ const App: React.FC = () => {
                          <Section id="campaign-outputs" title="Campaign Outputs" isActive={isCampaignOutputsActive} activeLabel={isDownloadingAll ? 'Preparing...' : isRefining ? 'Refining...' : 'Generating...'}>
                              <div className="flex flex-col gap-5">
                                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                                     <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                                     <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                                          <div>
                                              <p className="text-sm font-semibold text-slate-900">Review and package campaign outputs for this property.</p>
-                                             <p className="mt-1 text-xs leading-relaxed text-slate-600">Use the tiles to choose a current output. Campaign-level actions prepare the full campaign document or fill missing outputs.</p>
                                              <div className="mt-3 flex flex-wrap gap-2 text-xs">
                                                  <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 font-semibold text-emerald-700">{readyOutputCount} ready</span>
                                                  <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-600">{missingOutputCount} missing</span>
@@ -2529,21 +2530,30 @@ const App: React.FC = () => {
                                              <button
                                                 onClick={handleGenerateAllMissing}
                                                 disabled={isGenerating || Boolean(generateAllBlocker) || !currentVersionSet['Full Copy']}
-                                                title={getCampaignOperationTitle('generateAllVariations', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before campaign variations.' : undefined)}
-                                                className={`inline-flex min-h-10 items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-bold transition-all ${allTabsGenerated ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                title={getCampaignOperationTitle(
+                                                    'generateAllVariations',
+                                                    !currentVersionSet['Full Copy']
+                                                        ? 'Generate Full Copy before campaign variations.'
+                                                        : allTabsGenerated
+                                                            ? 'All outputs are ready. This will regenerate campaign variations.'
+                                                            : 'Generate missing outputs.'
+                                                )}
+                                                aria-label="Generate missing outputs"
+                                                className={`inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-bold transition-all ${allTabsGenerated ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50 disabled:cursor-not-allowed`}
                                              >
                                                 <IconSparkles className="w-4 h-4" />
-                                                {allTabsGenerated ? 'Regenerate Campaign' : 'Generate missing outputs'}
+                                                Generate missing
                                              </button>
                                              <div className="relative" ref={downloadAllMenuRef}>
                                                  <button
                                                     onClick={() => setIsDownloadAllMenuOpen(!isDownloadAllMenuOpen)}
                                                     disabled={isDownloadingAll || Boolean(exportFullCampaignBlocker) || !currentVersionSet['Full Copy']}
                                                     title={getCampaignOperationTitle('exportFullCampaign', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before downloading the full campaign.' : undefined)}
-                                                    className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-slate-800 px-3 py-2 text-sm font-bold text-white transition-all hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                                                    aria-label="Download full campaign document"
+                                                    className="inline-flex min-h-9 items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-sm font-bold text-white transition-all hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
                                                  >
                                                      {isDownloadingAll ? <Spinner className="w-4 h-4" /> : <IconDownload className="w-4 h-4" />}
-                                                     Download full campaign document
+                                                     Download campaign
                                                  </button>
                                                  {isDownloadAllMenuOpen && (
                                                      <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-md shadow-xl border border-gray-200 py-1.5 z-50">
@@ -2598,10 +2608,11 @@ const App: React.FC = () => {
                                                             onClick={() => setIsCategoryExportMenuOpen(!isCategoryExportMenuOpen)}
                                                             disabled={!hasGeneratedOutputsInSelectedCategory}
                                                             title={!hasGeneratedOutputsInSelectedCategory ? `No generated ${selectedOutputCategory} outputs yet.` : `Download generated ${selectedOutputCategory} outputs.`}
-                                                            className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            aria-label="Download current category"
+                                                            className={compactActionButtonClass}
                                                          >
                                                              <IconDownload className="w-4 h-4" />
-                                                             Download current category
+                                                             Download category
                                                          </button>
                                                          {isCategoryExportMenuOpen && (
                                                              <div className="absolute right-0 top-full mt-2 w-60 rounded-md border border-gray-200 bg-white py-1 shadow-lg z-20">
@@ -2642,44 +2653,19 @@ const App: React.FC = () => {
 
                                  <div className="rounded-lg border border-gray-200 bg-white">
                                      <div className="border-b border-gray-100 p-4">
-                                         <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
-                                             <div>
-                                                 <div className="flex flex-wrap items-center gap-2">
-                                                     <h3 className="text-base font-semibold text-gray-900">{selectedCampaignOutput?.label || activeSubTab}</h3>
-                                                     {selectedCampaignOutput && (
-                                                         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${getCampaignOutputStatusClass(selectedCampaignOutput.status)}`}>
-                                                             {getCampaignOutputStatusLabel(selectedCampaignOutput.status)}
-                                                         </span>
-                                                     )}
-                                                     {isEdited && <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">Edited</span>}
-                                                     {saveStatus !== 'idle' && <span className="text-xs font-medium text-gray-500">{saveStatus === 'saving' ? 'Saving...' : 'Saved'}</span>}
-                                                 </div>
-                                                 <p className="mt-1 text-xs leading-relaxed text-gray-500">{selectedCampaignOutput?.description || 'Campaign output section.'}</p>
+                                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                             <div className="flex flex-wrap items-center gap-2">
+                                                 <h3 className="text-base font-semibold text-gray-900">{selectedCampaignOutput?.label || activeSubTab}</h3>
+                                                 {selectedCampaignOutput && (
+                                                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${getCampaignOutputStatusClass(selectedCampaignOutput.status)}`}>
+                                                         {getCampaignOutputStatusLabel(selectedCampaignOutput.status)}
+                                                     </span>
+                                                 )}
                                              </div>
-
-                                             <div className="flex flex-wrap items-center gap-2 2xl:justify-end">
-                                                 <button onClick={() => handleCopyToClipboard(currentCopy)} disabled={!currentCopy} title="Copy current output" aria-label="Copy current output" className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"><IconClipboard className="w-4 h-4" /> Copy current output</button>
-                                                 <div className="relative" ref={exportMenuRef}>
-                                                     <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} disabled={!currentCopy} title="Download current output" aria-label="Download current output" className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                                                         <IconDownload className="w-4 h-4" />
-                                                         Download current output
-                                                     </button>
-                                                     {isExportMenuOpen && (
-                                                         <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-20">
-                                                             <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Current output only</p>
-                                                             <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports {activeSubTab} only.</p>
-                                                             <button onClick={() => { handleExportWord(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
-                                                             <button onClick={() => { handleExportTxt(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
-                                                             <button onClick={() => { handleExportPdf(); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
-                                                         </div>
-                                                     )}
-                                                 </div>
-                                                 <button onClick={() => handleToggleContactDetails(!includeContactDetails)} disabled={!currentCopy} title="Toggle contact card for current output" className={`inline-flex min-h-9 items-center rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${includeContactDetails ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>Contact Card</button>
-                                                 <div className="flex items-center gap-2 text-xs text-gray-600">
-                                                     <button onClick={() => setActiveVersionIndex(v => Math.max(0, v - 1))} disabled={activeVersionIndex === 0} className="p-1 rounded hover:bg-gray-100 disabled:opacity-20" title="Previous version"><IconChevronLeft className="w-4 h-4" /></button>
-                                                     <span className="font-bold text-gray-700 min-w-[78px] text-center">Version {activeVersionIndex + 1} / {Math.max(1, versionSets.length)}</span>
-                                                     <button onClick={() => setActiveVersionIndex(v => Math.min(versionSets.length - 1, v + 1))} disabled={activeVersionIndex >= versionSets.length - 1} className="p-1 rounded hover:bg-gray-100 disabled:opacity-20" title="Next version"><IconChevronRight className="w-4 h-4" /></button>
-                                                 </div>
+                                             <div className="flex items-center gap-2 text-xs text-gray-600">
+                                                 <button onClick={() => setActiveVersionIndex(v => Math.max(0, v - 1))} disabled={activeVersionIndex === 0} className="p-1 rounded hover:bg-gray-100 disabled:opacity-20" title="Previous version" aria-label="Previous version"><IconChevronLeft className="w-4 h-4" /></button>
+                                                 <span className="font-bold text-gray-700 min-w-[78px] text-center">Version {activeVersionIndex + 1} / {Math.max(1, versionSets.length)}</span>
+                                                 <button onClick={() => setActiveVersionIndex(v => Math.min(versionSets.length - 1, v + 1))} disabled={activeVersionIndex >= versionSets.length - 1} className="p-1 rounded hover:bg-gray-100 disabled:opacity-20" title="Next version" aria-label="Next version"><IconChevronRight className="w-4 h-4" /></button>
                                              </div>
                                          </div>
                                      </div>
@@ -2716,61 +2702,80 @@ const App: React.FC = () => {
                                          )}
                                      </div>
 
-                                     <div className="border-t border-gray-100 bg-white p-4">
-                                         <div className="flex flex-col gap-4">
-                                             <div className="rounded-md border border-gray-200 bg-white p-3">
-                                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                                     <div>
-                                                         <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Local editing and beta refine</p>
-                                                         <p className="mt-1 text-xs leading-relaxed text-gray-500">Generated output is read-only by default. Local edits are browser-only review changes; advanced refine sends the current output and instruction back through the model.</p>
-                                                     </div>
-                                                     <div className="flex flex-wrap items-center gap-2">
-                                                         <button onClick={() => setIsLocalEditEnabled(value => !value)} disabled={!currentCopy} className={`inline-flex min-h-9 items-center rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${isLocalEditEnabled ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
-                                                             {isLocalEditEnabled ? 'Lock local copy' : 'Edit local copy'}
-                                                         </button>
-                                                         <button onClick={() => setIsAdvancedRefineOpen(value => !value)} disabled={!currentCopy} className="inline-flex min-h-9 items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                                                             Advanced refine (beta)
-                                                         </button>
-                                                         <button onClick={() => handleSaveToTimeline(currentCopy)} disabled={!currentCopy} title="Save current output to local timeline" className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"><IconClock className="w-4 h-4" /> Save local timeline</button>
-                                                     </div>
+                                     <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
+                                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                             <div className="flex flex-wrap items-center gap-2">
+                                                 <button onClick={() => handleCopyToClipboard(currentCopy)} disabled={!currentCopy} title="Copy current output" aria-label="Copy current output" className={compactActionButtonClass}><IconClipboard className="w-4 h-4" /> Copy</button>
+                                                 <div className="relative" ref={exportMenuRef}>
+                                                     <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} disabled={!currentCopy} title="Download current output" aria-label="Download current output" className={compactActionButtonClass}>
+                                                         <IconDownload className="w-4 h-4" />
+                                                         Download
+                                                     </button>
+                                                     {isExportMenuOpen && (
+                                                         <div className="absolute left-0 top-full mt-2 w-56 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-20">
+                                                             <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Current output only</p>
+                                                             <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports {activeSubTab} only.</p>
+                                                             <button onClick={() => { handleExportWord(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
+                                                             <button onClick={() => { handleExportTxt(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
+                                                             <button onClick={() => { handleExportPdf(); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
+                                                         </div>
+                                                     )}
                                                  </div>
-                                                 {isAdvancedRefineOpen && (
-                                                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                                                         <input
-                                                            ref={refineInputRef}
-                                                            type="text"
-                                                            placeholder={`Refine ${activeSubTab}, e.g. warmer, shorter or more premium`}
-                                                            className="min-h-10 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                                                            onKeyDown={e => {
-                                                                if (e.key === 'Enter') {
-                                                                    const instruction = e.currentTarget.value.trim();
-                                                                    if (instruction) {
-                                                                        handleRefineCopy(instruction);
-                                                                        e.currentTarget.value = '';
-                                                                    }
-                                                                }
-                                                            }}
-                                                         />
-                                                         <button
-                                                            disabled={!currentCopy || isRefining || Boolean(refineCopyBlocker)}
-                                                            title={getCampaignOperationTitle('refineCopy', !currentCopy ? 'Generate copy before refining.' : undefined)}
-                                                            onClick={() => {
-                                                                const instruction = refineInputRef.current?.value.trim() || '';
-                                                                if (!instruction) return;
-                                                                handleRefineCopy(instruction);
-                                                                if (refineInputRef.current) refineInputRef.current.value = '';
-                                                            }}
-                                                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
-                                                         >
-                                                            {isRefining ? <Spinner className="w-4 h-4" /> : <IconSend className="w-4 h-4" />}
-                                                            Run beta refine
-                                                         </button>
-                                                     </div>
-                                                 )}
+                                                 <button onClick={() => handleToggleContactDetails(!includeContactDetails)} disabled={!currentCopy} title="Contact Card" aria-label="Contact Card" className={`inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${includeContactDetails ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}><IconFileText className="w-4 h-4" /> Contact card</button>
                                              </div>
+                                             <div className="flex flex-wrap items-center gap-2">
+                                                 <button onClick={() => setIsLocalEditEnabled(value => !value)} disabled={!currentCopy} title="Edit local copy" aria-label="Edit local copy" className={`inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isLocalEditEnabled ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+                                                     <IconFileText className="w-4 h-4" />
+                                                     {isLocalEditEnabled ? 'Lock edit' : 'Edit'}
+                                                 </button>
+                                                 <button onClick={() => setIsAdvancedRefineOpen(value => !value)} disabled={!currentCopy} title="Advanced refine beta" aria-label="Advanced refine beta" className={compactSecondaryActionButtonClass}>
+                                                     <IconSparkles className="w-4 h-4" />
+                                                     Refine beta
+                                                 </button>
+                                                 <button onClick={() => handleSaveToTimeline(currentCopy)} disabled={!currentCopy} title="Save local timeline" aria-label="Save local timeline" className={compactSecondaryActionButtonClass}><IconClock className="w-4 h-4" /> Save</button>
+                                                 {isEdited && <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">Edited</span>}
+                                                 {saveStatus !== 'idle' && <span className="text-xs font-medium text-gray-500">{saveStatus === 'saving' ? 'Saving...' : 'Saved'}</span>}
+                                             </div>
+                                         </div>
+                                         <p className="mt-2 text-[11px] leading-relaxed text-gray-500">Read-only by default. Edits save in this browser; beta refine sends the current output and instruction back through the model.</p>
+                                         {isAdvancedRefineOpen && (
+                                             <div className="mt-3 rounded-md border border-gray-200 bg-white p-3">
+                                                 <div className="flex flex-col gap-2 sm:flex-row">
+                                                     <input
+                                                        ref={refineInputRef}
+                                                        type="text"
+                                                        placeholder={`Refine ${activeSubTab}, e.g. warmer, shorter or more premium`}
+                                                        className="min-h-10 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter') {
+                                                                const instruction = e.currentTarget.value.trim();
+                                                                if (instruction) {
+                                                                    handleRefineCopy(instruction);
+                                                                    e.currentTarget.value = '';
+                                                                }
+                                                            }
+                                                        }}
+                                                     />
+                                                     <button
+                                                        disabled={!currentCopy || isRefining || Boolean(refineCopyBlocker)}
+                                                        title={getCampaignOperationTitle('refineCopy', !currentCopy ? 'Generate copy before refining.' : undefined)}
+                                                        aria-label="Run advanced refine beta"
+                                                        onClick={() => {
+                                                            const instruction = refineInputRef.current?.value.trim() || '';
+                                                            if (!instruction) return;
+                                                            handleRefineCopy(instruction);
+                                                            if (refineInputRef.current) refineInputRef.current.value = '';
+                                                        }}
+                                                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                                                     >
+                                                        {isRefining ? <Spinner className="w-4 h-4" /> : <IconSend className="w-4 h-4" />}
+                                                        Run refine
+                                                     </button>
+                                                 </div>
+                                             </div>
+                                         )}
                                      </div>
                                  </div>
-                             </div>
                              </div>
                          </Section>
                     </div>
