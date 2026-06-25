@@ -193,6 +193,21 @@ Status date: `2026-06-25`
 - Deferred product decision: post-generation editing, advanced refine/chat-style editing, Canvas-style focus mode, Hub-based asset retrieval/re-entry, selected-output export bundles, provenance/versioning, and review/approval workflow are deferred to later v2/export-pack work.
 - Current model routing summary: unchanged for required routes. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Export Pack 001 Status
+
+Status date: `2026-06-25`
+
+- Goal: `WEBAGENTS-COPYWRITING-EXPORT-PACK-001`
+- Review artifact: `docs/export-pack-001.md`
+- Export contract artifact: `docs/export-assembly-contract.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current export summary: current output, current category, and campaign document exports now use distinct export-pack documents, consistent safe filenames, and an internal manifest for future ZIP and Hub asset contract work.
+- Generated-only download rule: download actions export generated outputs only and do not silently generate missing outputs. `Generate missing` remains the separate generation action.
+- Current manifest summary: the internal manifest records export scope, file-safe slug, timestamp, app metadata, property/address summary, selected category/output, included and missing output ids, contact-card inclusion, input snapshot summary, usage/cost summary, and Campaign Build Log summary where available.
+- Deferred product decision: ZIP export, manifest file download, PDF/DOCX generation, Hub asset persistence, live Hub save/sync, auth, billing, and provider-router work remain deferred.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

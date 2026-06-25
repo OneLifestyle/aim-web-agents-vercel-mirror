@@ -5,7 +5,7 @@ import { TARGET_MARKETS, WRITING_STYLES, PROPERTY_TYPES, IconFileWord, IconFileP
 import { IconBuilding, IconCamera, IconChevronDown, IconClipboard, IconDownload, IconFileText, IconHome, IconLoader, IconMessage, IconMinus, IconPlus, IconSparkles, IconTrash, IconUpload, IconWorld, IconMapPin, IconCheckCircle, IconExclamationCircle, IconChevronLeft, IconChevronRight } from './constants';
 import * as geminiService from './services/geminiService';
 import { fileToBase64 } from './utils/fileUtils';
-import { buildCampaignExportPlan, sanitizeFileNamePart } from './utils/exportAssembly';
+import { buildCampaignExportPlan, sanitizeFileNamePart, type CampaignExportDocument, type CampaignExportGenerationLogSummary, type CampaignExportInputSnapshotSummary, type CampaignExportScope, type CampaignExportUsageCostSummary } from './utils/exportAssembly';
 import { Spinner } from './components/Spinner';
 import { ChatBot } from './components/ChatBot';
 
@@ -44,6 +44,10 @@ const previewTabConfig: Record<string, PreviewTab[]> = {
     'Video': ['Video Script']
 };
 const mainTabs = Object.keys(previewTabConfig);
+const campaignExportCategories = mainTabs.map(title => ({
+    title,
+    tabs: previewTabConfig[title],
+}));
 const categoryFilters: CampaignOutputCategoryFilter[] = ['All', ...mainTabs];
 const ALL_CONTENT_TABS = Object.values(previewTabConfig).flat();
 const CAMPAIGN_OUTPUT_SECTION_META: Record<PreviewTab, Omit<CampaignOutputSectionMeta, 'id' | 'label' | 'group' | 'slug'>> = {
@@ -1428,13 +1432,99 @@ const App: React.FC = () => {
         URL.revokeObjectURL(url);
     };
 
-    const handleExportPdf = () => {
+    const handleExportPdf = (text: string) => {
         const printArea = document.getElementById('print-render-area');
         if (printArea) {
-            const currentCopy = versionSets[activeVersionIndex]?.[activeSubTab] || '';
-            printArea.innerText = currentCopy;
+            printArea.innerText = text;
             window.print();
         }
+    };
+
+    const downloadExportDocument = (document: CampaignExportDocument, format: 'pdf' | 'word' | 'txt') => {
+        if (format === 'word') handleExportWord(document.content, document.fileBaseName);
+        else if (format === 'txt') handleExportTxt(document.content, document.fileBaseName);
+        else handleExportPdf(document.content);
+    };
+
+    const buildInputSnapshotSummary = (): CampaignExportInputSnapshotSummary => ({
+        includeAddress,
+        propertyType: propertyDetails.propertyType,
+        bedrooms: propertyDetails.beds,
+        bathrooms: propertyDetails.baths,
+        carSpaces: propertyDetails.cars,
+        landSize: propertyDetails.landSize,
+        primaryTargetMarket: copyContext.primaryTargetMarket,
+        secondaryTargetMarket: copyContext.secondaryTargetMarket || undefined,
+        writingStyles: copyContext.writingStyle,
+        wordCount: outputSettings.wordCount,
+        propertyFeaturesProvided: Boolean(propertyFeatures.trim()),
+        imageAnalysisProvided: Boolean(imageAnalysis?.trim()),
+        researchProvided: Boolean(researchData?.trim()),
+        suburbOrAreaProfileIncluded: profileInclusion !== 'none' && Boolean(profileData),
+        openHouseProvided: Boolean(openHouse.date || openHouse.time || openHouse.url),
+        agentProfileProvided: Boolean(agentProfile.name || agentProfile.agency || agentProfile.phone || agentProfile.email),
+    });
+
+    const buildUsageCostSummary = (): CampaignExportUsageCostSummary => {
+        const costValues = debugLogs
+            .map(log => log.usage?.estimatedCost)
+            .filter((cost): cost is number => typeof cost === 'number');
+        return {
+            operationCount: debugLogs.length,
+            successfulOperationCount: debugLogs.filter(log => log.status === 'success').length,
+            errorOperationCount: debugLogs.filter(log => log.status === 'error').length,
+            pendingOperationCount: debugLogs.filter(log => log.status === 'pending').length,
+            models: Array.from(new Set(debugLogs.map(log => log.usage?.model).filter((model): model is string => Boolean(model)))),
+            tokenOnlyEstimatedCost: costValues.length > 0 ? costValues.reduce((sum, cost) => sum + cost, 0) : null,
+            usageUnavailableCount: debugLogs.filter(log => log.usage?.usageStatus === 'unavailable').length,
+            unknownCostCount: debugLogs.filter(log => log.usage?.pricingStatus === 'unknown' || log.usage?.unknownCostOperationCount).length,
+        };
+    };
+
+    const buildGenerationLogSummary = (): CampaignExportGenerationLogSummary => ({
+        totalEntries: debugLogs.length,
+        recentSteps: debugLogs.slice(0, 8).map(log => `${log.status}: ${log.stepName}`),
+    });
+
+    const buildPropertyContextSummary = (): string => {
+        const summaryParts = [
+            researchData?.trim() ? 'Research summary available' : 'No research summary',
+            propertyFeatures.trim() ? 'property features provided' : 'no extra property features',
+            imageAnalysis?.trim() ? 'photo analysis available' : 'no photo analysis',
+            profileData && profileInclusion !== 'none' ? `profile inclusion: ${profileInclusion}` : 'no profile inclusion',
+        ];
+        return summaryParts.join('; ');
+    };
+
+    const buildCurrentExportPlan = (exportScope?: CampaignExportScope) => buildCampaignExportPlan({
+        address,
+        versionNumber: activeVersionIndex + 1,
+        sections: currentVersionSet,
+        orderedTabs: ALL_CONTENT_TABS,
+        categories: campaignExportCategories,
+        selectedTab: activeSubTab,
+        selectedCategory: selectedOutputCategory,
+        exportScope,
+        includeContactDetails,
+        contactCard,
+        generatedAt: new Date(),
+        propertyContextSummary: buildPropertyContextSummary(),
+        inputSnapshotSummary: buildInputSnapshotSummary(),
+        usageCostSummary: buildUsageCostSummary(),
+        generationLogSummary: buildGenerationLogSummary(),
+    });
+
+    const handleDownloadCurrentOutput = (format: 'pdf' | 'word' | 'txt') => {
+        const exportPlan = buildCurrentExportPlan('current_output');
+        const outputDocument = exportPlan.individualOutputDocuments.find(document => document.outputIds.includes(activeSubTab));
+
+        if (!outputDocument) {
+            setNotification('No generated output selected.');
+            return;
+        }
+
+        downloadExportDocument(outputDocument, format);
+        setIsExportMenuOpen(false);
     };
 
     const handleDownloadCurrentCategory = (format: 'pdf' | 'word' | 'txt') => {
@@ -1443,125 +1533,45 @@ const App: React.FC = () => {
             return;
         }
 
-        const categoryTabs = previewTabConfig[selectedOutputCategory] || [];
-        const generatedCategorySections = currentCampaignExportPlan.sectionDocuments.filter(section => (
-            categoryTabs.includes(section.tab) && section.generated
-        ));
+        const exportPlan = buildCurrentExportPlan('current_category');
+        const categoryDocument = exportPlan.selectedCategoryDocument;
 
-        if (generatedCategorySections.length === 0) {
+        if (!categoryDocument || categoryDocument.outputIds.length === 0) {
             setNotification(`No generated outputs in ${selectedOutputCategory} yet.`);
             return;
         }
 
-        const propertyName = address.trim() || 'Untitled Property';
-        const content = [
-            `Real Estate Copy for: ${propertyName}`,
-            `Category: ${selectedOutputCategory}`,
-            `Version: ${activeVersionIndex + 1}`,
-            '',
-            '====================================',
-            '',
-            ...generatedCategorySections.flatMap(section => [
-                `--- ${section.title} ---`,
-                '',
-                section.content,
-                '',
-                '====================================',
-                '',
-            ]),
-        ].join('\n');
-        const fileBaseName = `${sanitizeFileNamePart(address || 'property')}-v${activeVersionIndex + 1}-${sanitizeFileNamePart(selectedOutputCategory)}`;
-
-        if (format === 'word') handleExportWord(content, fileBaseName);
-        else if (format === 'txt') handleExportTxt(content, fileBaseName);
-        else {
-            const printArea = document.getElementById('print-render-area');
-            if (printArea) {
-                printArea.innerText = content;
-                window.print();
-            }
-        }
-
+        downloadExportDocument(categoryDocument, format);
         setIsCategoryExportMenuOpen(false);
     };
 
-    const handleDownloadAll = async (format: 'pdf' | 'word' | 'txt') => {
-        const currentVersion = versionSets[activeVersionIndex];
-        if (!currentVersion || !currentVersion['Full Copy']) {
-            setNotification("Please generate the 'Full Copy' for the current version first.");
+    const handleDownloadAll = (format: 'pdf' | 'word' | 'txt') => {
+        const exportPlan = buildCurrentExportPlan('campaign_document');
+        if (exportPlan.generatedSections.length === 0) {
+            setNotification('No generated outputs in this campaign yet.');
             return;
         }
         if (!beginCampaignOperation('exportFullCampaign', 'Full campaign document download')) return;
         setIsDownloadingAll(true);
         setIsDownloadAllMenuOpen(false);
         setNotification("Preparing full campaign document...");
-        const logId = addLog({ stepName: 'Download Full Campaign Document', status: 'pending', inputs: 'Generating missing sections for one combined document' });
-
-        // Capture a snapshot for current state
-        let updatedCopies = { ...versionSets[activeVersionIndex] };
-        const generationParams: GenerationParams = {
-            address,
-            includeAddress,
-            details: propertyDetails,
-            context: copyContext,
-            features: propertyFeatures,
-            output: outputSettings,
-            imageAnalysis,
-            researchData,
-            profileData,
-            profileInclusion,
-            agentProfile,
-            openHouse
-        };
+        const logId = addLog({
+            stepName: 'Download Full Campaign Document',
+            status: 'pending',
+            inputs: 'Exporting generated sections only; no missing outputs are generated during download.'
+        });
 
         try {
-            const childUsages: Array<UsageStats | undefined> = [];
-            for (const tab of ALL_CONTENT_TABS) {
-                if (!updatedCopies[tab]) {
-                    setNotification(`Generating copy for ${tab}...`);
-                    const result = await geminiService.generateCopyVariant(updatedCopies['Full Copy']!, tab, generationParams);
-                    childUsages.push(result.usage);
-                    updatedCopies[tab] = result.data;
-
-                    // Update main state so UI is in sync
-                    setVersionSets(prev => {
-                        const newSets = [...prev];
-                        const current = { ...newSets[activeVersionIndex] };
-                        current[tab] = result.data;
-                        newSets[activeVersionIndex] = current;
-                        return newSets;
-                    });
-                }
-            }
-
-            const exportPlan = buildCampaignExportPlan({
-                address,
-                versionNumber: activeVersionIndex + 1,
-                sections: updatedCopies,
-                orderedTabs: ALL_CONTENT_TABS,
-                selectedTab: activeSubTab,
-                includeContactDetails,
-                contactCard
-            });
-
-            if (format === 'word') handleExportWord(exportPlan.masterDocument.content, exportPlan.masterDocument.fileBaseName);
-            else if (format === 'txt') handleExportTxt(exportPlan.masterDocument.content, exportPlan.masterDocument.fileBaseName);
-            else if (format === 'pdf') {
-                 const printArea = document.getElementById('print-render-area');
-                 if (printArea) {
-                     printArea.innerText = exportPlan.masterDocument.content;
-                     window.print();
-                 }
-            }
+            downloadExportDocument(exportPlan.masterDocument, format);
             setNotification("Full campaign document downloaded.");
             updateLog(logId, {
                 status: 'success',
-                message: `Full campaign document ready with ${exportPlan.generatedSections.length} generated section(s).`,
-                usage: aggregateUsage('Download All Missing Variants', childUsages, childUsages.length > 0 ? 'mixed variant models' : 'no model calls needed')
+                message: `Full campaign document exported with ${exportPlan.generatedSections.length} generated section(s) and ${exportPlan.missingSections.length} missing section(s) noted.`,
+                outputs: `Manifest scope: ${exportPlan.manifest.exportScope}; included outputs: ${exportPlan.manifest.includedOutputIds.length}; missing outputs: ${exportPlan.manifest.missingOutputIds.length}.`
             });
         } catch (error) {
             console.error("Error during 'Download All':", error);
-            const msg = error instanceof Error ? error.message : "An error occurred while generating all copy.";
+            const msg = error instanceof Error ? error.message : "An error occurred while exporting campaign copy.";
             setNotification(msg);
             updateLog(logId, { status: 'error', message: msg });
         } finally {
@@ -1637,9 +1647,16 @@ const App: React.FC = () => {
         versionNumber: activeVersionIndex + 1,
         sections: currentVersionSet,
         orderedTabs: ALL_CONTENT_TABS,
+        categories: campaignExportCategories,
         selectedTab: activeSubTab,
-    }), [address, activeVersionIndex, currentVersionSet, activeSubTab]);
-    const selectedSectionExportDocument = currentCampaignExportPlan.selectedSectionDocument;
+        selectedCategory: selectedOutputCategory,
+        includeContactDetails,
+        contactCard,
+        propertyContextSummary: buildPropertyContextSummary(),
+        inputSnapshotSummary: buildInputSnapshotSummary(),
+        usageCostSummary: buildUsageCostSummary(),
+        generationLogSummary: buildGenerationLogSummary(),
+    }), [address, activeVersionIndex, currentVersionSet, activeSubTab, selectedOutputCategory, includeContactDetails, contactCard, researchData, propertyFeatures, imageAnalysis, profileData, profileInclusion, includeAddress, propertyDetails, copyContext, outputSettings, openHouse, agentProfile, debugLogs]);
     const campaignOutputSections = useMemo(() => {
         return currentCampaignExportPlan.sectionDocuments.map(section => {
             const group = mainTabs.find(tabGroup => previewTabConfig[tabGroup].includes(section.tab)) || 'Campaign';
@@ -2425,8 +2442,8 @@ const App: React.FC = () => {
                                              <div className="relative" ref={downloadAllMenuRef}>
                                                  <button
                                                     onClick={() => setIsDownloadAllMenuOpen(!isDownloadAllMenuOpen)}
-                                                    disabled={isDownloadingAll || Boolean(exportFullCampaignBlocker) || !currentVersionSet['Full Copy']}
-                                                    title={getCampaignOperationTitle('exportFullCampaign', !currentVersionSet['Full Copy'] ? 'Generate Full Copy before downloading the full campaign.' : undefined)}
+                                                    disabled={isDownloadingAll || Boolean(exportFullCampaignBlocker) || readyOutputCount === 0}
+                                                    title={getCampaignOperationTitle('exportFullCampaign', readyOutputCount === 0 ? 'No generated outputs in this campaign yet.' : undefined)}
                                                     aria-label="Download full campaign document"
                                                     className="inline-flex min-h-9 items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-sm font-bold text-white transition-all hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
                                                  >
@@ -2436,7 +2453,7 @@ const App: React.FC = () => {
                                                  {isDownloadAllMenuOpen && (
                                                      <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-md shadow-xl border border-gray-200 py-1.5 z-50">
                                                          <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">One combined document</p>
-                                                         <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Full campaign includes all generated outputs in one document. ZIP packaging remains a future export option.</p>
+                                                         <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Full campaign includes generated outputs only. Missing outputs are noted but not generated during download.</p>
                                                          <button onClick={() => handleDownloadAll('word')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFileWord className="w-4 h-4 mr-2 text-blue-600" /> Word (.doc)</button>
                                                          <button onClick={() => handleDownloadAll('txt')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFileTxt className="w-4 h-4 mr-2 text-gray-600" /> Text (.txt)</button>
                                                          <button onClick={() => handleDownloadAll('pdf')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFilePdf className="w-4 h-4 mr-2 text-red-600" /> Print / PDF</button>
@@ -2603,9 +2620,9 @@ const App: React.FC = () => {
                                      <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
                                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                              <div className="flex flex-wrap items-center gap-2">
-                                                 <button onClick={() => handleCopyToClipboard(currentCopy)} disabled={!currentCopy} title="Copy current output" aria-label="Copy current output" className={compactActionButtonClass}><IconClipboard className="w-4 h-4" /> Copy</button>
+                                                 <button onClick={() => handleCopyToClipboard(currentCopy)} disabled={!currentCopy} title={currentCopy ? 'Copy current output' : 'No generated output selected.'} aria-label="Copy current output" className={compactActionButtonClass}><IconClipboard className="w-4 h-4" /> Copy</button>
                                                  <div className="relative" ref={exportMenuRef}>
-                                                     <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} disabled={!currentCopy} title="Download current output" aria-label="Download current output" className={compactActionButtonClass}>
+                                                     <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} disabled={!currentCopy} title={currentCopy ? 'Download current output' : 'No generated output selected.'} aria-label="Download current output" className={compactActionButtonClass}>
                                                          <IconDownload className="w-4 h-4" />
                                                          Download
                                                      </button>
@@ -2613,9 +2630,9 @@ const App: React.FC = () => {
                                                          <div className="absolute left-0 top-full mt-2 w-56 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-20">
                                                              <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Current output only</p>
                                                              <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports {activeSubTab} only.</p>
-                                                             <button onClick={() => { handleExportWord(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
-                                                             <button onClick={() => { handleExportTxt(selectedSectionExportDocument?.content || currentCopy, selectedSectionExportDocument?.fileBaseName || `${activeSubTab}`); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
-                                                             <button onClick={() => { handleExportPdf(); setIsExportMenuOpen(false); }} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
+                                                             <button onClick={() => handleDownloadCurrentOutput('word')} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
+                                                             <button onClick={() => handleDownloadCurrentOutput('txt')} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
+                                                             <button onClick={() => handleDownloadCurrentOutput('pdf')} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
                                                          </div>
                                                      )}
                                                  </div>
