@@ -162,6 +162,21 @@ Status date: `2026-06-23`
 - Current layout summary: the desktop workspace uses a wider max width and safer `xl` three-column breakpoints, with lightweight Campaign Status scroll anchors.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Campaign Outputs UX 005 Status
+
+Status date: `2026-06-25`
+
+- Goal: `WEBAGENTS-COPYWRITING-CAMPAIGN-OUTPUTS-UX-005`
+- Review artifact: `docs/campaign-outputs-ux-005.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current output summary: the `Contact card` control now sits inside the selected output card as a compact checkbox above the generated copy area, preserving the existing append/remove behavior while making the control feel tied to the selected output.
+- Current action summary: current-output controls remain below the selected output body, now ordered as `Edit`, `Copy`, `Download`, and `Save`, with `Refine beta` kept available as a secondary action.
+- Current helper summary: the lower support copy was shortened to preserve the read-only-by-default model without turning the footer into a second workspace.
+- Current export summary: `Download current category` and `Download campaign` remain on their existing behavior. A future selected-generated-output download model is deferred.
+- Deferred product decision: later design work should decide whether campaign export should become a selected-output model, whether V1 should bias harder toward a simple appliance-like workflow, and how Hub retrieval, prior jobs, timeline state, and asset-based re-entry should affect export semantics.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

@@ -2142,7 +2142,7 @@ const App: React.FC = () => {
                                             />
                                             <div className="text-sm">
                                                 <span className="font-medium text-gray-800">Append Only</span>
-                                                <p className="text-gray-500 text-xs">AI uses details for context. Toggle the "Contact Card" on the preview to append manually.</p>
+                                                <p className="text-gray-500 text-xs">AI uses details for context. Use the Contact card checkbox on the selected output to append manually.</p>
                                             </div>
                                         </label>
                                         <label className="flex items-start gap-2 cursor-pointer p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200">
@@ -2677,13 +2677,32 @@ const App: React.FC = () => {
                                                  <p className="text-gray-500 text-sm">Generating {generatingTab}...</p>
                                              </div>
                                          ) : currentCopy ? (
-                                             <textarea
-                                                readOnly={!isLocalEditEnabled}
-                                                className={`w-full resize-y rounded-lg border p-4 font-sans text-sm leading-relaxed text-gray-800 shadow-sm min-h-[520px] focus:outline-none focus:ring-2 ${isLocalEditEnabled ? 'border-blue-300 bg-white focus:ring-blue-500' : 'border-gray-200 bg-gray-50 focus:ring-gray-300'}`}
-                                                value={currentCopy}
-                                                onChange={handleCopyEdit}
-                                                placeholder="Your campaign output will appear here..."
-                                             />
+                                             <>
+                                                 <div className="mb-3 flex flex-col gap-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                                                     <label
+                                                        className={`inline-flex min-h-8 items-center gap-2 text-sm font-semibold ${currentCopy ? 'cursor-pointer text-gray-800' : 'cursor-not-allowed text-gray-400'}`}
+                                                        title="When enabled, agent profile details are included with this output."
+                                                     >
+                                                         <input
+                                                            type="checkbox"
+                                                            checked={includeContactDetails}
+                                                            disabled={!currentCopy}
+                                                            onChange={event => handleToggleContactDetails(event.target.checked)}
+                                                            aria-describedby="contact-card-helper"
+                                                            className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500 disabled:cursor-not-allowed"
+                                                         />
+                                                         Contact card
+                                                     </label>
+                                                     <p id="contact-card-helper" className="text-[11px] leading-snug text-gray-500">Include the agent profile/contact details with this output.</p>
+                                                 </div>
+                                                 <textarea
+                                                    readOnly={!isLocalEditEnabled}
+                                                    className={`w-full resize-y rounded-lg border p-4 font-sans text-sm leading-relaxed text-gray-800 shadow-sm min-h-[520px] focus:outline-none focus:ring-2 ${isLocalEditEnabled ? 'border-blue-300 bg-white focus:ring-blue-500' : 'border-gray-200 bg-gray-50 focus:ring-gray-300'}`}
+                                                    value={currentCopy}
+                                                    onChange={handleCopyEdit}
+                                                    placeholder="Your campaign output will appear here..."
+                                                 />
+                                             </>
                                          ) : (
                                              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
                                                  <IconSparkles className="mx-auto mb-3 h-10 w-10 text-gray-400" />
@@ -2705,6 +2724,10 @@ const App: React.FC = () => {
                                      <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
                                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                              <div className="flex flex-wrap items-center gap-2">
+                                                 <button onClick={() => setIsLocalEditEnabled(value => !value)} disabled={!currentCopy} title="Edit local copy" aria-label="Edit local copy" className={`inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isLocalEditEnabled ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}>
+                                                     <IconFileText className="w-4 h-4" />
+                                                     {isLocalEditEnabled ? 'Lock' : 'Edit'}
+                                                 </button>
                                                  <button onClick={() => handleCopyToClipboard(currentCopy)} disabled={!currentCopy} title="Copy current output" aria-label="Copy current output" className={compactActionButtonClass}><IconClipboard className="w-4 h-4" /> Copy</button>
                                                  <div className="relative" ref={exportMenuRef}>
                                                      <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} disabled={!currentCopy} title="Download current output" aria-label="Download current output" className={compactActionButtonClass}>
@@ -2721,23 +2744,18 @@ const App: React.FC = () => {
                                                          </div>
                                                      )}
                                                  </div>
-                                                 <button onClick={() => handleToggleContactDetails(!includeContactDetails)} disabled={!currentCopy} title="Contact Card" aria-label="Contact Card" className={`inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${includeContactDetails ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}><IconFileText className="w-4 h-4" /> Contact card</button>
+                                                 <button onClick={() => handleSaveToTimeline(currentCopy)} disabled={!currentCopy} title="Save to timeline" aria-label="Save to timeline" className={compactSecondaryActionButtonClass}><IconClock className="w-4 h-4" /> Save</button>
                                              </div>
                                              <div className="flex flex-wrap items-center gap-2">
-                                                 <button onClick={() => setIsLocalEditEnabled(value => !value)} disabled={!currentCopy} title="Edit local copy" aria-label="Edit local copy" className={`inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isLocalEditEnabled ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
-                                                     <IconFileText className="w-4 h-4" />
-                                                     {isLocalEditEnabled ? 'Lock edit' : 'Edit'}
-                                                 </button>
                                                  <button onClick={() => setIsAdvancedRefineOpen(value => !value)} disabled={!currentCopy} title="Advanced refine beta" aria-label="Advanced refine beta" className={compactSecondaryActionButtonClass}>
                                                      <IconSparkles className="w-4 h-4" />
                                                      Refine beta
                                                  </button>
-                                                 <button onClick={() => handleSaveToTimeline(currentCopy)} disabled={!currentCopy} title="Save local timeline" aria-label="Save local timeline" className={compactSecondaryActionButtonClass}><IconClock className="w-4 h-4" /> Save</button>
                                                  {isEdited && <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">Edited</span>}
                                                  {saveStatus !== 'idle' && <span className="text-xs font-medium text-gray-500">{saveStatus === 'saving' ? 'Saving...' : 'Saved'}</span>}
                                              </div>
                                          </div>
-                                         <p className="mt-2 text-[11px] leading-relaxed text-gray-500">Read-only by default. Edits save in this browser; beta refine sends the current output and instruction back through the model.</p>
+                                         <p className="mt-2 text-[11px] leading-snug text-gray-500">Read-only until Edit is enabled. Save is local; Refine beta uses the model.</p>
                                          {isAdvancedRefineOpen && (
                                              <div className="mt-3 rounded-md border border-gray-200 bg-white p-3">
                                                  <div className="flex flex-col gap-2 sm:flex-row">
