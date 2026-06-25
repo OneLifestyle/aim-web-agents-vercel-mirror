@@ -38,17 +38,17 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
     *   **Video:** Scripts for property tour videos with director notes.
 *   **Versioning:** Maintains multiple versions of copy for A/B testing or revisions.
 
-### 5. Editing & Refinement Tools
-*   **In-Place Editor:** Full rich-text editing capabilities.
-*   **One-Click Refinements:** "Make Shorter", "More Luxury", "Add SEO Keywords".
-*   **Contact Card Injection:** Toggle to automatically append agent details.
-*   **Format Compliance:** Built-in rules to strictly avoid "AI-tells" like em-dashes.
+### 5. V1 Review Workflow
+*   **Generated Drafts:** Campaign outputs are read-only drafts in the primary v1 UI.
+*   **Regeneration-Led Changes:** Users adjust property details, features, audience or style, then regenerate.
+*   **Contact Card Injection:** The selected output includes a compact checkbox to append agent details.
+*   **External Final Editing:** Final wording changes are made in the user's CRM, email, Word, Google Docs or publishing system.
 
 ### 6. Workflow & Export
-*   **Campaign Build Log:** A real-time log of AI operations with public-facing step names plus beta-visible technical details, token usage, and token-only cost estimates.
-*   **Timeline:** Saves generation history locally for easy retrieval.
-*   **Export Options:** PDF, Microsoft Word, Plain Text, and Copy to Clipboard.
-*   **Download full campaign document:** Batch generation and download of all copy variants in one combined document.
+*   **Campaign Status:** Plain-language progress and output state labels for trusted beta testers.
+*   **Campaign Build Log:** Collapsed beta diagnostics with public-facing step names plus expandable technical details, token usage, and token-only cost estimates.
+*   **Export Options:** Current output, current category, and full campaign document downloads in Word-compatible `.doc`, plain text, and print/PDF pathways.
+*   **Generated-Only Downloads:** Download actions export generated outputs only. Missing outputs are not generated silently.
 
 ## Technology Stack
 

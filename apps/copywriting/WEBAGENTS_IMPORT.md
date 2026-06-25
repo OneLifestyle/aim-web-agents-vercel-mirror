@@ -208,6 +208,19 @@ Status date: `2026-06-25`
 - Deferred product decision: ZIP export, manifest file download, PDF/DOCX generation, Hub asset persistence, live Hub save/sync, auth, billing, and provider-router work remain deferred.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Beta Presentation 001 Status
+
+Status date: `2026-06-26`
+
+- Goal: `WEBAGENTS-COPYWRITING-BETA-PRESENTATION-001`
+- Review artifact: `docs/beta-presentation-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current presentation summary: private-beta framing, generated-draft review wording, plain-language progress, tester feedback guidance, and a collapsed-by-default `Beta diagnostics` presentation were added.
+- Current build log summary: Campaign Build Log remains available through `Show build log`; model, token, cost, usage, grounding/tool-charge caveats, input/output summaries, and errors remain inspectable when expanded.
+- Current export summary: generated-only current-output, current-category, and campaign downloads remain on existing handlers and do not generate missing outputs.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

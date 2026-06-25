@@ -356,85 +356,136 @@ const getPublicStepName = (stepName: string): string => {
     return stepName;
 };
 
-const DebugPanel: React.FC<{ logs: DebugLogEntry[] }> = ({ logs }) => {
+const DebugPanel: React.FC<{
+    logs: DebugLogEntry[];
+    isExpanded: boolean;
+    onToggleExpanded: () => void;
+}> = ({ logs, isExpanded, onToggleExpanded }) => {
     const totalCost = useMemo(() => logs.reduce((sum, log) => sum + (log.usage?.estimatedCost ?? 0), 0), [logs]);
     const excludedCount = useMemo(() => logs.reduce((sum, log) => sum + (log.usage?.excludedOperationCount ?? (log.usage?.usageStatus === 'unavailable' ? 1 : 0)), 0), [logs]);
     const unknownCount = useMemo(() => logs.reduce((sum, log) => sum + (log.usage?.unknownCostOperationCount ?? (log.usage?.pricingStatus === 'unknown' ? 1 : 0)), 0), [logs]);
+    const errorLogs = useMemo(() => logs.filter(log => log.status === 'error'), [logs]);
+    const pendingCount = useMemo(() => logs.filter(log => log.status === 'pending').length, [logs]);
+    const latestLog = logs[0];
+    const latestError = errorLogs[0];
 
     return (
-        <div className="flex-1 flex flex-col bg-slate-900 text-slate-300 text-xs font-mono overflow-hidden rounded-lg border border-slate-700">
-            <div className="p-3 border-b border-slate-700 bg-slate-800 font-bold text-white flex justify-between items-center">
-                <span>Campaign Build Log</span>
-                <div className="flex gap-1">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+            <div className="flex items-start justify-between gap-3 border-b border-gray-100 p-3">
+                <div>
+                    <p className="text-sm font-semibold text-gray-900">Beta diagnostics</p>
+                    <p className="mt-0.5 text-xs leading-snug text-gray-500">Campaign Build Log, model usage and token-only cost estimates.</p>
                 </div>
+                <button
+                    type="button"
+                    onClick={onToggleExpanded}
+                    className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    aria-expanded={isExpanded}
+                >
+                    {isExpanded ? 'Hide build log' : 'Show build log'}
+                </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-4">
-                {logs.length === 0 && <div className="text-center opacity-50 pt-10">No campaign activity yet...</div>}
-                {logs.map((log) => (
-                    <div key={log.id} className="border-l-2 border-slate-600 pl-3 relative">
-                        <div className="absolute -left-[5px] top-0 w-2 h-2 rounded-full bg-slate-600" style={{ backgroundColor: log.status === 'success' ? '#10b981' : log.status === 'error' ? '#ef4444' : '#f59e0b' }}></div>
-                        <div className="flex justify-between mb-1">
-                            <span className="font-bold text-white">{getPublicStepName(log.stepName)}</span>
-                            <span className="opacity-60">{log.timestamp.toLocaleTimeString()}</span>
-                        </div>
-                        {getPublicStepName(log.stepName) !== log.stepName && (
-                            <div className="mb-1 text-[10px] text-slate-500">Technical step: {log.stepName}</div>
-                        )}
-                        {log.status === 'pending' && <span className="text-yellow-500 animate-pulse">Processing...</span>}
-                        {log.status === 'error' && <span className="text-red-400">{log.message}</span>}
 
-                        {log.usage && (
-                            <div className="bg-slate-800 p-2 rounded mt-1 mb-2">
-                                <div className="flex justify-between"><span>Model:</span> <span className="text-white">{log.usage.model}</span></div>
-                                <div className="flex justify-between"><span>Usage:</span> <span>{log.usage.usageStatus}</span></div>
-                                <div className="flex justify-between"><span>Pricing:</span> <span className={log.usage.pricingStatus === 'unknown' ? 'text-yellow-400' : 'text-slate-300'}>{log.usage.pricingStatus}</span></div>
-                                <div className="flex justify-between"><span>In/Out:</span> <span>{formatTokenCount(log.usage.promptTokens)} / {formatTokenCount(log.usage.candidatesTokens)}</span></div>
-                                {(log.usage.thinkingTokens !== null && log.usage.thinkingTokens !== undefined) && (
-                                    <div className="flex justify-between"><span>Thinking:</span> <span>{formatTokenCount(log.usage.thinkingTokens)}</span></div>
-                                )}
-                                {(log.usage.cachedTokens !== null && log.usage.cachedTokens !== undefined) && (
-                                    <div className="flex justify-between"><span>Cached:</span> <span>{formatTokenCount(log.usage.cachedTokens)}</span></div>
-                                )}
-                                <div className="flex justify-between border-t border-slate-700 mt-1 pt-1">
-                                    <span>Token-only est. cost:</span>
-                                    <span className={log.usage.estimatedCost === null ? 'text-yellow-400' : 'text-green-400'}>
-                                        {log.usage.estimatedCost === null ? 'unknown' : `$${log.usage.estimatedCost.toFixed(5)}`}
-                                    </span>
+            <div className="space-y-2 p-3 text-xs text-gray-600">
+                <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-semibold text-gray-700">{logs.length} log entries</span>
+                    {pendingCount > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-semibold text-amber-800">{pendingCount} running</span>}
+                    {errorLogs.length > 0 && <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 font-semibold text-red-700">{errorLogs.length} error{errorLogs.length === 1 ? '' : 's'}</span>}
+                </div>
+                {latestLog ? (
+                    <p>
+                        Latest step: <span className="font-semibold text-gray-800">{getPublicStepName(latestLog.stepName)}</span>
+                        {latestLog.status === 'pending' ? ' is running.' : latestLog.status === 'success' ? ' completed.' : ' needs attention.'}
+                    </p>
+                ) : (
+                    <p>No campaign activity yet. Diagnostics will appear after lookup, analysis, generation or downloads.</p>
+                )}
+                {latestError && (
+                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700">
+                        <span className="font-semibold">Latest error:</span> {latestError.message || getPublicStepName(latestError.stepName)}
+                    </div>
+                )}
+                <p className="text-[11px] leading-snug text-gray-500">
+                    Expanded diagnostics are for beta review only and are not billing statements.
+                </p>
+            </div>
+
+            {isExpanded && (
+                <div className="m-3 mt-0 flex max-h-[min(58vh,620px)] flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900 text-xs text-slate-300 font-mono">
+                    <div className="p-3 border-b border-slate-700 bg-slate-800 font-bold text-white flex justify-between items-center">
+                        <span>Campaign Build Log</span>
+                        <div className="flex gap-1">
+                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-4">
+                        {logs.length === 0 && <div className="text-center opacity-50 pt-10">No campaign activity yet...</div>}
+                        {logs.map((log) => (
+                            <div key={log.id} className="border-l-2 border-slate-600 pl-3 relative">
+                                <div className="absolute -left-[5px] top-0 w-2 h-2 rounded-full bg-slate-600" style={{ backgroundColor: log.status === 'success' ? '#10b981' : log.status === 'error' ? '#ef4444' : '#f59e0b' }}></div>
+                                <div className="flex justify-between mb-1">
+                                    <span className="font-bold text-white">{getPublicStepName(log.stepName)}</span>
+                                    <span className="opacity-60">{log.timestamp.toLocaleTimeString()}</span>
                                 </div>
-                                <div className="mt-1 text-[10px] text-slate-400 leading-snug">Grounding/tool charges not included.</div>
-                                {(log.usage.excludedOperationCount || log.usage.unknownCostOperationCount) && (
-                                    <div className="mt-1 text-[10px] text-yellow-400 leading-snug">
-                                        {log.usage.excludedOperationCount ? `${log.usage.excludedOperationCount} operation(s) excluded. ` : ''}
-                                        {log.usage.unknownCostOperationCount ? `${log.usage.unknownCostOperationCount} unknown cost item(s).` : ''}
+                                {getPublicStepName(log.stepName) !== log.stepName && (
+                                    <div className="mb-1 text-[10px] text-slate-500">Technical step: {log.stepName}</div>
+                                )}
+                                {log.status === 'pending' && <span className="text-yellow-500 animate-pulse">Processing...</span>}
+                                {log.status === 'error' && <span className="text-red-400">{log.message}</span>}
+
+                                {log.usage && (
+                                    <div className="bg-slate-800 p-2 rounded mt-1 mb-2">
+                                        <div className="flex justify-between"><span>Model:</span> <span className="text-white">{log.usage.model}</span></div>
+                                        <div className="flex justify-between"><span>Provider usage:</span> <span>{log.usage.usageStatus}</span></div>
+                                        <div className="flex justify-between"><span>Token pricing:</span> <span className={log.usage.pricingStatus === 'unknown' ? 'text-yellow-400' : 'text-slate-300'}>{log.usage.pricingStatus}</span></div>
+                                        <div className="flex justify-between"><span>Input/output tokens:</span> <span>{formatTokenCount(log.usage.promptTokens)} / {formatTokenCount(log.usage.candidatesTokens)}</span></div>
+                                        {(log.usage.thinkingTokens !== null && log.usage.thinkingTokens !== undefined) && (
+                                            <div className="flex justify-between"><span>Thinking tokens:</span> <span>{formatTokenCount(log.usage.thinkingTokens)}</span></div>
+                                        )}
+                                        {(log.usage.cachedTokens !== null && log.usage.cachedTokens !== undefined) && (
+                                            <div className="flex justify-between"><span>Cached tokens:</span> <span>{formatTokenCount(log.usage.cachedTokens)}</span></div>
+                                        )}
+                                        <div className="flex justify-between border-t border-slate-700 mt-1 pt-1">
+                                            <span>Token-only est. cost:</span>
+                                            <span className={log.usage.estimatedCost === null ? 'text-yellow-400' : 'text-green-400'}>
+                                                {log.usage.estimatedCost === null ? 'unknown' : `$${log.usage.estimatedCost.toFixed(5)}`}
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 text-[10px] text-slate-400 leading-snug">Grounding/tool charges are not included. Provider usage may be unavailable for some operations.</div>
+                                        {(log.usage.excludedOperationCount || log.usage.unknownCostOperationCount) && (
+                                            <div className="mt-1 text-[10px] text-yellow-400 leading-snug">
+                                                {log.usage.excludedOperationCount ? `${log.usage.excludedOperationCount} operation(s) excluded. ` : ''}
+                                                {log.usage.unknownCostOperationCount ? `${log.usage.unknownCostOperationCount} unknown cost item(s).` : ''}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {log.inputs && (
+                                    <div className="mb-1">
+                                        <span className="block text-slate-500 mb-0.5">Inputs:</span>
+                                        <div className="bg-slate-800 p-1.5 rounded text-slate-400 whitespace-pre-wrap overflow-hidden text-[10px]">{log.inputs.substring(0, 150)}{log.inputs.length > 150 ? '...' : ''}</div>
+                                    </div>
+                                )}
+                                {log.outputs && (
+                                    <div>
+                                        <span className="block text-slate-500 mb-0.5">Outputs:</span>
+                                        <div className="bg-slate-800 p-1.5 rounded text-slate-200 whitespace-pre-wrap overflow-hidden text-[10px] border border-slate-700">{log.outputs.substring(0, 150)}{log.outputs.length > 150 ? '...' : ''}</div>
                                     </div>
                                 )}
                             </div>
-                        )}
-
-                        {log.inputs && (
-                            <div className="mb-1">
-                                <span className="block text-slate-500 mb-0.5">Inputs:</span>
-                                <div className="bg-slate-800 p-1.5 rounded text-slate-400 whitespace-pre-wrap overflow-hidden text-[10px]">{log.inputs.substring(0, 150)}{log.inputs.length > 150 ? '...' : ''}</div>
-                            </div>
-                        )}
-                        {log.outputs && (
-                            <div>
-                                <span className="block text-slate-500 mb-0.5">Outputs:</span>
-                                <div className="bg-slate-800 p-1.5 rounded text-slate-200 whitespace-pre-wrap overflow-hidden text-[10px] border border-slate-700">{log.outputs.substring(0, 150)}{log.outputs.length > 150 ? '...' : ''}</div>
-                            </div>
-                        )}
+                        ))}
                     </div>
-                ))}
-            </div>
-            <div className="p-2 border-t border-slate-700 bg-slate-800 text-right">
-                <span className="text-slate-400 mr-2">Token-only session estimate:</span>
-                <span className="text-green-400 font-bold">${totalCost.toFixed(5)}</span>
-                <div className="text-[10px] text-slate-500 mt-1">
-                    Grounding/tool charges not included. Some operations excluded where provider usage is unavailable.
-                    {(excludedCount > 0 || unknownCount > 0) && ` Excluded: ${excludedCount}. Unknown cost: ${unknownCount}.`}
+                    <div className="p-2 border-t border-slate-700 bg-slate-800 text-right">
+                        <span className="text-slate-400 mr-2">Token-only session estimate:</span>
+                        <span className="text-green-400 font-bold">${totalCost.toFixed(5)}</span>
+                        <div className="text-[10px] text-slate-500 mt-1">
+                            Grounding/tool charges not included. Some operations excluded where provider usage is unavailable. Beta diagnostics are not billing statements.
+                            {(excludedCount > 0 || unknownCount > 0) && ` Excluded: ${excludedCount}. Unknown cost: ${unknownCount}.`}
+                        </div>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };
@@ -542,6 +593,7 @@ const App: React.FC = () => {
     const [includeContactDetails, setIncludeContactDetails] = useState(false);
 
     const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
+    const [isBuildLogExpanded, setIsBuildLogExpanded] = useState(false);
     const [isBetaVerified, setIsBetaVerified] = useState(() => geminiService.hasVerifiedBetaAccess());
     const [isCheckingBetaAccess, setIsCheckingBetaAccess] = useState(() => !geminiService.hasVerifiedBetaAccess());
     const [betaCodeInput, setBetaCodeInput] = useState('');
@@ -1753,6 +1805,104 @@ const App: React.FC = () => {
         : readyOutputCount > 0
             ? allTabsGenerated ? 'Ready for review' : 'Draft in progress'
             : 'Idle';
+    const plainCampaignProgress = useMemo(() => {
+        if (isAddressLookupQueued || isSuggesting) {
+            return {
+                label: 'Looking up property',
+                description: 'Matching the address so you can choose the right property.',
+                tone: 'working' as const,
+            };
+        }
+        if (isResearching) {
+            return {
+                label: 'Reviewing property context',
+                description: 'Collecting property and local context for the campaign draft.',
+                tone: 'working' as const,
+            };
+        }
+        if (isAnalyzingStrategy) {
+            return {
+                label: 'Creating campaign strategy',
+                description: 'Choosing audience and style guidance from the approved context.',
+                tone: 'working' as const,
+            };
+        }
+        if (isAnalyzingFeatures) {
+            return {
+                label: 'Extracting features',
+                description: 'Pulling likely selling points into the property features.',
+                tone: 'working' as const,
+            };
+        }
+        if (isAnalyzingImages) {
+            return {
+                label: 'Reviewing property photos',
+                description: 'Finding visual features that may support the campaign copy.',
+                tone: 'working' as const,
+            };
+        }
+        if (isGenerating) {
+            return {
+                label: 'Generating outputs',
+                description: generatingTab ? `Creating ${generatingTab}.` : 'Creating campaign drafts.',
+                tone: 'working' as const,
+            };
+        }
+        if (isDownloadingAll) {
+            return {
+                label: 'Packaging downloads',
+                description: 'Preparing generated outputs only. Missing outputs are not generated silently.',
+                tone: 'working' as const,
+            };
+        }
+        if (allTabsGenerated) {
+            return {
+                label: 'Campaign ready',
+                description: 'All configured outputs are ready for review, copy or download.',
+                tone: 'ready' as const,
+            };
+        }
+        if (readyOutputCount > 0 && missingOutputCount > 0) {
+            return {
+                label: 'Some outputs missing',
+                description: 'Review ready drafts now, or use Generate missing to create the remaining outputs.',
+                tone: 'attention' as const,
+            };
+        }
+        if (readyOutputCount > 0) {
+            return {
+                label: 'Ready for review',
+                description: 'Generated drafts are available for review, copy or download.',
+                tone: 'ready' as const,
+            };
+        }
+        if (isFetchComplete) {
+            return {
+                label: 'Ready to create drafts',
+                description: 'Review the approved context, then generate listing copy.',
+                tone: 'ready' as const,
+            };
+        }
+        if (address.trim()) {
+            return {
+                label: 'Ready to fetch details',
+                description: 'Fetch details or enter property information before generating copy.',
+                tone: 'idle' as const,
+            };
+        }
+        return {
+            label: 'Ready to start',
+            description: 'Enter a property address to begin the private beta workflow.',
+            tone: 'idle' as const,
+        };
+    }, [isAddressLookupQueued, isSuggesting, isResearching, isAnalyzingStrategy, isAnalyzingFeatures, isAnalyzingImages, isGenerating, isDownloadingAll, generatingTab, allTabsGenerated, readyOutputCount, missingOutputCount, isFetchComplete, address]);
+    const plainCampaignProgressClass = plainCampaignProgress.tone === 'working'
+        ? 'border-amber-200 bg-amber-50 text-amber-900'
+        : plainCampaignProgress.tone === 'ready'
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            : plainCampaignProgress.tone === 'attention'
+                ? 'border-red-200 bg-red-50 text-red-800'
+                : 'border-gray-200 bg-white text-gray-700';
     const getCampaignStepClass = (state: 'complete' | 'current' | 'missing') => {
         if (state === 'complete') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
         if (state === 'current') return 'border-amber-200 bg-amber-50 text-amber-800';
@@ -1832,7 +1982,8 @@ const App: React.FC = () => {
                             <span className="font-bold">Real Estate AIM</span>
                             <span className="font-light text-gray-600"> | Copywriting Agent</span>
                         </h1>
-                        <p className="text-sm text-gray-600 mt-2">Beta access is required before using the copywriting workspace.</p>
+                        <p className="text-sm text-gray-600 mt-2">Private beta access is required before using the copywriting workspace.</p>
+                        <p className="text-xs leading-relaxed text-gray-500 mt-2">AIM creates campaign drafts from the property information you provide or approve. Review generated copy before use.</p>
                     </div>
                     <form onSubmit={handleBetaAccessSubmit} className="space-y-4">
                         <div>
@@ -1869,14 +2020,22 @@ const App: React.FC = () => {
                  </div>
             )}
             <header className="bg-white border-b border-gray-200">
-                <div className="mx-auto flex max-w-[1800px] items-center justify-between px-6 py-4">
+                <div className="mx-auto flex max-w-[1800px] flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
+                        <div className="mb-1 inline-flex rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-red-700">
+                            Private beta
+                        </div>
                         <h1 className="text-2xl text-gray-800">
                             <span className="font-bold">Real Estate AIM</span>
                             <span className="font-light text-gray-600"> | Copywriting Agent</span>
                         </h1>
+                        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-600">
+                            AIM creates campaign drafts from the property information you provide or approve. Review generated copy before use.
+                        </p>
                     </div>
-                    <div aria-hidden="true" />
+                    <div className="max-w-md rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-600">
+                        Testing notes: if something looks wrong, record the address, action and output type.
+                    </div>
                 </div>
             </header>
             <div className="border-b border-gray-200 bg-white px-6 py-3 text-sm">
@@ -1892,6 +2051,11 @@ const App: React.FC = () => {
                                 {operation.label}
                             </span>
                         ))}
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${plainCampaignProgressClass}`}>
+                            {plainCampaignProgress.tone === 'working' && <IconLoader className="w-3 h-3 animate-spin" />}
+                            {plainCampaignProgress.label}
+                        </span>
+                        <span className="text-xs text-gray-500">{plainCampaignProgress.description}</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                         {campaignStatusSteps.map(step => (
@@ -1914,7 +2078,25 @@ const App: React.FC = () => {
 
                     <div className="h-full xl:h-[calc(100vh-140px)] xl:sticky top-6 flex flex-col">
                         <ActiveTaskMonitor imageFiles={imageFiles} isAnalyzing={isAnalyzingImages} />
-                        <DebugPanel logs={debugLogs} />
+                        <div className={`mb-4 rounded-lg border p-4 shadow-sm ${plainCampaignProgressClass}`}>
+                            <div className="flex items-start gap-2">
+                                {plainCampaignProgress.tone === 'working' ? <IconLoader className="mt-0.5 h-4 w-4 animate-spin" /> : <IconCheckCircle className="mt-0.5 h-4 w-4" />}
+                                <div>
+                                    <p className="text-sm font-bold">{plainCampaignProgress.label}</p>
+                                    <p className="mt-1 text-xs leading-relaxed">{plainCampaignProgress.description}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4 text-xs leading-relaxed text-gray-600 shadow-sm">
+                            <p className="font-semibold text-gray-900">Draft review workflow</p>
+                            <p className="mt-1">For v1, edit final wording in your CRM, email, Word, Google Docs or publishing system.</p>
+                            <p className="mt-1">Downloads include generated outputs only. Missing outputs are not generated silently.</p>
+                        </div>
+                        <DebugPanel
+                            logs={debugLogs}
+                            isExpanded={isBuildLogExpanded}
+                            onToggleExpanded={() => setIsBuildLogExpanded(value => !value)}
+                        />
                     </div>
 
                     <div className="space-y-8 h-full xl:overflow-y-auto xl:h-[calc(100vh-140px)] pr-2 pb-10 flex flex-col">
@@ -2414,7 +2596,8 @@ const App: React.FC = () => {
                                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                                      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                                          <div>
-                                             <p className="text-sm font-semibold text-slate-900">Review and package campaign outputs for this property.</p>
+                                             <p className="text-sm font-semibold text-slate-900">Review generated campaign drafts for this property.</p>
+                                             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">Copy or download ready outputs, then make final wording changes in your CRM, email, Word, Google Docs or publishing system.</p>
                                              <div className="mt-3 flex flex-wrap gap-2 text-xs">
                                                  <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 font-semibold text-emerald-700">{readyOutputCount} ready</span>
                                                  <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-600">{missingOutputCount} missing</span>
@@ -2512,7 +2695,7 @@ const App: React.FC = () => {
                                                          {isCategoryExportMenuOpen && (
                                                              <div className="absolute right-0 top-full mt-2 w-60 rounded-md border border-gray-200 bg-white py-1 shadow-lg z-20">
                                                                  <p className="px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 border-b border-gray-50 mb-1">{selectedOutputCategory} category</p>
-                                                                 <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports generated outputs in this category only.</p>
+                                                                 <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports generated outputs in this category only. Missing outputs are not generated during download.</p>
                                                                  <button onClick={() => handleDownloadCurrentCategory('word')} className="flex w-full items-center px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
                                                                  <button onClick={() => handleDownloadCurrentCategory('txt')} className="flex w-full items-center px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
                                                                  <button onClick={() => handleDownloadCurrentCategory('pdf')} className="flex w-full items-center px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
@@ -2629,7 +2812,7 @@ const App: React.FC = () => {
                                                      {isExportMenuOpen && (
                                                          <div className="absolute left-0 top-full mt-2 w-56 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-20">
                                                              <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Current output only</p>
-                                                             <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports {activeSubTab} only.</p>
+                                                             <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports this generated draft only.</p>
                                                              <button onClick={() => handleDownloadCurrentOutput('word')} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
                                                              <button onClick={() => handleDownloadCurrentOutput('txt')} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
                                                              <button onClick={() => handleDownloadCurrentOutput('pdf')} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
@@ -2639,7 +2822,7 @@ const App: React.FC = () => {
                                              </div>
                                          </div>
                                          <p className="mt-2 max-w-3xl text-[11px] leading-snug text-gray-500">
-                                             To change the copy, update the property details, features, audience or style, then regenerate. Outputs are generated drafts; copy or download them for final editing in your CRM, Word, Google Docs or email system.
+                                             To change the copy, update the property details, features, audience or style, then regenerate. Outputs are generated drafts for review; copy or download them for final editing outside Real Estate AIM.
                                          </p>
                                      </div>
                                  </div>
