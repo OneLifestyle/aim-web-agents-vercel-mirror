@@ -8,6 +8,8 @@ Import provenance, safety notes, required environment variable names, runtime pr
 
 After import, the app was proven locally with `npm ci`, `npm run build`, a dev server, and a preview server. It was pushed to `main`, mirrored to `OneLifestyle/aim-web-agents-vercel-mirror` for temporary Vercel Hobby deployment, and deployed in Vercel as `aim-web-agents-copywriting`.
 
+The next connected-beta offer direction is documented in `docs/offer-architecture-001.md`: Listing Copy, Campaign Pack, and Campaign Blueprint. That document is architecture-only and does not implement the new UI, billing, Hub sync, provider routing changes, or Campaign Blueprint generation.
+
 ## Project Overview
 
 **Real Estate AIM** is an advanced, AI-powered copywriting application designed specifically for the Australian real estate market. It leverages Google's Gemini API to act as an intelligent assistant for real estate agents, automating the research, strategy, and content creation process for property listings.

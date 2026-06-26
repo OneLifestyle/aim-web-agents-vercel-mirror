@@ -221,6 +221,22 @@ Status date: `2026-06-26`
 - Current export summary: generated-only current-output, current-category, and campaign downloads remain on existing handlers and do not generate missing outputs.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Offer Architecture 001 Status
+
+Status date: `2026-06-26`
+
+- Goal: `WEBAGENTS-COPYWRITING-OFFER-ARCHITECTURE-001`
+- Review artifact: `docs/offer-architecture-001.md`
+- Runtime behavior changed: no
+- Product code changed: no
+- Current dependency summary: `Full Copy` remains the master listing narrative; the approved property brief remains the factual source; the 16 downstream campaign outputs are channel-specific adaptations of both.
+- Current offer recommendation: connected beta should frame Copywriting around Listing Copy, Campaign Pack, and Campaign Blueprint, with Campaign Pack labelled `Recommended` or `Best value` rather than `Most popular`.
+- Current UI implication: keep the 17-output tile grid as a post-generation review navigator, not the primary pre-generation chooser.
+- Current credit summary: Listing Copy 1 beta credit, Campaign Pack 2 beta credits, and Campaign Blueprint 8 to 10 beta credits are documented as testing hypotheses only, not final public pricing or billing logic.
+- Current regeneration summary: future stale-state rules should use an `inputFingerprint`, distinguish failed-operation retry from regeneration after changed inputs, and label same-input alternatives as `Create another version`.
+- Current Hub summary: future Hub assets are documented at contract level only. No Hub sync, auth, wallet, ledger, asset storage, or timeline implementation was added.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.
