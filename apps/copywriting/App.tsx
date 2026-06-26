@@ -2,12 +2,11 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { PropertyDetails, AgentProfile, CopyContext, OutputSettings, ImageFile, PreviewTab, GroundingSource, ImageContent, ResearchResult, GenerationParams, DebugLogEntry, UsageStats, OpenHouseDetails } from './types';
 import { TARGET_MARKETS, WRITING_STYLES, PROPERTY_TYPES, IconFileWord, IconFilePdf, IconFileTxt } from './constants';
-import { IconBuilding, IconCamera, IconChevronDown, IconClipboard, IconDownload, IconFileText, IconHome, IconLoader, IconMessage, IconMinus, IconPlus, IconSparkles, IconTrash, IconUpload, IconWorld, IconMapPin, IconCheckCircle, IconExclamationCircle, IconChevronLeft, IconChevronRight } from './constants';
+import { IconCamera, IconChevronDown, IconClipboard, IconDownload, IconFileText, IconLoader, IconMinus, IconPlus, IconSparkles, IconTrash, IconUpload, IconWorld, IconMapPin, IconCheckCircle, IconExclamationCircle, IconChevronLeft, IconChevronRight } from './constants';
 import * as geminiService from './services/geminiService';
 import { fileToBase64 } from './utils/fileUtils';
 import { buildCampaignExportPlan, sanitizeFileNamePart, type CampaignExportDocument, type CampaignExportGenerationLogSummary, type CampaignExportInputSnapshotSummary, type CampaignExportScope, type CampaignExportUsageCostSummary } from './utils/exportAssembly';
 import { Spinner } from './components/Spinner';
-import { ChatBot } from './components/ChatBot';
 
 type VersionSet = Partial<Record<PreviewTab, string>>;
 type SelectedAddress = {
@@ -665,16 +664,6 @@ const App: React.FC = () => {
         nextOperations.delete(id);
         activeCampaignOperationsRef.current = nextOperations;
         setActiveCampaignOperations(Array.from(nextOperations.values()));
-    };
-
-    const handleChatUsage = (usage: UsageStats | undefined, prompt: string) => {
-        addLog({
-            stepName: 'Chat',
-            status: 'success',
-            inputs: prompt,
-            outputs: usage ? 'Chat response returned with provider usage metadata.' : 'Chat response returned without provider usage metadata.',
-            usage
-        });
     };
 
     const handleAgentChange = (field: keyof AgentProfile, value: string) => {
@@ -2834,8 +2823,6 @@ const App: React.FC = () => {
                  <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
                     AI-generated copy must be reviewed before publication. Check property claims against source material, review public web research and attribution, and do not rely on AI output for legal, valuation or compliance advice. Users are responsible for rights, accuracy and publication decisions.
                  </div>
-
-                 <ChatBot onUsage={handleChatUsage} />
 
                  <div id="print-render-area" className="hidden"></div>
             </main>

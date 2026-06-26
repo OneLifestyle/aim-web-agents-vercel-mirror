@@ -237,6 +237,20 @@ Status date: `2026-06-26`
 - Current Hub summary: future Hub assets are documented at contract level only. No Hub sync, auth, wallet, ledger, asset storage, or timeline implementation was added.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Chat Assistant Disabled 001 Status
+
+Status date: `2026-06-26`
+
+- Goal: `WEBAGENTS-COPYWRITING-CHAT-ASSISTANT-DISABLE-001`
+- Review artifact: `docs/chat-assistant-disabled-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current assistant summary: the bottom-right floating `AI Assistant` is no longer mounted from the primary Copywriting UI, so the chat panel is unreachable for private-beta testers.
+- Deferred assistant summary: a future contextual Copywriting screen guide, beta help widget, AIM Hub contextual assistant, or AIM Command helper is documented as deferred only.
+- Deferred export/settings summary: Save with settings, input/settings snapshots, export metadata appendices, research-block copy controls, and future Hub asset audit-trail snapshots are documented as deferred only.
+- Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

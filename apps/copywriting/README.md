@@ -10,6 +10,8 @@ After import, the app was proven locally with `npm ci`, `npm run build`, a dev s
 
 The next connected-beta offer direction is documented in `docs/offer-architecture-001.md`: Listing Copy, Campaign Pack, and Campaign Blueprint. That document is architecture-only and does not implement the new UI, billing, Hub sync, provider routing changes, or Campaign Blueprint generation.
 
+The floating general `AI Assistant` chat surface is disabled for the private beta. The decision and deferred contextual-assistant/export-settings ideas are recorded in `docs/chat-assistant-disabled-001.md`.
+
 ## Project Overview
 
 **Real Estate AIM** is an advanced, AI-powered copywriting application designed specifically for the Australian real estate market. It leverages Google's Gemini API to act as an intelligent assistant for real estate agents, automating the research, strategy, and content creation process for property listings.
@@ -58,7 +60,7 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
 *   **Styling:** Tailwind CSS.
 *   **AI/LLM:** Google Gemini API (`@google/genai` SDK).
     *   *Models:* server-configured through `GEMINI_FLASH_MODEL` and `GEMINI_PRO_MODEL`.
-    *   *Current routing:* Flash is used for address suggestions, image analysis, feature extraction, refinement, chat and most copy variants. Pro is used for property research, AI Strategy Analysis, full listing copy, brochure copy and long-form/blog copy.
+    *   *Current routing:* Flash is used for address suggestions, image analysis, feature extraction, refinement, dormant chat operation and most copy variants. Pro is used for property research, AI Strategy Analysis, full listing copy, brochure copy and long-form/blog copy.
 *   **State Management:** React Hooks.
 
 ## Project Structure

@@ -76,6 +76,8 @@ The app now includes a compact header note:
 
 This does not add chat, email sending, support storage, or a support backend.
 
+Follow-up note: `WEBAGENTS-COPYWRITING-CHAT-ASSISTANT-DISABLE-001` removed the previously visible floating general `AI Assistant` from the primary private-beta UI. Future contextual assistant/help concepts remain deferred in `chat-assistant-disabled-001.md`.
+
 ## Preserved Behaviour
 
 - Address lookup remains on the existing path.
