@@ -146,6 +146,8 @@ const formatDateSlug = (date: Date): string => date.toISOString().slice(0, 10);
 
 const formatGeneratedAt = (date: Date): string => date.toISOString();
 
+const getExportOutputTitle = (tab: PreviewTab): string => tab === 'Full Copy' ? 'Listing Copy' : tab;
+
 const buildHeader = (lines: string[]): string => {
     return [
         ...lines.filter(line => line.trim().length > 0),
@@ -161,7 +163,7 @@ const buildMissingOutputNotice = (missingSections: CampaignExportSection[]): str
         'Missing outputs not included:',
         missingSections.map(section => `- ${section.title}`).join('\n'),
         '',
-        'Download actions export generated outputs only. Use Generate missing to create additional outputs before exporting again.',
+        'Download actions export generated outputs only. Use Generate Campaign Pack to create additional campaign outputs before exporting again.',
         '',
         '====================================',
         '',
@@ -213,7 +215,7 @@ export const buildCampaignExportPlan = ({
 
         return {
             tab,
-            title: tab,
+            title: getExportOutputTitle(tab),
             category: categoryByTab[tab] || 'Campaign',
             slug,
             fileBaseName: `real-estate-aim-copywriting-current-output-${propertySlug}-${slug}-${dateSlug}`,

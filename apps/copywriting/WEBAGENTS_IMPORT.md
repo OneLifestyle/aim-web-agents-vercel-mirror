@@ -251,6 +251,22 @@ Status date: `2026-06-26`
 - Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Offer UI 001 Status
+
+Status date: `2026-06-27`
+
+- Goal: `WEBAGENTS-COPYWRITING-OFFER-UI-001`
+- Review artifact: `docs/offer-ui-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current offer summary: Campaign Outputs now leads with Listing Copy, Campaign Pack, and planned-only Campaign Blueprint offers.
+- Current listing summary: the internal master output remains `Full Copy`, while user-facing UI and export titles prefer `Listing Copy` where safe.
+- Current campaign pack summary: Campaign Pack wraps the existing downstream missing-output generation flow, skips already-generated downstream outputs, and does not regenerate Listing Copy.
+- Current library summary: the 17-output tile grid remains available as Campaign Library review navigation rather than the primary pre-generation chooser.
+- Current blueprint summary: Campaign Blueprint is visible as planned beta only and cannot trigger generation.
+- Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

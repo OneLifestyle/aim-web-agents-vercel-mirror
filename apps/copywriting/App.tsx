@@ -26,6 +26,7 @@ type CampaignOutputStatus = 'ready' | 'missing' | 'generating' | 'queued' | 'nee
 type CampaignOutputSectionMeta = {
     id: PreviewTab;
     label: PreviewTab;
+    displayLabel: string;
     shortLabel: string;
     group: string;
     description: string;
@@ -33,6 +34,17 @@ type CampaignOutputSectionMeta = {
     canDownload: boolean;
 };
 type CampaignOutputCategoryFilter = 'All' | string;
+type CopywritingOfferId = 'listing-copy' | 'campaign-pack' | 'campaign-blueprint';
+type CopywritingOfferStatus = 'active' | 'recommended' | 'planned';
+type CopywritingOfferMeta = {
+    id: CopywritingOfferId;
+    title: string;
+    shortDescription: string;
+    status: CopywritingOfferStatus;
+    primaryActionLabel: string;
+    includedSummary: string;
+    disabledReason?: string;
+};
 
 const previewTabConfig: Record<string, PreviewTab[]> = {
     'Listing': ['Full Copy', 'Just Listed', 'Brochure Copy', 'Email', 'Flyer'],
@@ -48,89 +60,137 @@ const campaignExportCategories = mainTabs.map(title => ({
     tabs: previewTabConfig[title],
 }));
 const categoryFilters: CampaignOutputCategoryFilter[] = ['All', ...mainTabs];
+const LISTING_COPY_TAB: PreviewTab = 'Full Copy';
 const ALL_CONTENT_TABS = Object.values(previewTabConfig).flat();
+const DOWNSTREAM_CAMPAIGN_TABS = ALL_CONTENT_TABS.filter(tab => tab !== LISTING_COPY_TAB);
+const TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS = DOWNSTREAM_CAMPAIGN_TABS.length;
+const COPYWRITING_OFFERS: CopywritingOfferMeta[] = [
+    {
+        id: 'listing-copy',
+        title: 'Listing Copy',
+        shortDescription: 'Create the core property story.',
+        status: 'active',
+        primaryActionLabel: 'Generate Listing Copy',
+        includedSummary: 'Core listing narrative and headline direction from the approved property brief.',
+    },
+    {
+        id: 'campaign-pack',
+        title: 'Campaign Pack',
+        shortDescription: 'Turn the listing into the complete campaign pack.',
+        status: 'recommended',
+        primaryActionLabel: 'Generate Campaign Pack',
+        includedSummary: 'Social, email, brochure, flyer, blog, video and open house copy from the approved listing.',
+    },
+    {
+        id: 'campaign-blueprint',
+        title: 'Campaign Blueprint',
+        shortDescription: 'Add rollout, search/discovery and content strategy.',
+        status: 'planned',
+        primaryActionLabel: 'Planned beta',
+        includedSummary: 'Future rollout plan, discovery brief, content calendar and coordinator handoff.',
+        disabledReason: 'Campaign Blueprint is planned for a later beta and does not generate yet.',
+    },
+];
+const getOutputDisplayLabel = (tab: PreviewTab): string => tab === LISTING_COPY_TAB ? 'Listing Copy' : tab;
 const CAMPAIGN_OUTPUT_SECTION_META: Record<PreviewTab, Omit<CampaignOutputSectionMeta, 'id' | 'label' | 'group' | 'slug'>> = {
     'Full Copy': {
-        shortLabel: 'Full copy',
-        description: 'Primary listing copy and the source for campaign variations.',
+        displayLabel: 'Listing Copy',
+        shortLabel: 'Listing Copy',
+        description: 'Core listing narrative and the source for campaign variations.',
         canDownload: true,
     },
     'Just Listed': {
+        displayLabel: 'Just Listed',
         shortLabel: 'Just listed',
         description: 'Launch copy for newly listed property announcements.',
         canDownload: true,
     },
     'Brochure Copy': {
+        displayLabel: 'Brochure Copy',
         shortLabel: 'Brochure',
         description: 'Longer-form brochure text for printed and digital collateral.',
         canDownload: true,
     },
     'Email': {
+        displayLabel: 'Email',
         shortLabel: 'Email',
         description: 'Email campaign copy for database and buyer follow-up.',
         canDownload: true,
     },
     'Flyer': {
+        displayLabel: 'Flyer',
         shortLabel: 'Flyer',
         description: 'Concise flyer copy for local print and handout use.',
         canDownload: true,
     },
     'Coming Soon Teaser': {
+        displayLabel: 'Coming Soon Teaser',
         shortLabel: 'Teaser',
         description: 'Pre-market teaser copy before the full campaign launch.',
         canDownload: true,
     },
     'Coming Soon Email': {
+        displayLabel: 'Coming Soon Email',
         shortLabel: 'Coming email',
         description: 'Pre-market email copy for early buyer interest.',
         canDownload: true,
     },
     'Coming Soon SMS': {
+        displayLabel: 'Coming Soon SMS',
         shortLabel: 'SMS',
         description: 'Short pre-market SMS copy.',
         canDownload: true,
     },
     'Facebook': {
+        displayLabel: 'Facebook',
         shortLabel: 'Facebook',
         description: 'Facebook post copy for campaign promotion.',
         canDownload: true,
     },
     'Facebook Marketplace': {
+        displayLabel: 'Facebook Marketplace',
         shortLabel: 'Marketplace',
         description: 'Marketplace-ready property description copy.',
         canDownload: true,
     },
     'Instagram': {
+        displayLabel: 'Instagram',
         shortLabel: 'Instagram',
         description: 'Instagram caption copy with social-first framing.',
         canDownload: true,
     },
     'X (Twitter)': {
+        displayLabel: 'X (Twitter)',
         shortLabel: 'X',
         description: 'Short-form social copy for X.',
         canDownload: true,
     },
     'Google Business': {
+        displayLabel: 'Google Business',
         shortLabel: 'Google',
         description: 'Google Business profile update copy.',
         canDownload: true,
     },
     'TikTok': {
+        displayLabel: 'TikTok',
         shortLabel: 'TikTok',
         description: 'Short video social caption or hook copy.',
         canDownload: true,
     },
     'Open House': {
+        displayLabel: 'Open House',
         shortLabel: 'Open house',
         description: 'Open home event copy and invitation text.',
         canDownload: true,
     },
     'Long-form / Blog': {
+        displayLabel: 'Long-form / Blog',
         shortLabel: 'Blog',
         description: 'Long-form article copy for content marketing.',
         canDownload: true,
     },
     'Video Script': {
+        displayLabel: 'Video Script',
         shortLabel: 'Video',
         description: 'Property video script and direction notes.',
         canDownload: true,
@@ -346,7 +406,8 @@ const getPublicStepName = (stepName: string): string => {
     if (stepName.startsWith('AI Feature Extraction')) return 'Extracting property features';
     if (stepName.startsWith('Analyze Photos')) return 'Analyzing uploaded photos';
     if (stepName.startsWith('Generate Copy')) return 'Generating campaign copy';
-    if (stepName.startsWith('Generate All Variations')) return 'Creating campaign variations';
+    if (stepName.startsWith('Generate All Variations')) return 'Creating campaign pack';
+    if (stepName.startsWith('Generate Campaign Pack')) return 'Creating campaign pack';
     if (stepName.startsWith('Download Full Campaign')) return 'Preparing full campaign document';
     if (stepName.startsWith('Download All')) return 'Preparing full campaign document';
     if (stepName.startsWith('Refine Copy')) return 'Refining selected section';
@@ -561,6 +622,7 @@ const App: React.FC = () => {
     const [activeMainTab, setActiveMainTab] = useState<string>('Listing');
     const [activeSubTab, setActiveSubTab] = useState<PreviewTab>('Full Copy');
     const [selectedOutputCategory, setSelectedOutputCategory] = useState<CampaignOutputCategoryFilter>('All');
+    const [isCampaignLibraryExpanded, setIsCampaignLibraryExpanded] = useState(false);
     const [generatingTab, setGeneratingTab] = useState<PreviewTab | null>(null);
     const [queuedOutputTabs, setQueuedOutputTabs] = useState<PreviewTab[]>([]);
     const [isAnalyzingStrategy, setIsAnalyzingStrategy] = useState(false);
@@ -1232,20 +1294,21 @@ const App: React.FC = () => {
     };
 
     const generateCopyForTab = async (tab: PreviewTab, isRegeneration = false) => {
-        if (!beginCampaignOperation('generateFullCopy', tab === 'Full Copy' ? 'Listing copy generation' : `${tab} generation`)) return;
+        const outputLabel = getOutputDisplayLabel(tab);
+        if (!beginCampaignOperation('generateFullCopy', tab === LISTING_COPY_TAB ? 'Listing copy generation' : `${outputLabel} generation`)) return;
         setIsGenerating(true);
         setGeneratingTab(tab);
         setGenerationError(null);
 
         const logId = addLog({
-            stepName: `Generate Copy (${tab})`,
+            stepName: `Generate Copy (${outputLabel})`,
             status: 'pending',
-            inputs: `Generating for ${tab}. Context: ${copyContext.primaryTargetMarket}, ${copyContext.writingStyle.join('+')}`
+            inputs: `Generating for ${outputLabel}. Context: ${copyContext.primaryTargetMarket}, ${copyContext.writingStyle.join('+')}`
         });
 
         const currentVersion = versionSets[activeVersionIndex];
-        const isVariant = tab !== 'Full Copy';
-        const baseCopy = currentVersion ? currentVersion['Full Copy'] : undefined;
+        const isVariant = tab !== LISTING_COPY_TAB;
+        const baseCopy = currentVersion ? currentVersion[LISTING_COPY_TAB] : undefined;
         const generationParams: GenerationParams = {
             address,
             includeAddress,
@@ -1262,7 +1325,7 @@ const App: React.FC = () => {
         };
 
         if (isVariant && !baseCopy) {
-            const msg = `Please generate the 'Full Copy' first for this version before creating a variation.`;
+            const msg = `Please generate Listing Copy first for this version before creating a campaign output.`;
             setGenerationError(msg);
             updateLog(logId, { status: 'error', message: msg });
             setIsGenerating(false);
@@ -1304,7 +1367,7 @@ const App: React.FC = () => {
 
         } catch (error) {
             console.error(error);
-            const msg = error instanceof Error ? error.message : `An error occurred while generating copy for ${tab}.`;
+            const msg = error instanceof Error ? error.message : `An error occurred while generating copy for ${outputLabel}.`;
             setGenerationError(msg);
             updateLog(logId, { status: 'error', message: msg });
         } finally {
@@ -1316,13 +1379,19 @@ const App: React.FC = () => {
 
     const handleGenerateAllMissing = async () => {
         const currentVersion = versionSets[activeVersionIndex];
-        if (!currentVersion || !currentVersion['Full Copy']) {
-            setNotification("Please generate the 'Full Copy' first.");
+        if (!currentVersion || !currentVersion[LISTING_COPY_TAB]) {
+            setNotification("Generate Listing Copy before creating the Campaign Pack.");
             return;
         }
-        if (!beginCampaignOperation('generateAllVariations', 'Campaign variation generation')) return;
+        if (!beginCampaignOperation('generateAllVariations', 'Campaign Pack generation')) return;
 
-        const missingTabs = ALL_CONTENT_TABS.filter(tab => !currentVersion[tab]);
+        setIsCampaignLibraryExpanded(true);
+        const missingTabs = DOWNSTREAM_CAMPAIGN_TABS.filter(tab => !currentVersion[tab]);
+        if (missingTabs.length === 0) {
+            setNotification("Campaign Pack is already ready.");
+            endCampaignOperation('generateAllVariations');
+            return;
+        }
         const generationParams: GenerationParams = {
             address,
             includeAddress,
@@ -1339,15 +1408,14 @@ const App: React.FC = () => {
         };
 
         setIsGenerating(true);
-        const logId = addLog({ stepName: 'Generate All Variations', status: 'pending', inputs: `Generating variations for ${missingTabs.length || 'all'} tabs` });
+        const logId = addLog({ stepName: 'Generate Campaign Pack', status: 'pending', inputs: `Generating ${missingTabs.length} missing campaign output(s) from Listing Copy.` });
 
         try {
-            const tabsToProcess = missingTabs.length > 0 ? missingTabs : ALL_CONTENT_TABS;
             const childUsages: Array<UsageStats | undefined> = [];
 
-            for (const tab of tabsToProcess) {
+            for (const tab of missingTabs) {
                 setGeneratingTab(tab);
-                const result = await geminiService.generateCopyVariant(currentVersion['Full Copy']!, tab, generationParams);
+                const result = await geminiService.generateCopyVariant(currentVersion[LISTING_COPY_TAB]!, tab, generationParams);
                 childUsages.push(result.usage);
 
                 setVersionSets(prev => {
@@ -1360,13 +1428,13 @@ const App: React.FC = () => {
             }
             updateLog(logId, {
                 status: 'success',
-                message: 'All variations processed',
-                usage: aggregateUsage('Generate All Variations', childUsages, 'mixed variant models')
+                message: 'Campaign Pack processed',
+                usage: aggregateUsage('Generate Campaign Pack', childUsages, 'mixed variant models')
             });
-            setNotification("Campaign variations processed successfully!");
+            setNotification("Campaign Pack processed successfully!");
         } catch (error) {
-            console.error("Error generating all variations:", error);
-            const msg = error instanceof Error ? error.message : "Error generating variations.";
+            console.error("Error generating Campaign Pack:", error);
+            const msg = error instanceof Error ? error.message : "Error generating Campaign Pack.";
             setNotification(msg);
             updateLog(logId, { status: 'error', message: msg });
         } finally {
@@ -1380,8 +1448,8 @@ const App: React.FC = () => {
         const currentVersion = versionSets[activeVersionIndex];
         if (currentVersion?.[tab] || generatingTab === tab) return;
 
-        if (tab !== 'Full Copy' && !currentVersion?.['Full Copy']) {
-            setNotification("Generate Full Copy before creating this output.");
+        if (tab !== LISTING_COPY_TAB && !currentVersion?.[LISTING_COPY_TAB]) {
+            setNotification("Generate Listing Copy before creating this campaign output.");
             return;
         }
 
@@ -1391,7 +1459,7 @@ const App: React.FC = () => {
 
         if (activeOutputOperation) {
             setQueuedOutputTabs(prev => prev.includes(tab) ? prev : [...prev, tab]);
-            setNotification(`${tab} queued after ${activeOutputOperation.label}.`);
+            setNotification(`${getOutputDisplayLabel(tab)} queued after ${activeOutputOperation.label}.`);
             return;
         }
 
@@ -1674,7 +1742,7 @@ const App: React.FC = () => {
         if (!nextTab) return;
 
         setQueuedOutputTabs(remainingTabs);
-        if (!currentVersionSet[nextTab] && (nextTab === 'Full Copy' || currentVersionSet['Full Copy'])) {
+        if (!currentVersionSet[nextTab] && (nextTab === LISTING_COPY_TAB || currentVersionSet[LISTING_COPY_TAB])) {
             generateCopyForTab(nextTab);
         }
     }, [queuedOutputTabs, isGenerating, activeCampaignOperations, currentVersionSet]);
@@ -1682,6 +1750,13 @@ const App: React.FC = () => {
     const allTabsGenerated = useMemo(() => {
         return ALL_CONTENT_TABS.every(tab => !!currentVersionSet[tab]);
     }, [currentVersionSet]);
+    const listingCopyReady = Boolean(currentVersionSet[LISTING_COPY_TAB]);
+    const isListingCopyGenerating = isGenerating && generatingTab === LISTING_COPY_TAB;
+    const campaignPackReadyCount = DOWNSTREAM_CAMPAIGN_TABS.filter(tab => Boolean(currentVersionSet[tab])).length;
+    const campaignPackMissingCount = TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS - campaignPackReadyCount;
+    const isCampaignPackGenerating = isGenerating && generatingTab !== LISTING_COPY_TAB;
+    const isCampaignPackReady = listingCopyReady && campaignPackMissingCount === 0;
+    const hasCampaignPackStarted = campaignPackReadyCount > 0 || DOWNSTREAM_CAMPAIGN_TABS.some(tab => queuedOutputTabs.includes(tab)) || isCampaignPackGenerating;
 
     const currentCampaignExportPlan = useMemo(() => buildCampaignExportPlan({
         address,
@@ -1708,13 +1783,14 @@ const App: React.FC = () => {
                     ? 'queued'
                 : section.generated
                     ? 'ready'
-                    : section.tab === 'Full Copy' || !currentVersionSet['Full Copy']
+                    : section.tab === LISTING_COPY_TAB || !currentVersionSet[LISTING_COPY_TAB]
                         ? 'needs-generation'
                         : 'missing';
 
             return {
                 id: section.tab,
                 label: section.tab,
+                displayLabel: configuredMeta.displayLabel || getOutputDisplayLabel(section.tab),
                 group,
                 slug: section.slug,
                 ...configuredMeta,
@@ -1832,8 +1908,8 @@ const App: React.FC = () => {
         }
         if (isGenerating) {
             return {
-                label: 'Generating outputs',
-                description: generatingTab ? `Creating ${generatingTab}.` : 'Creating campaign drafts.',
+                label: isCampaignPackGenerating ? 'Generating Campaign Pack' : 'Generating outputs',
+                description: generatingTab ? `Creating ${getOutputDisplayLabel(generatingTab)}.` : 'Creating campaign drafts.',
                 tone: 'working' as const,
             };
         }
@@ -1853,8 +1929,10 @@ const App: React.FC = () => {
         }
         if (readyOutputCount > 0 && missingOutputCount > 0) {
             return {
-                label: 'Some outputs missing',
-                description: 'Review ready drafts now, or use Generate missing to create the remaining outputs.',
+                label: listingCopyReady ? 'Listing Copy ready' : 'Some outputs missing',
+                description: listingCopyReady
+                    ? 'Generate Campaign Pack to create the remaining campaign outputs.'
+                    : 'Review ready drafts now, or generate Listing Copy to continue.',
                 tone: 'attention' as const,
             };
         }
@@ -2502,13 +2580,13 @@ const App: React.FC = () => {
                                 <input type="range" min="50" max="1000" step="50" value={outputSettings.wordCount} onChange={(e) => setOutputSettings(prev => ({ ...prev, wordCount: parseInt(e.target.value) }))} className="w-1/2 h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-red-600" />
                             </div>
                             <button
-                                onClick={() => generateCopyForTab(activeSubTab, true)}
+                                onClick={() => generateCopyForTab(LISTING_COPY_TAB, listingCopyReady)}
                                 disabled={isGenerating || Boolean(generateCopyBlocker)}
                                 title={getCampaignOperationTitle('generateFullCopy')}
                                 className="w-full inline-flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 disabled:bg-red-400 transition-transform transform hover:scale-[1.01]"
                             >
-                                {isGenerating && generatingTab === activeSubTab ? <Spinner className="mr-2" /> : <IconSparkles className="mr-2 w-5 h-5" />}
-                                {currentCopy ? 'Regenerate Copy' : 'Generate Listing Copy'}
+                                {isListingCopyGenerating ? <Spinner className="mr-2" /> : <IconSparkles className="mr-2 w-5 h-5" />}
+                                {listingCopyReady ? 'Regenerate Listing Copy' : 'Generate Listing Copy'}
                             </button>
                         </div>
                     </div>
@@ -2583,40 +2661,143 @@ const App: React.FC = () => {
                          <Section id="campaign-outputs" title="Campaign Outputs" isActive={isCampaignOutputsActive} activeLabel={isDownloadingAll ? 'Preparing...' : 'Generating...'}>
                              <div className="flex flex-col gap-5">
                                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                     <div className="mb-4">
+                                         <p className="text-sm font-semibold text-slate-900">Choose the campaign outcome for this property.</p>
+                                         <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
+                                             Prepare the property brief, generate Listing Copy first, then continue to Campaign Pack when you need the full channel package.
+                                         </p>
+                                     </div>
+                                     <div className="grid grid-cols-1 gap-3 2xl:grid-cols-3">
+                                         {COPYWRITING_OFFERS.map(offer => {
+                                             const isListingOffer = offer.id === 'listing-copy';
+                                             const isCampaignPackOffer = offer.id === 'campaign-pack';
+                                             const isBlueprintOffer = offer.id === 'campaign-blueprint';
+                                             const stateLabel = isListingOffer
+                                                ? isListingCopyGenerating ? 'Generating' : listingCopyReady ? 'Ready' : 'Missing'
+                                                : isCampaignPackOffer
+                                                    ? isCampaignPackGenerating ? 'Generating' : !listingCopyReady ? 'Available after Listing Copy' : isCampaignPackReady ? 'Ready' : `${campaignPackMissingCount} outputs remaining`
+                                                    : 'Not available yet';
+                                             const stateClass = isBlueprintOffer
+                                                ? 'border-gray-200 bg-gray-100 text-gray-600'
+                                                : stateLabel === 'Ready'
+                                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                    : stateLabel === 'Generating'
+                                                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                                        : 'border-gray-200 bg-white text-gray-600';
+                                             const statusLabel = offer.status === 'recommended'
+                                                ? 'Recommended'
+                                                : offer.status === 'planned'
+                                                    ? 'Planned beta'
+                                                    : 'Active';
+                                             const statusClass = offer.status === 'recommended'
+                                                ? 'border-red-200 bg-red-50 text-red-700'
+                                                : offer.status === 'planned'
+                                                    ? 'border-gray-200 bg-gray-100 text-gray-600'
+                                                    : 'border-emerald-200 bg-emerald-50 text-emerald-700';
+                                             const actionLabel = isListingOffer
+                                                ? listingCopyReady ? 'Review Listing Copy' : offer.primaryActionLabel
+                                                : isCampaignPackOffer
+                                                    ? !listingCopyReady ? 'Listing Copy required' : isCampaignPackReady ? 'Review Campaign Pack' : offer.primaryActionLabel
+                                                    : offer.primaryActionLabel;
+                                             const disabled = isBlueprintOffer || isGenerating || (isCampaignPackOffer && !listingCopyReady);
+                                             const onOfferAction = () => {
+                                                if (isListingOffer) {
+                                                    if (listingCopyReady) {
+                                                        setActiveMainTab('Listing');
+                                                        setActiveSubTab(LISTING_COPY_TAB);
+                                                        setSelectedOutputCategory('Listing');
+                                                        setIsCampaignLibraryExpanded(true);
+                                                    } else {
+                                                        generateCopyForTab(LISTING_COPY_TAB);
+                                                    }
+                                                    return;
+                                                }
+                                                if (isCampaignPackOffer) {
+                                                    if (isCampaignPackReady) {
+                                                        setIsCampaignLibraryExpanded(true);
+                                                        setSelectedOutputCategory('All');
+                                                    } else {
+                                                        handleGenerateAllMissing();
+                                                    }
+                                                }
+                                             };
+
+                                             return (
+                                                <div key={offer.id} className={`flex min-h-[210px] flex-col justify-between rounded-lg border bg-white p-4 ${offer.status === 'recommended' ? 'border-red-200 shadow-sm' : 'border-gray-200'}`}>
+                                                    <div>
+                                                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                                                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${statusClass}`}>{statusLabel}</span>
+                                                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${stateClass}`}>{stateLabel}</span>
+                                                        </div>
+                                                        <h3 className="text-base font-bold text-gray-900">{offer.title}</h3>
+                                                        <p className="mt-1 text-sm text-gray-700">{offer.shortDescription}</p>
+                                                        <p className="mt-3 text-xs leading-relaxed text-gray-500">{offer.includedSummary}</p>
+                                                        {isCampaignPackOffer && listingCopyReady && !isCampaignPackReady && (
+                                                            <p className="mt-2 text-xs font-semibold text-red-700">Listing Copy is ready. Campaign outputs have not all been generated yet.</p>
+                                                        )}
+                                                        {offer.disabledReason && (
+                                                            <p className="mt-2 text-xs leading-relaxed text-gray-500">{offer.disabledReason}</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="mt-4 flex flex-wrap gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={onOfferAction}
+                                                            disabled={disabled}
+                                                            title={isCampaignPackOffer && !listingCopyReady ? 'Generate Listing Copy before Campaign Pack.' : offer.disabledReason}
+                                                            className={`inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isCampaignPackOffer ? 'bg-red-600 text-white hover:bg-red-700 disabled:bg-red-400' : isBlueprintOffer ? 'border border-gray-200 bg-gray-100 text-gray-500' : 'bg-slate-800 text-white hover:bg-slate-900 disabled:bg-slate-400'}`}
+                                                        >
+                                                            {(isListingCopyGenerating && isListingOffer) || (isCampaignPackGenerating && isCampaignPackOffer) ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
+                                                            {actionLabel}
+                                                        </button>
+                                                        {isListingOffer && listingCopyReady && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => generateCopyForTab(LISTING_COPY_TAB, true)}
+                                                                disabled={isGenerating || Boolean(generateCopyBlocker)}
+                                                                title={getCampaignOperationTitle('generateFullCopy')}
+                                                                className={compactActionButtonClass}
+                                                            >
+                                                                Regenerate Listing Copy
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                             );
+                                         })}
+                                     </div>
+                                 </div>
+
+                                 <div className="rounded-lg border border-gray-200 bg-white p-4">
                                      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                                          <div>
-                                             <p className="text-sm font-semibold text-slate-900">Review generated campaign drafts for this property.</p>
-                                             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">Copy or download ready outputs, then make final wording changes in your CRM, email, Word, Google Docs or publishing system.</p>
+                                             <p className="text-sm font-semibold text-gray-900">Campaign Library</p>
+                                             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-600">
+                                                 {listingCopyReady
+                                                    ? `Listing Copy ready. Campaign Pack creates ${TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS} campaign outputs for social, email, brochure, blog, video and open house copy.`
+                                                    : `Generate Listing Copy first. The ${TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS} campaign outputs become available through Campaign Pack.`}
+                                             </p>
                                              <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                                                 <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 font-semibold text-emerald-700">{readyOutputCount} ready</span>
-                                                 <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-600">{missingOutputCount} missing</span>
+                                                 <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 font-semibold text-emerald-700">{listingCopyReady ? 'Listing Copy ready' : 'Listing Copy missing'}</span>
+                                                 <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-600">{campaignPackReadyCount}/{TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS} campaign outputs ready</span>
                                                  {queuedOutputTabs.length > 0 && <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 font-semibold text-amber-800">{queuedOutputTabs.length} queued</span>}
                                              </div>
                                          </div>
                                          <div className="flex flex-wrap items-center gap-2 2xl:justify-end">
                                              <button
-                                                onClick={handleGenerateAllMissing}
-                                                disabled={isGenerating || Boolean(generateAllBlocker) || !currentVersionSet['Full Copy']}
-                                                title={getCampaignOperationTitle(
-                                                    'generateAllVariations',
-                                                    !currentVersionSet['Full Copy']
-                                                        ? 'Generate Full Copy before campaign variations.'
-                                                        : allTabsGenerated
-                                                            ? 'All outputs are ready. This will regenerate campaign variations.'
-                                                            : 'Generate missing outputs.'
-                                                )}
-                                                aria-label="Generate missing outputs"
-                                                className={`inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-bold transition-all ${allTabsGenerated ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                type="button"
+                                                onClick={() => setIsCampaignLibraryExpanded(value => !value)}
+                                                disabled={!listingCopyReady && !hasCampaignPackStarted}
+                                                className={compactActionButtonClass}
                                              >
-                                                <IconSparkles className="w-4 h-4" />
-                                                Generate missing
+                                                {isCampaignLibraryExpanded ? 'Hide library' : 'Review library'}
                                              </button>
                                              <div className="relative" ref={downloadAllMenuRef}>
                                                  <button
                                                     onClick={() => setIsDownloadAllMenuOpen(!isDownloadAllMenuOpen)}
                                                     disabled={isDownloadingAll || Boolean(exportFullCampaignBlocker) || readyOutputCount === 0}
                                                     title={getCampaignOperationTitle('exportFullCampaign', readyOutputCount === 0 ? 'No generated outputs in this campaign yet.' : undefined)}
-                                                    aria-label="Download full campaign document"
+                                                    aria-label="Download campaign document"
                                                     className="inline-flex min-h-9 items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-sm font-bold text-white transition-all hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
                                                  >
                                                      {isDownloadingAll ? <Spinner className="w-4 h-4" /> : <IconDownload className="w-4 h-4" />}
@@ -2636,6 +2817,7 @@ const App: React.FC = () => {
                                      </div>
                                  </div>
 
+                                 {isCampaignLibraryExpanded ? (
                                  <div className="space-y-3">
                                      <div className="flex flex-wrap gap-2">
                                          {categoryFilters.map(category => {
@@ -2717,12 +2899,30 @@ const App: React.FC = () => {
                                      </div>
                                      </div>
                                  </div>
+                                 ) : (
+                                     <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
+                                         <IconFileText className="mx-auto mb-3 h-10 w-10 text-gray-400" />
+                                         <h3 className="text-sm font-bold text-gray-900">Campaign Library is ready for review after Campaign Pack</h3>
+                                         <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-gray-500">
+                                             Listing Copy is step one. Campaign Pack creates the downstream social, email, brochure, blog, video and open house outputs, then this library becomes the review navigator.
+                                         </p>
+                                         <button
+                                            type="button"
+                                            onClick={isCampaignPackReady ? () => setIsCampaignLibraryExpanded(true) : listingCopyReady ? handleGenerateAllMissing : () => generateCopyForTab(LISTING_COPY_TAB)}
+                                            disabled={isGenerating || Boolean(generateAllBlocker) || Boolean(generateCopyBlocker)}
+                                            className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed"
+                                         >
+                                            {isGenerating ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
+                                            {isCampaignPackReady ? 'Review Campaign Pack' : listingCopyReady ? 'Generate Campaign Pack' : 'Generate Listing Copy'}
+                                         </button>
+                                     </div>
+                                 )}
 
                                  <div className="rounded-lg border border-gray-200 bg-white">
                                      <div className="border-b border-gray-100 p-4">
                                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                              <div className="flex flex-wrap items-center gap-2">
-                                                 <h3 className="text-base font-semibold text-gray-900">{selectedCampaignOutput?.label || activeSubTab}</h3>
+                                                 <h3 className="text-base font-semibold text-gray-900">{selectedCampaignOutput?.displayLabel || getOutputDisplayLabel(activeSubTab)}</h3>
                                                  {selectedCampaignOutput && (
                                                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${getCampaignOutputStatusClass(selectedCampaignOutput.status)}`}>
                                                          {getCampaignOutputStatusLabel(selectedCampaignOutput.status)}
@@ -2741,7 +2941,7 @@ const App: React.FC = () => {
                                          {generatingTab && generatingTab === activeSubTab ? (
                                              <div className="h-64 flex flex-col items-center justify-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
                                                  <Spinner className="w-8 h-8 text-red-600 mb-3" />
-                                                 <p className="text-gray-500 text-sm">Generating {generatingTab}...</p>
+                                                 <p className="text-gray-500 text-sm">Generating {getOutputDisplayLabel(generatingTab)}...</p>
                                              </div>
                                          ) : currentCopy ? (
                                              <>
@@ -2764,7 +2964,7 @@ const App: React.FC = () => {
                                                  </div>
                                                  <div
                                                     role="region"
-                                                    aria-label={`${activeSubTab} generated output`}
+                                                    aria-label={`${getOutputDisplayLabel(activeSubTab)} generated output`}
                                                     tabIndex={0}
                                                     className="min-h-[520px] w-full whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-4 font-sans text-sm leading-relaxed text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
                                                  >
@@ -2775,11 +2975,11 @@ const App: React.FC = () => {
                                              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
                                                  <IconSparkles className="mx-auto mb-3 h-10 w-10 text-gray-400" />
                                                  <h3 className="text-sm font-bold text-gray-900">No output for this item yet</h3>
-                                                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-gray-500">{activeSubTab === 'Full Copy' ? 'Generate Listing Copy to create the campaign baseline.' : currentVersionSet['Full Copy'] ? 'Generate this output from the current Full Copy.' : 'Generate Full Copy first, then create this campaign output.'}</p>
+                                                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-gray-500">{activeSubTab === LISTING_COPY_TAB ? 'Generate Listing Copy to create the campaign baseline.' : currentVersionSet[LISTING_COPY_TAB] ? 'Generate this output from the current Listing Copy.' : 'Generate Listing Copy first, then create this campaign output.'}</p>
                                                  <button
                                                     onClick={() => handleGenerateThisOutput(activeSubTab)}
-                                                    disabled={Boolean(generateCopyBlocker) || (activeSubTab !== 'Full Copy' && !currentVersionSet['Full Copy']) || generatingTab === activeSubTab || queuedOutputTabs.includes(activeSubTab)}
-                                                    title={getCampaignOperationTitle('generateFullCopy', activeSubTab !== 'Full Copy' && !currentVersionSet['Full Copy'] ? 'Generate Full Copy before creating this output.' : undefined)}
+                                                    disabled={Boolean(generateCopyBlocker) || (activeSubTab !== LISTING_COPY_TAB && !currentVersionSet[LISTING_COPY_TAB]) || generatingTab === activeSubTab || queuedOutputTabs.includes(activeSubTab)}
+                                                    title={getCampaignOperationTitle('generateFullCopy', activeSubTab !== LISTING_COPY_TAB && !currentVersionSet[LISTING_COPY_TAB] ? 'Generate Listing Copy before creating this output.' : undefined)}
                                                     className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed"
                                                  >
                                                     {generatingTab === activeSubTab ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}

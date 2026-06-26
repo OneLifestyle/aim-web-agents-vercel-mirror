@@ -8,7 +8,7 @@ Import provenance, safety notes, required environment variable names, runtime pr
 
 After import, the app was proven locally with `npm ci`, `npm run build`, a dev server, and a preview server. It was pushed to `main`, mirrored to `OneLifestyle/aim-web-agents-vercel-mirror` for temporary Vercel Hobby deployment, and deployed in Vercel as `aim-web-agents-copywriting`.
 
-The next connected-beta offer direction is documented in `docs/offer-architecture-001.md`: Listing Copy, Campaign Pack, and Campaign Blueprint. That document is architecture-only and does not implement the new UI, billing, Hub sync, provider routing changes, or Campaign Blueprint generation.
+The connected-beta offer direction is documented in `docs/offer-architecture-001.md`: Listing Copy, Campaign Pack, and Campaign Blueprint. The first UI pass is documented in `docs/offer-ui-001.md`; it implements the offer-led interface without billing, Hub sync, provider routing changes, or Campaign Blueprint generation.
 
 The floating general `AI Assistant` chat surface is disabled for the private beta. The decision and deferred contextual-assistant/export-settings ideas are recorded in `docs/chat-assistant-disabled-001.md`.
 
@@ -41,6 +41,7 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
     *   **Content Marketing:** Long-form blog posts.
     *   **Video:** Scripts for property tour videos with director notes.
 *   **Versioning:** Maintains multiple versions of copy for A/B testing or revisions.
+*   **Offer-Led Flow:** Guides users through Listing Copy first, then Campaign Pack for the full downstream output package. Campaign Blueprint is visible as planned beta only.
 
 ### 5. V1 Review Workflow
 *   **Generated Drafts:** Campaign outputs are read-only drafts in the primary v1 UI.
