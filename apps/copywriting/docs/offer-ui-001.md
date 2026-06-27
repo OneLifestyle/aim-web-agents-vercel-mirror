@@ -56,6 +56,8 @@ Follow-up note: `WEBAGENTS-COPYWRITING-BRIEF-OUTPUT-WORKSPACE-001` moved this of
 
 Follow-up note: `WEBAGENTS-COPYWRITING-WORKSPACE-DENSITY-VISUALS-001` compacted the offer cards and Campaign Library while preserving Listing Copy, Campaign Pack, planned-only Campaign Blueprint, generated-only exports, and the existing generation paths.
 
+Follow-up note: `WEBAGENTS-COPYWRITING-PRE-KEVIN-UX-FIXES-001` made the Listing Copy offer card the only primary pre-generation Listing Copy action, changed that action to the AIM red primary style, removed the redundant Review Listing Copy button, added a same-input regenerate guard, and warns before regeneration clears existing Campaign Pack outputs.
+
 ## Preserved Behavior
 
 - Beta access gate remains on the existing path.

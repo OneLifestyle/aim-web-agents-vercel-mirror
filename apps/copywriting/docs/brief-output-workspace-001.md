@@ -91,6 +91,8 @@ The detailed tiles remain secondary and expandable as `Campaign Library`. After 
 
 Follow-up note: `WEBAGENTS-COPYWRITING-WORKSPACE-DENSITY-VISUALS-001` tightened spacing, compacted offer cards, made Property Overview and Suburb & Area Profile collapsible, renamed the visible `Copy Context` section to `Campaign Direction`, added visible 20-photo numbering, and changed Visual Highlights to summary-first expandable rows.
 
+Follow-up note: `WEBAGENTS-COPYWRITING-PRE-KEVIN-UX-FIXES-001` removed duplicate pre-generation Listing Copy buttons from Campaign Library and the selected Listing Copy empty state. The Listing Copy offer card remains the single primary pre-generation entry point, while downstream on-demand generation remains available for campaign outputs.
+
 ## Campaign Pack Behaviour
 
 Campaign Pack continues to wrap the existing downstream generation behavior:

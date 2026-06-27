@@ -235,6 +235,57 @@ const profileInclusionLabels: Record<'none' | 'suburb' | 'area' | 'both', string
 
 const normalizeAddressLookupQuery = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
+const normalizeSnapshotText = (value: string | null | undefined): string => (value || '').replace(/\s+/g, ' ').trim();
+
+const normalizeFeatureDisplayText = (value: string): string => value
+    .replace(/\*\*/g, '')
+    .replace(/^\s*(?:(?:[-*•‣◦]|\d+[.)])\s*)+/, '')
+    .replace(/^\s*[:;,.]\s*/, '')
+    .trim();
+
+const buildListingBriefSnapshot = (params: GenerationParams, reviewState: PropertyBriefReviewState): string => JSON.stringify({
+    address: normalizeSnapshotText(params.address),
+    includeAddress: params.includeAddress,
+    propertyBriefReviewState: reviewState,
+    details: {
+        beds: params.details.beds,
+        baths: params.details.baths,
+        cars: params.details.cars,
+        landSize: params.details.landSize,
+        propertyType: normalizeSnapshotText(params.details.propertyType),
+    },
+    context: {
+        primaryTargetMarket: normalizeSnapshotText(params.context.primaryTargetMarket),
+        secondaryTargetMarket: normalizeSnapshotText(params.context.secondaryTargetMarket),
+        writingStyle: params.context.writingStyle.map(normalizeSnapshotText),
+        featuresToHighlight: normalizeSnapshotText(params.context.featuresToHighlight),
+        thingsToAvoid: normalizeSnapshotText(params.context.thingsToAvoid),
+    },
+    features: normalizeSnapshotText(params.features),
+    wordCount: params.output.wordCount,
+    imageAnalysis: normalizeSnapshotText(params.imageAnalysis),
+    researchData: normalizeSnapshotText(params.researchData),
+    profileData: params.profileData
+        ? {
+            suburb: normalizeSnapshotText(params.profileData.suburb),
+            area: normalizeSnapshotText(params.profileData.area),
+        }
+        : null,
+    profileInclusion: params.profileInclusion,
+    agentProfile: {
+        name: normalizeSnapshotText(params.agentProfile.name),
+        agency: normalizeSnapshotText(params.agentProfile.agency),
+        phone: normalizeSnapshotText(params.agentProfile.phone),
+        email: normalizeSnapshotText(params.agentProfile.email),
+        inclusionMode: params.agentProfile.inclusionMode,
+    },
+    openHouse: {
+        date: normalizeSnapshotText(params.openHouse.date),
+        time: normalizeSnapshotText(params.openHouse.time),
+        url: normalizeSnapshotText(params.openHouse.url),
+    },
+});
+
 const stripGenericImageLanguage = (value: string): string => {
     return value
         .replace(/\*\*/g, '')
@@ -709,6 +760,7 @@ const App: React.FC = () => {
     const [generationError, setGenerationError] = useState<string | null>(null);
 
     const [versionSets, setVersionSets] = useState<VersionSet[]>([]);
+    const [listingCopyBriefSnapshots, setListingCopyBriefSnapshots] = useState<(string | null)[]>([]);
     const [activeVersionIndex, setActiveVersionIndex] = useState(0);
 
     const [activeMainTab, setActiveMainTab] = useState<string>('Listing');
@@ -1418,10 +1470,14 @@ const App: React.FC = () => {
         }
     };
 
-    const createNewVersion = (newCopy: string, copyType: PreviewTab) => {
+    const createNewVersion = (newCopy: string, copyType: PreviewTab, listingBriefSnapshot: string | null = null) => {
         const newVersion: VersionSet = { [copyType]: newCopy };
         const updatedVersionSets = [...versionSets, newVersion].slice(-3);
         setVersionSets(updatedVersionSets);
+        setListingCopyBriefSnapshots(prev => {
+            const nextSnapshots = [...prev, copyType === LISTING_COPY_TAB ? listingBriefSnapshot : null].slice(-3);
+            return nextSnapshots;
+        });
         setActiveVersionIndex(updatedVersionSets.length - 1);
         setIncludeContactDetails(false);
     };
@@ -1432,6 +1488,15 @@ const App: React.FC = () => {
         currentVersion[copyType] = newCopy;
         updatedVersionSets[activeVersionIndex] = currentVersion;
         setVersionSets(updatedVersionSets);
+    };
+
+    const setListingCopyBriefSnapshotForActiveVersion = (snapshot: string) => {
+        setListingCopyBriefSnapshots(prev => {
+            const nextSnapshots = [...prev];
+            while (nextSnapshots.length < versionSets.length) nextSnapshots.push(null);
+            nextSnapshots[activeVersionIndex] = snapshot;
+            return nextSnapshots;
+        });
     };
 
     const generateCopyForTab = async (tab: PreviewTab, isRegeneration = false) => {
@@ -1472,6 +1537,9 @@ const App: React.FC = () => {
             agentProfile,
             openHouse
         };
+        const listingBriefSnapshot = tab === LISTING_COPY_TAB
+            ? buildListingBriefSnapshot(generationParams, propertyBriefReviewState)
+            : null;
 
         if (isVariant && !baseCopy) {
             const msg = `Please generate Listing Copy first for this version before creating a campaign output.`;
@@ -1504,10 +1572,12 @@ const App: React.FC = () => {
                     const updatedVersionSets = [...versionSets];
                     updatedVersionSets[activeVersionIndex] = { [tab]: copy };
                     setVersionSets(updatedVersionSets);
+                    if (listingBriefSnapshot) setListingCopyBriefSnapshotForActiveVersion(listingBriefSnapshot);
                 } else if (versionSets.length === 0) {
-                    createNewVersion(copy, tab);
+                    createNewVersion(copy, tab, listingBriefSnapshot);
                 } else {
                     updateCurrentVersion(copy, tab);
+                    if (listingBriefSnapshot) setListingCopyBriefSnapshotForActiveVersion(listingBriefSnapshot);
                 }
             }
             setActiveSubTab(tab);
@@ -1906,6 +1976,38 @@ const App: React.FC = () => {
     const isCampaignPackGenerating = isGenerating && generatingTab !== LISTING_COPY_TAB;
     const isCampaignPackReady = listingCopyReady && campaignPackMissingCount === 0;
     const hasCampaignPackStarted = campaignPackReadyCount > 0 || DOWNSTREAM_CAMPAIGN_TABS.some(tab => queuedOutputTabs.includes(tab)) || isCampaignPackGenerating;
+    const currentListingBriefSnapshot = useMemo(() => buildListingBriefSnapshot({
+        address,
+        includeAddress,
+        details: propertyDetails,
+        context: copyContext,
+        features: propertyFeatures,
+        output: outputSettings,
+        imageAnalysis,
+        researchData,
+        profileData,
+        profileInclusion,
+        agentProfile,
+        openHouse
+    }, propertyBriefReviewState), [address, includeAddress, propertyDetails, copyContext, propertyFeatures, outputSettings, imageAnalysis, researchData, profileData, profileInclusion, agentProfile, openHouse, propertyBriefReviewState]);
+    const storedListingBriefSnapshot = listingCopyBriefSnapshots[activeVersionIndex] ?? null;
+    const briefChangedSinceListingGeneration = listingCopyReady && Boolean(storedListingBriefSnapshot) && currentListingBriefSnapshot !== storedListingBriefSnapshot;
+    const regenerateListingCopyDisabledReason = !isPropertyBriefReady
+        ? propertyBriefReadinessHint
+        : !briefChangedSinceListingGeneration
+            ? 'Make a change to the property brief, Campaign Direction, features or photos before regenerating.'
+            : undefined;
+    const handleRegenerateListingCopy = () => {
+        if (!briefChangedSinceListingGeneration) {
+            setNotification('Update the Brief Builder inputs before regenerating Listing Copy.');
+            return;
+        }
+        if (campaignPackReadyCount > 0) {
+            const confirmed = window.confirm('Regenerating Listing Copy will clear the Campaign Pack outputs because they are based on the current listing. Download the campaign first if you want to keep it.');
+            if (!confirmed) return;
+        }
+        generateCopyForTab(LISTING_COPY_TAB, true);
+    };
 
     const currentCampaignExportPlan = useMemo(() => buildCampaignExportPlan({
         address,
@@ -2607,9 +2709,10 @@ const App: React.FC = () => {
                                     ) : keyFeatures && keyFeatures.length > 0 ? (
                                         <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
                                             {keyFeatures.map((line, index) => {
-                                                const parts = line.split(':');
-                                                const key = parts[0]?.trim() || line;
-                                                const value = parts.slice(1).join(':').trim();
+                                                const normalizedLine = normalizeFeatureDisplayText(line);
+                                                const parts = normalizedLine.split(':');
+                                                const key = normalizeFeatureDisplayText(parts[0] || normalizedLine);
+                                                const value = normalizeFeatureDisplayText(parts.slice(1).join(':'));
                                                 if (!value) {
                                                     return (
                                                          <li key={index} className="flex justify-between border-b border-stone-100 py-1.5">
@@ -3040,21 +3143,15 @@ const App: React.FC = () => {
                                                     ? 'border-stone-200 bg-stone-100 text-stone-600'
                                                     : 'border-emerald-200 bg-emerald-50 text-emerald-700';
                                              const actionLabel = isListingOffer
-                                                ? listingCopyReady ? 'Review Listing Copy' : isPropertyBriefReady ? offer.primaryActionLabel : 'Brief required'
+                                                ? isPropertyBriefReady ? offer.primaryActionLabel : 'Brief required'
                                                 : isCampaignPackOffer
                                                     ? !listingCopyReady ? 'Listing Copy required' : isCampaignPackReady ? 'Review Campaign Pack' : offer.primaryActionLabel
                                                     : offer.primaryActionLabel;
                                              const disabled = isBlueprintOffer || isGenerating || (isListingOffer && !isPropertyBriefReady) || (isCampaignPackOffer && !listingCopyReady);
+                                             const showOfferAction = !(isListingOffer && listingCopyReady);
                                              const onOfferAction = () => {
                                                 if (isListingOffer) {
-                                                    if (listingCopyReady) {
-                                                        setActiveMainTab('Listing');
-                                                        setActiveSubTab(LISTING_COPY_TAB);
-                                                        setSelectedOutputCategory('Listing');
-                                                        setIsCampaignLibraryExpanded(true);
-                                                    } else {
-                                                        generateCopyForTab(LISTING_COPY_TAB);
-                                                    }
+                                                    generateCopyForTab(LISTING_COPY_TAB);
                                                     return;
                                                 }
                                                 if (isCampaignPackOffer) {
@@ -3080,27 +3177,32 @@ const App: React.FC = () => {
                                                         {isCampaignPackOffer && listingCopyReady && !isCampaignPackReady && (
                                                             <p className="mt-1.5 text-xs font-semibold text-red-700">Campaign outputs still need generation.</p>
                                                         )}
+                                                        {isListingOffer && listingCopyReady && (
+                                                            <p className="mt-1.5 text-xs font-semibold text-emerald-700">Listing Copy is ready in the output area.</p>
+                                                        )}
                                                         {offer.disabledReason && (
                                                             <p className="mt-1.5 text-xs leading-snug text-stone-500">{offer.disabledReason}</p>
                                                         )}
                                                     </div>
                                                     <div className="mt-3 flex flex-wrap gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={onOfferAction}
-                                                            disabled={disabled}
-                                                            title={isListingOffer && !isPropertyBriefReady ? propertyBriefReadinessHint : isCampaignPackOffer && !listingCopyReady ? 'Generate Listing Copy before Campaign Pack.' : offer.disabledReason}
-                                                            className={`inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isCampaignPackOffer ? 'bg-red-600 text-white shadow-sm hover:bg-red-700 disabled:bg-red-300' : isBlueprintOffer ? 'border border-stone-200 bg-stone-100 text-stone-500' : 'bg-slate-800 text-white hover:bg-slate-900 disabled:bg-slate-400'}`}
-                                                        >
-                                                            {(isListingCopyGenerating && isListingOffer) || (isCampaignPackGenerating && isCampaignPackOffer) ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
-                                                            {actionLabel}
-                                                        </button>
+                                                        {showOfferAction && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={onOfferAction}
+                                                                disabled={disabled}
+                                                                title={isListingOffer && !isPropertyBriefReady ? propertyBriefReadinessHint : isCampaignPackOffer && !listingCopyReady ? 'Generate Listing Copy before Campaign Pack.' : offer.disabledReason}
+                                                                className={`inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isListingOffer || isCampaignPackOffer ? 'bg-red-600 text-white shadow-sm hover:bg-red-700 disabled:bg-red-300' : 'border border-stone-200 bg-stone-100 text-stone-500'}`}
+                                                            >
+                                                                {(isListingCopyGenerating && isListingOffer) || (isCampaignPackGenerating && isCampaignPackOffer) ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
+                                                                {actionLabel}
+                                                            </button>
+                                                        )}
                                                         {isListingOffer && listingCopyReady && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => generateCopyForTab(LISTING_COPY_TAB, true)}
-                                                                disabled={isGenerating || Boolean(generateCopyBlocker) || !isPropertyBriefReady}
-                                                                title={getCampaignOperationTitle('generateFullCopy', !isPropertyBriefReady ? propertyBriefReadinessHint : undefined)}
+                                                                onClick={handleRegenerateListingCopy}
+                                                                disabled={isGenerating || Boolean(generateCopyBlocker) || !isPropertyBriefReady || !briefChangedSinceListingGeneration}
+                                                                title={getCampaignOperationTitle('generateFullCopy', regenerateListingCopyDisabledReason)}
                                                                 className={compactActionButtonClass}
                                                             >
                                                                 Regenerate Listing Copy
@@ -3265,18 +3367,21 @@ const App: React.FC = () => {
                                          <IconFileText className="mx-auto mb-2 h-8 w-8 text-stone-400" />
                                          <h3 className="text-sm font-bold text-slate-900">Campaign Library is ready for review after Campaign Pack</h3>
                                          <p className="mx-auto mt-1 max-w-lg text-xs leading-snug text-slate-500">
-                                             Generate Listing Copy, then Campaign Pack, to review channel outputs here.
+                                             {listingCopyReady
+                                                ? 'Generate Campaign Pack to review channel outputs here.'
+                                                : 'Generate Listing Copy above to create the campaign baseline.'}
                                          </p>
-                                         <button
-                                            type="button"
-                                            onClick={isCampaignPackReady ? () => setIsCampaignLibraryExpanded(true) : listingCopyReady ? handleGenerateAllMissing : () => generateCopyForTab(LISTING_COPY_TAB)}
-                                            disabled={isGenerating || Boolean(generateAllBlocker) || Boolean(generateCopyBlocker) || (!listingCopyReady && !isPropertyBriefReady)}
-                                            title={!listingCopyReady && !isPropertyBriefReady ? propertyBriefReadinessHint : undefined}
-                                            className={`mt-3 ${aimUi.primaryButton}`}
-                                         >
-                                            {isGenerating ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
-                                            {isCampaignPackReady ? 'Review Campaign Pack' : listingCopyReady ? 'Generate Campaign Pack' : 'Generate Listing Copy'}
-                                         </button>
+                                         {listingCopyReady && (
+                                             <button
+                                                type="button"
+                                                onClick={isCampaignPackReady ? () => setIsCampaignLibraryExpanded(true) : handleGenerateAllMissing}
+                                                disabled={isGenerating || Boolean(generateAllBlocker)}
+                                                className={`mt-3 ${aimUi.primaryButton}`}
+                                             >
+                                                {isGenerating ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
+                                                {isCampaignPackReady ? 'Review Campaign Pack' : 'Generate Campaign Pack'}
+                                             </button>
+                                         )}
                                      </div>
                                  )}
 
@@ -3337,16 +3442,18 @@ const App: React.FC = () => {
                                              <div className="rounded-lg border border-dashed border-stone-300 bg-stone-50 p-6 text-center">
                                                  <IconSparkles className="mx-auto mb-3 h-10 w-10 text-stone-400" />
                                                  <h3 className="text-sm font-bold text-slate-900">No output for this item yet</h3>
-                                                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-slate-500">{activeSubTab === LISTING_COPY_TAB ? isPropertyBriefReady ? 'Generate Listing Copy to create the campaign baseline.' : propertyBriefReadinessHint : currentVersionSet[LISTING_COPY_TAB] ? 'Generate this output from the current Listing Copy.' : 'Generate Listing Copy first, then create this campaign output.'}</p>
-                                                 <button
-                                                    onClick={() => handleGenerateThisOutput(activeSubTab)}
-                                                    disabled={Boolean(generateCopyBlocker) || (activeSubTab === LISTING_COPY_TAB && !isPropertyBriefReady) || (activeSubTab !== LISTING_COPY_TAB && !currentVersionSet[LISTING_COPY_TAB]) || generatingTab === activeSubTab || queuedOutputTabs.includes(activeSubTab)}
-                                                    title={getCampaignOperationTitle('generateFullCopy', activeSubTab === LISTING_COPY_TAB && !isPropertyBriefReady ? propertyBriefReadinessHint : activeSubTab !== LISTING_COPY_TAB && !currentVersionSet[LISTING_COPY_TAB] ? 'Generate Listing Copy before creating this output.' : undefined)}
-                                                    className={`mt-4 ${aimUi.primaryButton}`}
-                                                 >
-                                                    {generatingTab === activeSubTab ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
-                                                    {queuedOutputTabs.includes(activeSubTab) ? 'Queued' : 'Generate this output'}
-                                                 </button>
+                                                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-slate-500">{activeSubTab === LISTING_COPY_TAB ? isPropertyBriefReady ? 'Generate Listing Copy from the offer card above to create the campaign baseline.' : propertyBriefReadinessHint : currentVersionSet[LISTING_COPY_TAB] ? 'Generate this output from the current Listing Copy.' : 'Generate Listing Copy first, then create this campaign output.'}</p>
+                                                 {activeSubTab !== LISTING_COPY_TAB && (
+                                                     <button
+                                                        onClick={() => handleGenerateThisOutput(activeSubTab)}
+                                                        disabled={Boolean(generateCopyBlocker) || !currentVersionSet[LISTING_COPY_TAB] || generatingTab === activeSubTab || queuedOutputTabs.includes(activeSubTab)}
+                                                        title={getCampaignOperationTitle('generateFullCopy', !currentVersionSet[LISTING_COPY_TAB] ? 'Generate Listing Copy before creating this output.' : undefined)}
+                                                        className={`mt-4 ${aimUi.primaryButton}`}
+                                                     >
+                                                        {generatingTab === activeSubTab ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
+                                                        {queuedOutputTabs.includes(activeSubTab) ? 'Queued' : 'Generate this output'}
+                                                     </button>
+                                                 )}
                                              </div>
                                          )}
                                      </div>

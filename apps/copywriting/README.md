@@ -16,6 +16,8 @@ The workspace density and photo-analysis follow-up is documented in `docs/worksp
 
 The Hub-style visual polish pass is documented in `docs/hub-style-design-polish-001.md`. It introduces lightweight local visual class tokens in `App.tsx`, calms the page shell, cards, buttons, chips, Campaign Library, Visual Highlights, diagnostics and generated-draft warning without changing workflow behaviour or adding dependencies.
 
+The pre-Kevin UX polish pass is documented in `docs/pre-kevin-ux-fixes-001.md`. It fixes Additional Property Features double-bullet rendering, removes duplicate Listing Copy generation buttons, keeps the primary Listing Copy action red, guards same-input regeneration, and warns before clearing Campaign Pack outputs during Listing Copy regeneration.
+
 The floating general `AI Assistant` chat surface is disabled for the private beta. The decision and deferred contextual-assistant/export-settings ideas are recorded in `docs/chat-assistant-disabled-001.md`.
 
 ## Project Overview
@@ -49,6 +51,7 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
 *   **Versioning:** Maintains multiple versions of copy for A/B testing or revisions.
 *   **Offer-Led Flow:** Guides users through Listing Copy first, then Campaign Pack for the full downstream output package. Campaign Blueprint is visible as planned beta only.
 *   **Brief Builder / Output Workspace:** Input gathering, fetched-property review and context live in Brief Builder. Listing Copy, Campaign Pack, Campaign Library review and downloads live in Output Workspace.
+*   **Guarded Regeneration:** Regenerate Listing Copy is available only after relevant brief inputs change, and warns before clearing existing Campaign Pack outputs.
 
 ### 5. V1 Review Workflow
 *   **Generated Drafts:** Campaign outputs are read-only drafts in the primary v1 UI.

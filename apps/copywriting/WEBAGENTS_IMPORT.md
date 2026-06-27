@@ -314,6 +314,23 @@ Status date: `2026-06-27`
 - Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Pre-Kevin UX Fixes 001 Status
+
+Status date: `2026-06-27`
+
+- Goal: `WEBAGENTS-COPYWRITING-PRE-KEVIN-UX-FIXES-001`
+- Review artifact: `docs/pre-kevin-ux-fixes-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Dependencies changed: no
+- Current bullet summary: Additional Property Features strip leading bullet/list markers at render time so the UI adds only one bullet marker.
+- Current generation-action summary: the Listing Copy offer card is the single primary pre-generation Listing Copy entry point; duplicate Listing Copy generation buttons were removed from Campaign Library and the selected Listing Copy empty state.
+- Current regenerate summary: Regenerate Listing Copy is disabled unless a stored per-version brief snapshot differs from current Brief Builder inputs.
+- Current warning summary: if downstream Campaign Pack outputs exist, Listing Copy regeneration warns that those outputs will be cleared and suggests downloading the campaign first.
+- Current land-size summary: editable Land Size remains visible as `Land Size (m²)` and the existing hectare-to-square-metre parsing path remains unchanged.
+- Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

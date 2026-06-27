@@ -108,6 +108,10 @@ No package, shared design system, dependency, Tailwind migration, shadcn migrati
 - Public pricing.
 - Campaign Blueprint generation.
 
+## Follow-Up
+
+`WEBAGENTS-COPYWRITING-PRE-KEVIN-UX-FIXES-001` fixed post-polish tester issues by normalising Additional Property Features bullet display, removing duplicate Listing Copy generation buttons, making the primary Listing Copy action red, demoting Review Listing Copy to a ready state, adding a same-input regenerate guard, and warning before Listing Copy regeneration clears Campaign Pack outputs.
+
 ## Internal Review
 
 Scope Auditor: no Hub, auth, billing, storage, provider-router, provider integration, environment file, dependency, database, pricing, SEO, AI search, or Campaign Blueprint implementation was added.
