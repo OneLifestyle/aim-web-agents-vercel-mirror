@@ -14,6 +14,8 @@ The current private-beta structure is documented in `docs/brief-output-workspace
 
 The workspace density and photo-analysis follow-up is documented in `docs/workspace-density-visuals-001.md`. It tightens card spacing, adds collapsible Property Overview and Suburb & Area Profile sections, renames the visible `Copy Context` section to `Campaign Direction`, makes the 20-photo cap visible, numbers uploaded images, and renders Visual Highlights as summary-first expandable rows.
 
+The Hub-style visual polish pass is documented in `docs/hub-style-design-polish-001.md`. It introduces lightweight local visual class tokens in `App.tsx`, calms the page shell, cards, buttons, chips, Campaign Library, Visual Highlights, diagnostics and generated-draft warning without changing workflow behaviour or adding dependencies.
+
 The floating general `AI Assistant` chat surface is disabled for the private beta. The decision and deferred contextual-assistant/export-settings ideas are recorded in `docs/chat-assistant-disabled-001.md`.
 
 ## Project Overview

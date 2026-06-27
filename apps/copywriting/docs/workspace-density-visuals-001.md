@@ -80,7 +80,7 @@ The internal `copyContext` state, `copyContextAnalysis` operation id, and `copy-
 
 ## Deferred
 
-- Full Hub-style design-system polish.
+- Full AIM shared design-system or design-token package.
 - Tailwind/shadcn migration.
 - Full single-column redesign.
 - Multi-page wizard.
@@ -89,6 +89,10 @@ The internal `copyContext` state, `copyContextAnalysis` operation id, and `copy-
 - Campaign Blueprint generation.
 - Hub save.
 - Public pricing.
+
+## Follow-Up
+
+`WEBAGENTS-COPYWRITING-HUB-STYLE-DESIGN-POLISH-001` applied Hub-adjacent visual polish on top of this density work, using local `aimUi` class tokens for calmer cards, buttons, chips, forms, Campaign Library, Visual Highlights, diagnostics and warning treatment without changing the compact workflow.
 
 ## Internal Review
 

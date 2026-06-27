@@ -126,7 +126,7 @@ Campaign Pack continues to wrap the existing downstream generation behavior:
 
 - Full multi-page wizard.
 - Single-column final redesign.
-- Hub-style design-system polish.
+- Full AIM shared design-system or design-token package.
 - Tailwind/shadcn migration.
 - Connected beta auth/logging.
 - `inputFingerprint` stale dependency engine.
@@ -134,6 +134,10 @@ Campaign Pack continues to wrap the existing downstream generation behavior:
 - Hub save.
 - Public pricing.
 - Full wrong-property recovery.
+
+## Follow-Up
+
+`WEBAGENTS-COPYWRITING-HUB-STYLE-DESIGN-POLISH-001` preserved this Brief Builder / Output Workspace structure while applying local visual polish to the page shell, cards, buttons, status chips, Campaign Library, Visual Highlights, beta diagnostics and generated-draft warning.
 
 ## Internal Review
 

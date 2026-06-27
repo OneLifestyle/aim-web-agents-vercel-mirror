@@ -208,7 +208,24 @@ const ADDRESS_LOOKUP_MIN_CHARS = 5;
 const ADDRESS_LOOKUP_DEBOUNCE_MS = 450;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 20;
 const IMAGE_UPLOAD_LIMIT = 20;
-const compactActionButtonClass = 'inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50';
+const aimUi = {
+    pageShell: 'min-h-screen bg-stone-50 text-slate-950',
+    card: 'rounded-lg border border-stone-200 bg-white/95 shadow-[0_1px_2px_rgba(15,23,42,0.05)]',
+    cardMuted: 'rounded-lg border border-stone-200 bg-stone-50/80',
+    sectionBase: 'bg-white/95 p-4 rounded-lg border flex flex-col scroll-mt-24 transition-colors shadow-[0_1px_2px_rgba(15,23,42,0.05)]',
+    sectionIdle: 'border-stone-200',
+    sectionActive: 'border-amber-300 ring-2 ring-amber-100',
+    input: 'w-full rounded-md border border-stone-300 bg-white p-2 text-sm text-slate-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-red-500/70 disabled:bg-stone-100 disabled:text-stone-400',
+    primaryButton: 'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500/70 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-red-300',
+    secondaryButton: 'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50',
+    darkButton: 'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-sm font-bold text-white transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:bg-slate-400',
+    analysisButton: 'inline-flex min-h-8 items-center gap-1.5 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-bold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50',
+    chipNeutral: 'rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600',
+    chipReady: 'rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700',
+    chipWorking: 'rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800',
+    chipPlanned: 'rounded-full border border-stone-200 bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-600',
+};
+const compactActionButtonClass = aimUi.secondaryButton;
 const profileInclusionLabels: Record<'none' | 'suburb' | 'area' | 'both', string> = {
     none: 'None',
     suburb: 'Suburb',
@@ -293,9 +310,9 @@ const Section: React.FC<{
     activeLabel?: string;
     showActiveChip?: boolean;
 }> = ({ id, title, children, className, rightElement, isActive = false, activeLabel = 'Updating...', showActiveChip = true }) => (
-  <div id={id} className={`bg-white p-4 rounded-lg shadow-sm border flex flex-col scroll-mt-24 transition-colors ${isActive ? 'border-amber-300 ring-2 ring-amber-100' : 'border-gray-200'} ${className || ''}`}>
+  <div id={id} className={`${aimUi.sectionBase} ${isActive ? aimUi.sectionActive : aimUi.sectionIdle} ${className || ''}`}>
     <div className="flex justify-between items-center mb-3">
-        <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
+        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
         <div className="flex items-center gap-2">
             {isActive && showActiveChip && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
@@ -311,22 +328,22 @@ const Section: React.FC<{
 );
 
 const Placeholder: React.FC<{ icon: React.ReactNode; title: string; description: string }> = ({ icon, title, description }) => (
-    <div className="flex flex-col items-center justify-center text-center p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg min-h-[130px]">
-        <div className="mb-2 text-gray-400">
+    <div className="flex min-h-[130px] flex-col items-center justify-center rounded-lg border border-dashed border-stone-300 bg-stone-50/80 p-6 text-center">
+        <div className="mb-2 text-stone-400">
             {React.cloneElement(icon as React.ReactElement, { className: "w-8 h-8" })}
         </div>
-        <h3 className="text-sm font-bold text-gray-900 mb-1">{title}</h3>
-        <p className="text-xs text-gray-500 max-w-xs leading-relaxed">{description}</p>
+        <h3 className="text-sm font-bold text-slate-900 mb-1">{title}</h3>
+        <p className="text-xs text-slate-500 max-w-xs leading-relaxed">{description}</p>
     </div>
 );
 
 const NumberInput: React.FC<{ label: string; value: number | null; onChange: (value: number) => void; min?: number; }> = ({ label, value, onChange, min = 0 }) => (
     <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <div className="flex items-center justify-between w-full border border-gray-300 rounded-md p-2">
-            <button onClick={() => onChange(Math.max(min, (value ?? 0) - 1))} className="text-gray-600 hover:text-red-500 transition-colors rounded-full w-6 h-6 flex items-center justify-center bg-gray-100 hover:bg-red-100"><IconMinus /></button>
-            <span className="font-medium text-gray-800">{value !== null ? value : '-'}</span>
-            <button onClick={() => onChange((value ?? 0) + 1)} className="text-gray-600 hover:text-red-500 transition-colors rounded-full w-6 h-6 flex items-center justify-center bg-gray-100 hover:bg-red-100"><IconPlus /></button>
+        <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+        <div className="flex items-center justify-between w-full rounded-md border border-stone-300 bg-white p-2">
+            <button onClick={() => onChange(Math.max(min, (value ?? 0) - 1))} className="text-slate-600 hover:text-red-600 transition-colors rounded-full w-6 h-6 flex items-center justify-center bg-stone-100 hover:bg-red-50"><IconMinus /></button>
+            <span className="font-medium text-slate-800">{value !== null ? value : '-'}</span>
+            <button onClick={() => onChange((value ?? 0) + 1)} className="text-slate-600 hover:text-red-600 transition-colors rounded-full w-6 h-6 flex items-center justify-center bg-stone-100 hover:bg-red-50"><IconPlus /></button>
         </div>
     </div>
 );
@@ -340,18 +357,18 @@ const SelectInput: React.FC<{
     disabled?: boolean;
 }> = ({ label, value, onChange, options, placeholder, disabled }) => (
     <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
         <div className="relative w-full">
             <select
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 disabled={disabled}
-                className="w-full appearance-none bg-white border border-gray-300 rounded-md p-2 pr-8 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400"
+                className={`${aimUi.input} appearance-none pr-8`}
             >
                 {placeholder && <option value="" disabled>{placeholder}</option>}
                 {options.map(option => <option key={option} value={option}>{option}</option>)}
             </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-600">
                 <IconChevronDown />
             </div>
         </div>
@@ -503,31 +520,31 @@ const DebugPanel: React.FC<{
     const latestError = errorLogs[0];
 
     return (
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-            <div className="flex items-start justify-between gap-3 border-b border-gray-100 p-3">
+        <div className={`${aimUi.card} overflow-hidden`}>
+            <div className="flex items-start justify-between gap-3 border-b border-stone-100 bg-stone-50/70 p-3">
                 <div>
-                    <p className="text-sm font-semibold text-gray-900">Beta diagnostics</p>
-                    <p className="mt-0.5 text-xs leading-snug text-gray-500">Campaign Build Log, model usage and token-only cost estimates.</p>
+                    <p className="text-sm font-semibold text-slate-900">Beta diagnostics</p>
+                    <p className="mt-0.5 text-xs leading-snug text-slate-500">Campaign Build Log, model usage and token-only cost estimates.</p>
                 </div>
                 <button
                     type="button"
                     onClick={onToggleExpanded}
-                    className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    className="shrink-0 rounded-md border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-stone-50"
                     aria-expanded={isExpanded}
                 >
                     {isExpanded ? 'Hide build log' : 'Show build log'}
                 </button>
             </div>
 
-            <div className="space-y-2 p-3 text-xs text-gray-600">
+            <div className="space-y-2 p-3 text-xs text-slate-600">
                 <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-semibold text-gray-700">{logs.length} log entries</span>
+                    <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 font-semibold text-slate-700">{logs.length} log entries</span>
                     {pendingCount > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-semibold text-amber-800">{pendingCount} running</span>}
                     {errorLogs.length > 0 && <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 font-semibold text-red-700">{errorLogs.length} error{errorLogs.length === 1 ? '' : 's'}</span>}
                 </div>
                 {latestLog ? (
                     <p>
-                        Latest step: <span className="font-semibold text-gray-800">{getPublicStepName(latestLog.stepName)}</span>
+                        Latest step: <span className="font-semibold text-slate-800">{getPublicStepName(latestLog.stepName)}</span>
                         {latestLog.status === 'pending' ? ' is running.' : latestLog.status === 'success' ? ' completed.' : ' needs attention.'}
                     </p>
                 ) : (
@@ -538,7 +555,7 @@ const DebugPanel: React.FC<{
                         <span className="font-semibold">Latest error:</span> {latestError.message || getPublicStepName(latestError.stepName)}
                     </div>
                 )}
-                <p className="text-[11px] leading-snug text-gray-500">
+                <p className="text-[11px] leading-snug text-slate-500">
                     Expanded diagnostics are for beta review only and are not billing statements.
                 </p>
             </div>
@@ -1976,8 +1993,8 @@ const App: React.FC = () => {
         if (status === 'ready') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
         if (status === 'generating') return 'bg-amber-50 text-amber-800 border-amber-200';
         if (status === 'queued') return 'bg-amber-50 text-amber-800 border-amber-200';
-        if (status === 'missing') return 'bg-gray-100 text-gray-600 border-gray-200';
-        return 'bg-red-50 text-red-700 border-red-200';
+        if (status === 'missing') return 'bg-stone-100 text-stone-600 border-stone-200';
+        return 'bg-amber-50 text-amber-800 border-amber-200';
     };
     const campaignStatusSteps = [
         { label: 'Address', state: address.trim() ? 'complete' : 'missing' },
@@ -2109,12 +2126,12 @@ const App: React.FC = () => {
         : plainCampaignProgress.tone === 'ready'
             ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
             : plainCampaignProgress.tone === 'attention'
-                ? 'border-red-200 bg-red-50 text-red-800'
-                : 'border-gray-200 bg-white text-gray-700';
+                ? 'border-amber-200 bg-amber-50 text-amber-900'
+                : 'border-stone-200 bg-white text-slate-700';
     const getCampaignStepClass = (state: 'complete' | 'current' | 'missing') => {
         if (state === 'complete') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
         if (state === 'current') return 'border-amber-200 bg-amber-50 text-amber-800';
-        return 'border-gray-200 bg-white text-gray-500';
+        return 'border-stone-200 bg-white text-slate-500';
     };
     const scrollToCampaignStatusStep = (label: typeof campaignStatusSteps[number]['label']) => {
         document.getElementById(campaignStatusAnchors[label])?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2126,44 +2143,49 @@ const App: React.FC = () => {
 
         return (
             <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                    <p className="text-xs font-semibold text-gray-700">{visualHighlightEntries.length} image highlight{visualHighlightEntries.length === 1 ? '' : 's'} analyzed</p>
-                    <p className="text-[11px] text-gray-500">Expand a row for detail.</p>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-slate-700">{visualHighlightEntries.length} image highlight{visualHighlightEntries.length === 1 ? '' : 's'} analyzed</p>
+                    <p className="text-[11px] text-slate-500">Expand a row for detail.</p>
                 </div>
                 {visualHighlightEntries.map(highlight => {
                     const isExpanded = Boolean(expandedVisualHighlights[highlight.imageNumber]);
                     const details = highlight.details.length > 0 ? highlight.details : [highlight.rawDetail].filter(Boolean);
 
                     return (
-                        <div key={highlight.imageNumber} className="rounded-md border border-gray-200 bg-white">
+                        <div key={highlight.imageNumber} className="overflow-hidden rounded-md border border-stone-200 bg-white">
                             <button
                                 type="button"
                                 onClick={() => setExpandedVisualHighlights(prev => ({
                                     ...prev,
                                     [highlight.imageNumber]: !prev[highlight.imageNumber],
                                 }))}
-                                className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left hover:bg-gray-50"
+                                className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left hover:bg-stone-50"
                                 aria-expanded={isExpanded}
                             >
-                                <div className="min-w-0">
-                                    <p className="text-xs font-bold uppercase tracking-wide text-red-700">Image {highlight.imageNumber}</p>
-                                    <p className="mt-0.5 text-sm font-semibold leading-snug text-gray-900">{highlight.summary}</p>
+                                <div className="flex min-w-0 gap-3">
+                                    <span className="flex h-7 min-w-7 items-center justify-center rounded-full border border-red-100 bg-red-50 text-[11px] font-bold text-red-700">
+                                        {highlight.imageNumber}
+                                    </span>
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Image highlight</p>
+                                        <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-900">{highlight.summary}</p>
+                                    </div>
                                 </div>
-                                <IconChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                <IconChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-slate-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                             </button>
                             {isExpanded && (
-                                <div className="border-t border-gray-100 px-3 py-2.5">
+                                <div className="border-t border-stone-100 bg-stone-50/50 px-3 py-2.5">
                                     {details.length > 0 ? (
-                                        <ul className="space-y-1.5 text-sm leading-relaxed text-gray-700">
+                                        <ul className="space-y-1.5 text-sm leading-relaxed text-slate-700">
                                             {details.map((detail, detailIndex) => (
                                                 <li key={detailIndex} className="flex gap-2">
-                                                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-gray-400" />
+                                                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-slate-400" />
                                                     <span>{detail}</span>
                                                 </li>
                                             ))}
                                         </ul>
                                     ) : (
-                                        <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-line">{highlight.rawDetail}</p>
+                                        <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-line">{highlight.rawDetail}</p>
                                     )}
                                 </div>
                             )}
@@ -2186,7 +2208,7 @@ const App: React.FC = () => {
                         {Object.entries(parsed).map(([key, value]) => (
                             <div key={key}>
                                 <span className="font-bold capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                                <span className="ml-2 text-gray-700">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
+                                <span className="ml-2 text-slate-700">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
                             </div>
                         ))}
                     </div>
@@ -2196,13 +2218,13 @@ const App: React.FC = () => {
             }
         }
 
-        return <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{content}</p>;
+        return <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{content}</p>;
     };
 
     if (isCheckingBetaAccess) {
         return (
-            <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center px-4">
-                <div className="inline-flex items-center text-sm text-gray-600">
+            <div className={`${aimUi.pageShell} flex items-center justify-center px-4`}>
+                <div className="inline-flex items-center text-sm text-slate-600">
                     <Spinner className="mr-2" />
                     Checking beta access...
                 </div>
@@ -2212,25 +2234,25 @@ const App: React.FC = () => {
 
     if (!isBetaVerified) {
         return (
-            <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center px-4">
-                <div className="w-full max-w-md bg-white border border-gray-200 rounded-lg shadow-sm p-6">
+            <div className={`${aimUi.pageShell} flex items-center justify-center px-4`}>
+                <div className={`w-full max-w-md p-6 ${aimUi.card}`}>
                     <div className="mb-6">
-                        <h1 className="text-2xl text-gray-800">
+                        <h1 className="text-2xl text-slate-900">
                             <span className="font-bold">Real Estate AIM</span>
-                            <span className="font-light text-gray-600"> | Copywriting Agent</span>
+                            <span className="font-light text-slate-600"> | Copywriting Agent</span>
                         </h1>
-                        <p className="text-sm text-gray-600 mt-2">Private beta access is required before using the copywriting workspace.</p>
-                        <p className="text-xs leading-relaxed text-gray-500 mt-2">AIM creates campaign drafts from the property information you provide or approve. Review generated copy before use.</p>
+                        <p className="text-sm text-slate-600 mt-2">Private beta access is required before using the copywriting workspace.</p>
+                        <p className="text-xs leading-relaxed text-slate-500 mt-2">AIM creates campaign drafts from the property information you provide or approve. Review generated copy before use.</p>
                     </div>
                     <form onSubmit={handleBetaAccessSubmit} className="space-y-4">
                         <div>
-                            <label htmlFor="beta-access-code" className="block text-sm font-medium text-gray-700 mb-1">Beta access code</label>
+                            <label htmlFor="beta-access-code" className="block text-sm font-medium text-slate-700 mb-1">Beta access code</label>
                             <input
                                 id="beta-access-code"
                                 type="password"
                                 value={betaCodeInput}
                                 onChange={(event) => setBetaCodeInput(event.target.value)}
-                                className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                className={aimUi.input}
                                 autoComplete="off"
                             />
                         </div>
@@ -2238,7 +2260,7 @@ const App: React.FC = () => {
                         <button
                             type="submit"
                             disabled={isVerifyingBetaAccess}
-                            className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-red-400 disabled:cursor-not-allowed"
+                            className={`w-full ${aimUi.primaryButton}`}
                         >
                             {isVerifyingBetaAccess ? <Spinner className="mr-2" /> : <IconCheckCircle className="mr-2" />}
                             {isVerifyingBetaAccess ? 'Checking...' : 'Unlock workspace'}
@@ -2250,36 +2272,36 @@ const App: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 text-gray-900">
+        <div className={aimUi.pageShell}>
             {notification && (
-                 <div className="fixed top-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg z-50 animate-fade-in-out">
+                 <div className="fixed top-5 right-5 z-50 rounded-lg border border-emerald-200 bg-emerald-600 px-4 py-2 text-white shadow-lg animate-fade-in-out">
                     {notification}
                  </div>
             )}
-            <header className="bg-white border-b border-gray-200">
+            <header className="border-b border-stone-200 bg-white/95">
                 <div className="mx-auto flex max-w-[1800px] flex-col gap-3 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                        <div className="mb-1 inline-flex rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-red-700">
+                        <div className="mb-1 inline-flex rounded-full border border-red-200 bg-white px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-red-700">
                             Private beta
                         </div>
-                        <h1 className="text-2xl text-gray-800">
+                        <h1 className="text-2xl text-slate-900">
                             <span className="font-bold">Real Estate AIM</span>
-                            <span className="font-light text-gray-600"> | Copywriting Agent</span>
+                            <span className="font-light text-slate-600"> | Copywriting Agent</span>
                         </h1>
-                        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-600">
+                        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
                             AIM creates campaign drafts from the property information you provide or approve. Review generated copy before use.
                         </p>
                     </div>
-                    <div className="max-w-md rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-600">
+                    <div className="max-w-md rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
                         Testing notes: if something looks wrong, record the address, action and output type.
                     </div>
                 </div>
             </header>
-            <div className="border-b border-gray-200 bg-white px-6 py-3 text-sm">
+            <div className="border-b border-stone-200 bg-white/90 px-6 py-3 text-sm">
                 <div className="mx-auto flex max-w-[1800px] flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-gray-900">Campaign Status</span>
-                        <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${activeCampaignOperations.length > 0 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}>
+                        <span className="font-semibold text-slate-900">Campaign Status</span>
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${activeCampaignOperations.length > 0 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-stone-200 bg-stone-50 text-slate-700'}`}>
                             {activeCampaignOperations.length > 0 && <IconLoader className="w-3 h-3 animate-spin" />}
                             {campaignStatusLabel}
                         </span>
@@ -2292,7 +2314,7 @@ const App: React.FC = () => {
                             {plainCampaignProgress.tone === 'working' && <IconLoader className="w-3 h-3 animate-spin" />}
                             {plainCampaignProgress.label}
                         </span>
-                        <span className="text-xs text-gray-500">{plainCampaignProgress.description}</span>
+                        <span className="text-xs text-slate-500">{plainCampaignProgress.description}</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                         {campaignStatusSteps.map(step => (
@@ -2300,7 +2322,7 @@ const App: React.FC = () => {
                                 key={step.label}
                                 type="button"
                                 onClick={() => scrollToCampaignStatusStep(step.label)}
-                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors hover:border-gray-400 ${getCampaignStepClass(step.state)}`}
+                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors hover:border-stone-400 ${getCampaignStepClass(step.state)}`}
                                 title={`Scroll to ${step.label}`}
                             >
                                 {step.label}
@@ -2315,7 +2337,7 @@ const App: React.FC = () => {
 
                     <div className="h-full xl:h-[calc(100vh-132px)] xl:sticky top-4 flex flex-col">
                         <ActiveTaskMonitor imageFiles={imageFiles} isAnalyzing={isAnalyzingImages} />
-                        <div className={`mb-3 rounded-lg border p-3 shadow-sm ${plainCampaignProgressClass}`}>
+                        <div className={`mb-3 rounded-lg border p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)] ${plainCampaignProgressClass}`}>
                             <div className="flex items-start gap-2">
                                 {plainCampaignProgress.tone === 'working' ? <IconLoader className="mt-0.5 h-4 w-4 animate-spin" /> : <IconCheckCircle className="mt-0.5 h-4 w-4" />}
                                 <div>
@@ -2324,8 +2346,8 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="mb-3 rounded-lg border border-gray-200 bg-white p-3 text-xs leading-snug text-gray-600 shadow-sm">
-                            <p className="font-semibold text-gray-900">Draft review workflow</p>
+                        <div className={`mb-3 p-3 text-xs leading-snug text-slate-600 ${aimUi.card}`}>
+                            <p className="font-semibold text-slate-900">Draft review workflow</p>
                             <p className="mt-1">For v1, edit final wording in your CRM, email, Word, Google Docs or publishing system.</p>
                             <p className="mt-1">Downloads include generated outputs only. Missing outputs are not generated silently.</p>
                         </div>
@@ -2337,10 +2359,10 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="space-y-4 h-full xl:overflow-y-auto xl:h-[calc(100vh-132px)] pr-2 pb-8 flex flex-col">
-                        <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Brief Builder</p>
-                            <h2 className="mt-0.5 text-lg font-bold text-gray-900">Build and approve the property brief</h2>
-                            <p className="mt-0.5 max-w-2xl text-xs leading-snug text-gray-600">
+                        <div className={`p-3 ${aimUi.card}`}>
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Brief Builder</p>
+                            <h2 className="mt-0.5 text-lg font-bold text-slate-900">Build and approve the property brief</h2>
+                            <p className="mt-0.5 max-w-2xl text-xs leading-snug text-slate-600">
                                 Gather the property facts, agent details, audience, features and visual highlights before generating copy.
                             </p>
                         </div>
@@ -2355,17 +2377,17 @@ const App: React.FC = () => {
                                         onFocus={() => { if (normalizeAddressLookupQuery(address).length >= ADDRESS_LOOKUP_MIN_CHARS) setShowSuggestions(true); }}
                                         onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                                         placeholder="Start typing a property address..."
-                                        className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                        className={aimUi.input}
                                         autoComplete="off"
                                     />
-                                    {(isAddressLookupQueued || isSuggesting) && <Spinner className="absolute top-2.5 right-3 text-gray-400" />}
+                                    {(isAddressLookupQueued || isSuggesting) && <Spinner className="absolute top-2.5 right-3 text-stone-400" />}
                                     {showSuggestions && addressSuggestions.length > 0 && (
-                                        <ul className="absolute z-10 w-full bg-white border border-gray-300 rounded-md mt-1 shadow-lg max-h-60 overflow-y-auto">
+                                        <ul className="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-stone-200 bg-white shadow-lg">
                                             {addressSuggestions.map((s, i) => (
                                                 <li
                                                     key={i}
                                                     onMouseDown={() => handleSuggestionClick(s)}
-                                                    className="p-2 hover:bg-red-100 cursor-pointer text-sm"
+                                                    className="cursor-pointer p-2 text-sm hover:bg-stone-50"
                                                 >
                                                     {s}
                                                 </li>
@@ -2373,7 +2395,7 @@ const App: React.FC = () => {
                                         </ul>
                                     )}
                                     {showSuggestions && normalizeAddressLookupQuery(address).length >= ADDRESS_LOOKUP_MIN_CHARS && addressSuggestions.length === 0 && (isAddressLookupQueued || isSuggesting) && (
-                                        <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-md mt-1 shadow-lg p-2 text-sm text-gray-500">
+                                        <div className="absolute z-10 mt-1 w-full rounded-md border border-stone-200 bg-white p-2 text-sm text-slate-500 shadow-lg">
                                             Looking up address...
                                         </div>
                                     )}
@@ -2385,9 +2407,9 @@ const App: React.FC = () => {
                                             id="include-address"
                                             checked={includeAddress}
                                             onChange={(e) => setIncludeAddress(e.target.checked)}
-                                            className="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                                            className="h-4 w-4 rounded border-stone-300 text-red-600 focus:ring-red-500"
                                         />
-                                        <label htmlFor="include-address" className="ml-2 block text-sm text-gray-900">
+                                        <label htmlFor="include-address" className="ml-2 block text-sm text-slate-900">
                                             Include property address in copy
                                         </label>
                                     </div>
@@ -2395,7 +2417,7 @@ const App: React.FC = () => {
                                         onClick={handleFetchDetails}
                                         disabled={isResearching || Boolean(propertyResearchBlocker) || !address.trim()}
                                         title={getCampaignOperationTitle('propertyResearch', !address.trim() ? 'Enter a property address first.' : undefined)}
-                                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-red-400 disabled:cursor-not-allowed w-auto justify-center"
+                                        className={aimUi.darkButton}
                                     >
                                         {isResearching ? <Spinner className="mr-2" /> : <IconFileText className="mr-2"/>}
                                         {isResearching ? 'Fetching...' : 'Fetch Details'}
@@ -2409,53 +2431,53 @@ const App: React.FC = () => {
                             <div className="space-y-3">
                                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Agent Name</label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Agent Name</label>
                                         <input
                                             type="text"
                                             value={agentProfile.name}
                                             onChange={(e) => handleAgentChange('name', e.target.value)}
                                             placeholder="e.g. Dean Jones"
-                                            className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                                            className={aimUi.input}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Agency</label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Agency</label>
                                         <input
                                             type="text"
                                             value={agentProfile.agency}
                                             onChange={(e) => handleAgentChange('agency', e.target.value)}
                                             placeholder="e.g. One Lifestyle Real Estate"
-                                            className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                                            className={aimUi.input}
                                         />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
                                         <input
                                             type="text"
                                             value={agentProfile.phone}
                                             onChange={(e) => handleAgentChange('phone', e.target.value)}
                                             placeholder="04XX XXX XXX"
-                                            className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                                            className={aimUi.input}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
                                         <input
                                             type="email"
                                             value={agentProfile.email}
                                             onChange={(e) => handleAgentChange('email', e.target.value)}
                                             placeholder="dean@example.com"
-                                            className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                                            className={aimUi.input}
                                         />
                                     </div>
                                 </div>
 
-                                <div className="pt-3 border-t border-gray-100">
-                                    <p className="text-xs font-semibold text-gray-700 mb-2">Inclusion method</p>
+                                <div className="pt-3 border-t border-stone-100">
+                                    <p className="text-xs font-semibold text-slate-700 mb-2">Inclusion method</p>
                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                        <label className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors ${agentProfile.inclusionMode === 'append' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
+                                        <label className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors ${agentProfile.inclusionMode === 'append' ? 'border-red-200 bg-red-50/70' : 'border-stone-200 bg-white hover:bg-stone-50'}`}>
                                             <input
                                                 type="radio"
                                                 name="agentMode"
@@ -2464,11 +2486,11 @@ const App: React.FC = () => {
                                                 className="mt-0.5 text-red-600 focus:ring-red-500"
                                             />
                                             <div className="text-xs leading-snug">
-                                                <span className="font-medium text-gray-800">Append Only</span>
-                                                <p className="mt-0.5 text-gray-500">Use the Contact card checkbox to append details.</p>
+                                                <span className="font-medium text-slate-800">Append Only</span>
+                                                <p className="mt-0.5 text-slate-500">Use the Contact card checkbox to append details.</p>
                                             </div>
                                         </label>
-                                        <label className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors ${agentProfile.inclusionMode === 'integrate' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
+                                        <label className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors ${agentProfile.inclusionMode === 'integrate' ? 'border-red-200 bg-red-50/70' : 'border-stone-200 bg-white hover:bg-stone-50'}`}>
                                             <input
                                                 type="radio"
                                                 name="agentMode"
@@ -2477,8 +2499,8 @@ const App: React.FC = () => {
                                                 className="mt-0.5 text-red-600 focus:ring-red-500"
                                             />
                                             <div className="text-xs leading-snug">
-                                                <span className="font-medium text-gray-800">Integrate into Copy</span>
-                                                <p className="mt-0.5 text-gray-500">Weave agent details into generated copy.</p>
+                                                <span className="font-medium text-slate-800">Integrate into Copy</span>
+                                                <p className="mt-0.5 text-slate-500">Weave agent details into generated copy.</p>
                                             </div>
                                         </label>
                                     </div>
@@ -2490,48 +2512,48 @@ const App: React.FC = () => {
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
                                         <input
                                             type="text"
                                             value={openHouse.date}
                                             onChange={(e) => handleOpenHouseChange('date', e.target.value)}
                                             placeholder="e.g. Tuesday December 30"
-                                            className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                                            className={aimUi.input}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Time</label>
                                         <input
                                             type="text"
                                             value={openHouse.time}
                                             onChange={(e) => handleOpenHouseChange('time', e.target.value)}
                                             placeholder="e.g. 4 PM - 4:45 PM"
-                                            className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                                            className={aimUi.input}
                                         />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Listing URL</label>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Listing URL</label>
                                     <input
                                         type="url"
                                         value={openHouse.url}
                                         onChange={(e) => handleOpenHouseChange('url', e.target.value)}
                                         placeholder="e.g. https://www.realestate.com.au/..."
-                                        className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                                        className={aimUi.input}
                                     />
                                 </div>
-                                <p className="text-xs text-gray-500">Provide these to generate specific Open House event collateral.</p>
+                                <p className="text-xs text-slate-500">Provide these to generate specific Open House event collateral.</p>
                             </div>
                         </Section>
 
                         <Section id="property-details" title="Property Details" isActive={isResearching} activeLabel="Fetching...">
-                            <div className={`mb-4 rounded-md border p-3 ${isPropertyBriefReady ? 'border-emerald-200 bg-emerald-50' : hasFetchedPropertyBrief ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
+                            <div className={`mb-4 rounded-md border p-3 ${isPropertyBriefReady ? 'border-emerald-200 bg-emerald-50' : hasFetchedPropertyBrief ? 'border-amber-200 bg-amber-50' : 'border-stone-200 bg-stone-50'}`}>
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                     <div>
-                                        <p className={`text-sm font-bold ${isPropertyBriefReady ? 'text-emerald-800' : hasFetchedPropertyBrief ? 'text-amber-900' : 'text-gray-800'}`}>
+                                        <p className={`text-sm font-bold ${isPropertyBriefReady ? 'text-emerald-800' : hasFetchedPropertyBrief ? 'text-amber-900' : 'text-slate-800'}`}>
                                             {propertyBriefStatusLabel}
                                         </p>
-                                        <p className={`mt-1 text-xs leading-relaxed ${isPropertyBriefReady ? 'text-emerald-700' : hasFetchedPropertyBrief ? 'text-amber-800' : 'text-gray-600'}`}>
+                                        <p className={`mt-1 text-xs leading-relaxed ${isPropertyBriefReady ? 'text-emerald-700' : hasFetchedPropertyBrief ? 'text-amber-800' : 'text-slate-600'}`}>
                                             {propertyBriefReadinessHint}
                                         </p>
                                         {hasFetchedPropertyBrief && propertyBriefReviewState === 'review' && (
@@ -2545,7 +2567,7 @@ const App: React.FC = () => {
                                             <button
                                                 type="button"
                                                 onClick={handleConfirmPropertyBrief}
-                                                className="inline-flex min-h-8 items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                                                className="inline-flex min-h-8 items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700"
                                             >
                                                 <IconCheckCircle className="h-3.5 w-3.5" />
                                                 Confirm brief
@@ -2573,13 +2595,13 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                             {isFetchComplete && address && (
-                                <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
-                                    <p className="font-semibold text-gray-800 text-sm">{address}</p>
+                                <div className="mb-4 rounded-md border border-stone-200 bg-stone-50 p-3">
+                                    <p className="font-semibold text-slate-800 text-sm">{address}</p>
                                 </div>
                             )}
 
-                            <div className="mb-6 pb-4 border-b border-gray-200">
-                                    <h4 className="font-semibold text-gray-700 mb-2">Additional Property Features:</h4>
+                            <div className="mb-6 border-b border-stone-200 pb-4">
+                                    <h4 className="font-semibold text-slate-700 mb-2">Additional Property Features:</h4>
                                     {isResearching ? (
                                         <div className="flex justify-center items-center p-4"><Spinner /></div>
                                     ) : keyFeatures && keyFeatures.length > 0 ? (
@@ -2590,21 +2612,21 @@ const App: React.FC = () => {
                                                 const value = parts.slice(1).join(':').trim();
                                                 if (!value) {
                                                     return (
-                                                         <li key={index} className="flex justify-between border-b border-gray-100 py-1.5">
-                                                             <span className="text-gray-800">• {key}</span>
+                                                         <li key={index} className="flex justify-between border-b border-stone-100 py-1.5">
+                                                             <span className="text-slate-800">• {key}</span>
                                                          </li>
                                                     )
                                                 }
                                                 return (
-                                                    <li key={index} className="flex justify-between border-b border-gray-100 py-1.5">
-                                                        <span className="font-semibold text-gray-800">{key}</span>
-                                                        <span className="text-gray-600 text-right">{value}</span>
+                                                    <li key={index} className="flex justify-between border-b border-stone-100 py-1.5">
+                                                        <span className="font-semibold text-slate-800">{key}</span>
+                                                        <span className="text-slate-600 text-right">{value}</span>
                                                     </li>
                                                 );
                                             })}
                                         </ul>
                                     ) : (
-                                        <p className="text-sm text-gray-500 italic">
+                                        <p className="text-sm text-slate-500 italic">
                                             {researchData === null
                                                 ? "Additional features discovered from online research will be listed here."
                                                 : "No additional features found."
@@ -2617,8 +2639,8 @@ const App: React.FC = () => {
                             <NumberInput label="Bathrooms" value={propertyDetails.baths} onChange={(v) => handleDetailChange('baths', v)} />
                             <NumberInput label="Car Spaces" value={propertyDetails.cars} onChange={(v) => handleDetailChange('cars', v)} />
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Land Size (m²)</label>
-                                <input type="number" value={propertyDetails.landSize ?? ''} onChange={(e) => handleDetailChange('landSize', e.target.value ? parseInt(e.target.value) : null)} className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-red-500" />
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Land Size (m²)</label>
+                                <input type="number" value={propertyDetails.landSize ?? ''} onChange={(e) => handleDetailChange('landSize', e.target.value ? parseInt(e.target.value) : null)} className={aimUi.input} />
                             </div>
                         </div>
                         <div className="mt-4">
@@ -2635,7 +2657,7 @@ const App: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => setIsPropertyOverviewExpanded(value => !value)}
-                                    className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                    className="inline-flex items-center gap-1 rounded-md border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-stone-50"
                                     aria-expanded={isPropertyOverviewExpanded}
                                 >
                                     {isPropertyOverviewExpanded ? 'Collapse' : 'Expand'}
@@ -2649,9 +2671,9 @@ const App: React.FC = () => {
                                          <>
                                              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{researchData}</p>
                                              {groundingSources.length > 0 && (
-                                                 <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
+                                                 <div className="mt-3 flex flex-wrap gap-2 border-t border-stone-100 pt-3">
                                                      {groundingSources.map((source, idx) => (
-                                                         <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="inline-flex items-center bg-red-50 text-red-700 hover:bg-red-100 rounded-full px-3 py-1 text-xs truncate max-w-[150px]">
+                                                         <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-[150px] items-center truncate rounded-full border border-red-100 bg-white px-3 py-1 text-xs text-red-700 hover:bg-red-50">
                                                              {source.type === 'maps' ? <IconMapPin className="w-3 h-3 mr-1" /> : <IconWorld className="w-3 h-3 mr-1" />}
                                                              {source.title}
                                                          </a>
@@ -2660,10 +2682,10 @@ const App: React.FC = () => {
                                              )}
                                          </>
                                      ) : (
-                                         <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                                         <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
                                              <p className="text-sm leading-snug text-slate-700">{getCompactSummary(researchData, 'Property overview available.')}</p>
                                              {groundingSources.length > 0 && (
-                                                 <p className="mt-1 text-[11px] font-semibold text-gray-500">{groundingSources.length} source{groundingSources.length === 1 ? '' : 's'} available when expanded.</p>
+                                                 <p className="mt-1 text-[11px] font-semibold text-slate-500">{groundingSources.length} source{groundingSources.length === 1 ? '' : 's'} available when expanded.</p>
                                              )}
                                          </div>
                                      )}
@@ -2681,7 +2703,7 @@ const App: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => setIsSuburbProfileExpanded(value => !value)}
-                                    className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                    className="inline-flex items-center gap-1 rounded-md border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-stone-50"
                                     aria-expanded={isSuburbProfileExpanded}
                                 >
                                     {isSuburbProfileExpanded ? 'Collapse' : 'Expand'}
@@ -2691,10 +2713,10 @@ const App: React.FC = () => {
                          >
                              {profileData ? (
                                  <div>
-                                    <div className="mb-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+                                    <div className="mb-3 rounded-md border border-stone-200 bg-stone-50 p-3">
                                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Copywriting inclusion</p>
-                                            <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-700">
+                                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Copywriting inclusion</p>
+                                            <span className="rounded-full border border-stone-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                                                 {profileInclusionLabels[profileInclusion]}
                                             </span>
                                         </div>
@@ -2711,7 +2733,7 @@ const App: React.FC = () => {
                                         <div className="space-y-4">
                                             {profileData.suburb && (
                                                 <div>
-                                                    <h4 className={`font-bold text-gray-800 text-sm mb-2 uppercase tracking-wider border-b border-gray-100 pb-1 ${(profileInclusion === 'suburb' || profileInclusion === 'both') ? 'text-red-700' : 'opacity-60'}`}>
+                                                    <h4 className={`mb-2 border-b border-stone-100 pb-1 text-sm font-bold uppercase tracking-wider ${(profileInclusion === 'suburb' || profileInclusion === 'both') ? 'text-slate-900' : 'text-slate-500 opacity-70'}`}>
                                                         Suburb Insight {(profileInclusion === 'suburb' || profileInclusion === 'both') ? '' : '(Preview)'}
                                                     </h4>
                                                     <div className={(profileInclusion === 'suburb' || profileInclusion === 'both') ? '' : 'opacity-70'}>
@@ -2721,7 +2743,7 @@ const App: React.FC = () => {
                                             )}
                                             {profileData.area && (
                                                 <div>
-                                                    <h4 className={`font-bold text-gray-800 text-sm mb-2 uppercase tracking-wider border-b border-gray-100 pb-1 ${(profileInclusion === 'area' || profileInclusion === 'both') ? 'text-red-700' : 'opacity-60'}`}>
+                                                    <h4 className={`mb-2 border-b border-stone-100 pb-1 text-sm font-bold uppercase tracking-wider ${(profileInclusion === 'area' || profileInclusion === 'both') ? 'text-slate-900' : 'text-slate-500 opacity-70'}`}>
                                                         Regional Context {(profileInclusion === 'area' || profileInclusion === 'both') ? '' : '(Preview)'}
                                                     </h4>
                                                     <div className={(profileInclusion === 'area' || profileInclusion === 'both') ? '' : 'opacity-70'}>
@@ -2731,9 +2753,9 @@ const App: React.FC = () => {
                                             )}
                                         </div>
                                     ) : (
-                                        <div className="space-y-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
-                                            {profileData.suburb && <p><span className="font-semibold text-gray-900">Suburb:</span> {getCompactSummary(profileData.suburb, 'Suburb insight available.')}</p>}
-                                            {profileData.area && <p><span className="font-semibold text-gray-900">Area:</span> {getCompactSummary(profileData.area, 'Area profile available.')}</p>}
+                                        <div className="space-y-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-slate-700">
+                                            {profileData.suburb && <p><span className="font-semibold text-slate-900">Suburb:</span> {getCompactSummary(profileData.suburb, 'Suburb insight available.')}</p>}
+                                            {profileData.area && <p><span className="font-semibold text-slate-900">Area:</span> {getCompactSummary(profileData.area, 'Area profile available.')}</p>}
                                         </div>
                                     )}
                                  </div>
@@ -2754,7 +2776,7 @@ const App: React.FC = () => {
                                         onClick={handleStrategyAnalysis}
                                         disabled={!isFetchComplete || isAnalyzingStrategy || Boolean(copyContextAnalysisBlocker)}
                                         title={getCampaignOperationTitle('copyContextAnalysis', !isFetchComplete ? 'Fetch property details before running analysis.' : undefined)}
-                                        className="text-xs flex items-center gap-1 bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 hover:bg-red-100 disabled:opacity-50"
+                                        className={aimUi.analysisButton}
                                     >
                                         {isAnalyzingStrategy ? <Spinner className="w-3 h-3" /> : <IconSparkles className="w-3 h-3" />}
                                         {getAnalysisButtonLabel(isAnalyzingStrategy, copyContextAnalysisStatus)}
@@ -2764,7 +2786,7 @@ const App: React.FC = () => {
                         >
                             <div className="space-y-4">
                                 <div>
-                                    <h3 className="block text-sm font-medium text-gray-700 mb-1">Target Market</h3>
+                                    <h3 className="block text-sm font-medium text-slate-700 mb-1">Target Market</h3>
                                     <div className="grid grid-cols-2 gap-4">
                                         <SelectInput
                                             label="Primary"
@@ -2783,7 +2805,7 @@ const App: React.FC = () => {
                                 </div>
 
                                 <div>
-                                    <h3 className="block text-sm font-medium text-gray-700 mb-2">Writing Style <span className="text-xs font-normal text-gray-500">(Max 2)</span></h3>
+                                    <h3 className="block text-sm font-medium text-slate-700 mb-2">Writing Style <span className="text-xs font-normal text-slate-500">(Max 2)</span></h3>
                                     <div className="flex flex-wrap gap-2">
                                         {WRITING_STYLES.map(style => {
                                             const isSelected = copyContext.writingStyle.includes(style);
@@ -2795,8 +2817,8 @@ const App: React.FC = () => {
                                                     disabled={isDisabled}
                                                     className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all ${
                                                         isSelected
-                                                            ? 'bg-red-600 text-white border-red-600'
-                                                            : 'bg-white text-gray-600 border-gray-300 hover:border-red-400'
+                                                            ? 'border-red-200 bg-red-600 text-white shadow-sm'
+                                                            : 'border-stone-300 bg-white text-slate-600 hover:border-red-300 hover:bg-red-50'
                                                     } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                 >
                                                     {style}
@@ -2808,23 +2830,23 @@ const App: React.FC = () => {
                             </div>
                             <div className="mt-4 space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Key features to highlight</label>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Key features to highlight</label>
                                     <textarea
                                         rows={3}
                                         value={copyContext.featuresToHighlight}
                                         onChange={e => handleContextChange('featuresToHighlight', e.target.value)}
                                         placeholder="Key features to highlight..."
-                                        className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                        className={aimUi.input}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Things to avoid / What not to write</label>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Things to avoid / What not to write</label>
                                     <textarea
                                         rows={2}
                                         value={copyContext.thingsToAvoid}
                                         onChange={e => handleContextChange('thingsToAvoid', e.target.value)}
                                         placeholder="Clichés or words to avoid..."
-                                        className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                        className={aimUi.input}
                                     />
                                 </div>
                             </div>
@@ -2845,7 +2867,7 @@ const App: React.FC = () => {
                                         onClick={handleFeatureAnalysis}
                                         disabled={!isFetchComplete || isAnalyzingFeatures || Boolean(propertyFeaturesAnalysisBlocker)}
                                         title={getCampaignOperationTitle('propertyFeaturesAnalysis', !isFetchComplete ? 'Fetch property details before running analysis.' : undefined)}
-                                        className="text-xs flex items-center gap-1 bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 hover:bg-red-100 disabled:opacity-50"
+                                        className={aimUi.analysisButton}
                                     >
                                         {isAnalyzingFeatures ? <Spinner className="w-3 h-3" /> : <IconSparkles className="w-3 h-3" />}
                                         {getAnalysisButtonLabel(isAnalyzingFeatures, propertyFeaturesAnalysisStatus)}
@@ -2858,7 +2880,7 @@ const App: React.FC = () => {
                                 value={propertyFeatures}
                                 onChange={(e) => setPropertyFeatures(e.target.value)}
                                 placeholder="List features, lifestyle aspects, upgrades..."
-                                className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                className={aimUi.input}
                             />
                             {propertyFeaturesAnalysisError && (
                                 <p className="mt-3 text-sm text-red-600">{propertyFeaturesAnalysisError}</p>
@@ -2870,26 +2892,26 @@ const App: React.FC = () => {
                             title="Property Photos"
                             isActive={isAnalyzingImages}
                             activeLabel="Analyzing..."
-                            rightElement={<span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700">{imageFiles.length}/{IMAGE_UPLOAD_LIMIT} photos</span>}
+                            rightElement={<span className={aimUi.chipNeutral}>{imageFiles.length}/{IMAGE_UPLOAD_LIMIT} photos</span>}
                         >
                             <div
                                 onDrop={handleImageDrop}
                                 onDragOver={handleDragOver}
                                 onDragLeave={handleDragLeave}
-                                className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-6 text-center transition-colors ${imageFiles.length >= IMAGE_UPLOAD_LIMIT ? 'border-gray-200 bg-gray-50' : isDraggingOver ? 'bg-red-50 border-red-300' : 'border-gray-300 hover:bg-gray-50'}`}
+                                className={`flex flex-col items-center justify-center rounded-lg border border-dashed p-6 text-center transition-colors ${imageFiles.length >= IMAGE_UPLOAD_LIMIT ? 'border-stone-200 bg-stone-50' : isDraggingOver ? 'border-red-300 bg-red-50' : 'border-stone-300 bg-stone-50/50 hover:bg-white'}`}
                             >
                                 <input id="image-upload" type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden" disabled={imageFiles.length >= IMAGE_UPLOAD_LIMIT} />
                                 <label htmlFor="image-upload" className={`flex flex-col items-center ${imageFiles.length >= IMAGE_UPLOAD_LIMIT ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                                    <IconUpload className="w-8 h-8 text-gray-400 mb-2" />
-                                    <span className="text-sm font-medium text-gray-700">{imageFiles.length >= IMAGE_UPLOAD_LIMIT ? 'Photo limit reached' : 'Click to upload or drag and drop'}</span>
-                                    <span className="mt-1 text-xs text-gray-500">Up to {IMAGE_UPLOAD_LIMIT} photos. Image numbers match Visual Highlights.</span>
+                                    <IconUpload className="w-8 h-8 text-stone-400 mb-2" />
+                                    <span className="text-sm font-medium text-slate-700">{imageFiles.length >= IMAGE_UPLOAD_LIMIT ? 'Photo limit reached' : 'Click to upload or drag and drop'}</span>
+                                    <span className="mt-1 text-xs text-slate-500">Up to {IMAGE_UPLOAD_LIMIT} photos. Image numbers match Visual Highlights.</span>
                                 </label>
                             </div>
 
                             {imageFiles.length > 0 && (
                                 <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
                                     {imageFiles.map((img, idx) => (
-                                        <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200">
+                                        <div key={idx} className="group relative aspect-square overflow-hidden rounded-lg border border-stone-200 bg-stone-50">
                                             <img src={img.url} alt={`Image ${idx + 1} upload preview`} className="w-full h-full object-cover" />
                                             <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
                                                 Image {idx + 1}
@@ -2897,7 +2919,7 @@ const App: React.FC = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => handleImageDelete(idx)}
-                                                className="absolute top-2 right-2 p-1.5 bg-white/85 rounded-full text-red-600 hover:text-red-700 transition-opacity"
+                                                className="absolute right-2 top-2 rounded-full bg-white/90 p-1.5 text-slate-600 transition-colors hover:text-red-700"
                                                 aria-label={`Remove Image ${idx + 1}`}
                                             >
                                                 <IconTrash className="w-4 h-4" />
@@ -2914,14 +2936,14 @@ const App: React.FC = () => {
 
                             <div className="mt-4 flex justify-between items-center">
                                 <div className="flex items-center">
-                                     <input type="checkbox" id="include-visuals" checked={includeVisualHighlights} onChange={(e) => setIncludeVisualHighlights(e.target.checked)} className="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500" />
-                                     <label htmlFor="include-visuals" className="ml-2 block text-sm text-gray-900">Include visual analysis</label>
+                                     <input type="checkbox" id="include-visuals" checked={includeVisualHighlights} onChange={(e) => setIncludeVisualHighlights(e.target.checked)} className="h-4 w-4 rounded border-stone-300 text-red-600 focus:ring-red-500" />
+                                     <label htmlFor="include-visuals" className="ml-2 block text-sm text-slate-900">Include visual analysis</label>
                                 </div>
                                 <button
                                     onClick={handleAnalyzeImages}
                                     disabled={imageFiles.length === 0 || isAnalyzingImages || Boolean(imageAnalysisBlocker)}
                                     title={getCampaignOperationTitle('imageAnalysis', imageFiles.length === 0 ? 'Upload photos before analysis.' : undefined)}
-                                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400"
+                                    className={aimUi.darkButton}
                                 >
                                     {isAnalyzingImages ? 'Analyzing...' : imageAnalysisError ? 'Retry Photo Analysis' : imageAnalysis ? 'Redo Photo Analysis' : 'Analyze Photos'}
                                 </button>
@@ -2936,7 +2958,7 @@ const App: React.FC = () => {
                             isActive={isAnalyzingImages}
                             activeLabel="Analyzing..."
                             rightElement={imageAnalysis && (
-                                <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700">
+                                <span className={aimUi.chipNeutral}>
                                     {visualHighlightEntries.length} summar{visualHighlightEntries.length === 1 ? 'y' : 'ies'}
                                 </span>
                             )}
@@ -2946,17 +2968,17 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="h-full flex flex-col space-y-4 overflow-y-auto pr-2">
-                         <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-                             <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Output Workspace</p>
-                             <h2 className="mt-0.5 text-lg font-bold text-gray-900">Write the listing and prepare the campaign</h2>
-                             <p className="mt-0.5 max-w-2xl text-xs leading-snug text-gray-600">
+                         <div className={`p-3 ${aimUi.card}`}>
+                             <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Output Workspace</p>
+                             <h2 className="mt-0.5 text-lg font-bold text-slate-900">Write the listing and prepare the campaign</h2>
+                             <p className="mt-0.5 max-w-2xl text-xs leading-snug text-slate-600">
                                  Listing Copy starts the campaign. Campaign Pack adapts it for the remaining channels.
                              </p>
                          </div>
 
                          <Section id="campaign-outputs" title="Campaign Outputs" isActive={isCampaignOutputsActive} activeLabel={isDownloadingAll ? 'Preparing...' : 'Generating...'}>
                              <div className="flex flex-col gap-4">
-                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                 <div className="rounded-lg border border-stone-200 bg-stone-50/80 p-3">
                                      <div className="mb-3 flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
                                          <div>
                                              <p className="text-sm font-semibold text-slate-900">Choose the next campaign step.</p>
@@ -2967,15 +2989,15 @@ const App: React.FC = () => {
                                                  <span className={`rounded-full border px-2.5 py-1 font-semibold ${isPropertyBriefReady ? 'border-emerald-200 bg-white text-emerald-700' : 'border-amber-200 bg-white text-amber-800'}`}>
                                                      {propertyBriefStatusLabel}
                                                  </span>
-                                                 <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-600">
+                                                 <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 font-semibold text-slate-600">
                                                      {listingCopyReady ? 'Listing Copy ready' : 'Listing Copy not generated'}
                                                  </span>
                                              </div>
                                          </div>
-                                         <div className="min-w-[220px] rounded-md border border-slate-200 bg-white p-3">
+                                         <div className="min-w-[220px] rounded-md border border-stone-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                                              <div className="flex items-center justify-between gap-3">
-                                                 <span className="text-xs font-semibold text-gray-700">Listing length</span>
-                                                 <span className="text-sm font-bold text-gray-800">~{outputSettings.wordCount} words</span>
+                                                 <span className="text-xs font-semibold text-slate-700">Listing length</span>
+                                                 <span className="text-sm font-bold text-slate-800">~{outputSettings.wordCount} words</span>
                                              </div>
                                              <input
                                                 type="range"
@@ -2984,7 +3006,7 @@ const App: React.FC = () => {
                                                 step="50"
                                                 value={outputSettings.wordCount}
                                                 onChange={(e) => setOutputSettings(prev => ({ ...prev, wordCount: parseInt(e.target.value) }))}
-                                                className="mt-2 w-full h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-red-600"
+                                                className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-lg bg-stone-300 accent-red-600"
                                              />
                                          </div>
                                      </div>
@@ -2999,23 +3021,23 @@ const App: React.FC = () => {
                                                     ? isCampaignPackGenerating ? 'Generating' : !listingCopyReady ? 'Available after Listing Copy' : isCampaignPackReady ? 'Ready' : `${campaignPackMissingCount} outputs remaining`
                                                     : 'Not available yet';
                                              const stateClass = isBlueprintOffer
-                                                ? 'border-gray-200 bg-gray-100 text-gray-600'
+                                                ? 'border-stone-200 bg-stone-100 text-stone-600'
                                                 : stateLabel === 'Ready' || stateLabel === 'Ready to generate'
                                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                                                 : stateLabel === 'Generating'
                                                         ? 'border-amber-200 bg-amber-50 text-amber-800'
-                                                        : stateLabel === 'Brief required' || stateLabel === 'Confirm brief first'
+                                                : stateLabel === 'Brief required' || stateLabel === 'Confirm brief first'
                                                             ? 'border-amber-200 bg-amber-50 text-amber-800'
-                                                            : 'border-gray-200 bg-white text-gray-600';
+                                                            : 'border-stone-200 bg-white text-slate-600';
                                              const statusLabel = offer.status === 'recommended'
                                                 ? 'Recommended'
                                                 : offer.status === 'planned'
                                                     ? 'Planned beta'
                                                     : 'Active';
                                              const statusClass = offer.status === 'recommended'
-                                                ? 'border-red-200 bg-red-50 text-red-700'
+                                                ? 'border-red-200 bg-white text-red-700'
                                                 : offer.status === 'planned'
-                                                    ? 'border-gray-200 bg-gray-100 text-gray-600'
+                                                    ? 'border-stone-200 bg-stone-100 text-stone-600'
                                                     : 'border-emerald-200 bg-emerald-50 text-emerald-700';
                                              const actionLabel = isListingOffer
                                                 ? listingCopyReady ? 'Review Listing Copy' : isPropertyBriefReady ? offer.primaryActionLabel : 'Brief required'
@@ -3046,20 +3068,20 @@ const App: React.FC = () => {
                                              };
 
                                              return (
-                                                <div key={offer.id} className={`flex min-h-[160px] flex-col justify-between rounded-lg border bg-white p-3 ${offer.status === 'recommended' ? 'border-red-200 shadow-sm' : 'border-gray-200'}`}>
+                                                <div key={offer.id} className={`flex min-h-[160px] flex-col justify-between rounded-lg border bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${offer.status === 'recommended' ? 'border-red-200 ring-1 ring-red-100' : isBlueprintOffer ? 'border-stone-200 bg-stone-50/80' : 'border-stone-200'}`}>
                                                     <div>
                                                         <div className="mb-2 flex flex-wrap items-center gap-1.5">
                                                             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClass}`}>{statusLabel}</span>
                                                             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${stateClass}`}>{stateLabel}</span>
                                                         </div>
-                                                        <h3 className="text-sm font-bold text-gray-900">{offer.title}</h3>
-                                                        <p className="mt-0.5 text-xs font-medium text-gray-700">{offer.shortDescription}</p>
-                                                        <p className="mt-2 text-xs leading-snug text-gray-500">{offer.includedSummary}</p>
+                                                        <h3 className="text-sm font-bold text-slate-900">{offer.title}</h3>
+                                                        <p className="mt-0.5 text-xs font-medium text-slate-700">{offer.shortDescription}</p>
+                                                        <p className="mt-2 text-xs leading-snug text-slate-500">{offer.includedSummary}</p>
                                                         {isCampaignPackOffer && listingCopyReady && !isCampaignPackReady && (
                                                             <p className="mt-1.5 text-xs font-semibold text-red-700">Campaign outputs still need generation.</p>
                                                         )}
                                                         {offer.disabledReason && (
-                                                            <p className="mt-1.5 text-xs leading-snug text-gray-500">{offer.disabledReason}</p>
+                                                            <p className="mt-1.5 text-xs leading-snug text-stone-500">{offer.disabledReason}</p>
                                                         )}
                                                     </div>
                                                     <div className="mt-3 flex flex-wrap gap-2">
@@ -3068,7 +3090,7 @@ const App: React.FC = () => {
                                                             onClick={onOfferAction}
                                                             disabled={disabled}
                                                             title={isListingOffer && !isPropertyBriefReady ? propertyBriefReadinessHint : isCampaignPackOffer && !listingCopyReady ? 'Generate Listing Copy before Campaign Pack.' : offer.disabledReason}
-                                                            className={`inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isCampaignPackOffer ? 'bg-red-600 text-white hover:bg-red-700 disabled:bg-red-400' : isBlueprintOffer ? 'border border-gray-200 bg-gray-100 text-gray-500' : 'bg-slate-800 text-white hover:bg-slate-900 disabled:bg-slate-400'}`}
+                                                            className={`inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isCampaignPackOffer ? 'bg-red-600 text-white shadow-sm hover:bg-red-700 disabled:bg-red-300' : isBlueprintOffer ? 'border border-stone-200 bg-stone-100 text-stone-500' : 'bg-slate-800 text-white hover:bg-slate-900 disabled:bg-slate-400'}`}
                                                         >
                                                             {(isListingCopyGenerating && isListingOffer) || (isCampaignPackGenerating && isCampaignPackOffer) ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
                                                             {actionLabel}
@@ -3092,14 +3114,14 @@ const App: React.FC = () => {
                                  </div>
 
                                  {!isCampaignPackReady && (
-                                     <div className="rounded-lg border border-gray-200 bg-white p-3">
-                                         <p className="text-sm font-semibold text-gray-900">Campaign Pack includes</p>
-                                         <p className="mt-1 max-w-2xl text-xs leading-snug text-gray-600">
+                                     <div className="rounded-lg border border-stone-200 bg-white p-3">
+                                         <p className="text-sm font-semibold text-slate-900">Campaign Pack includes</p>
+                                         <p className="mt-1 max-w-2xl text-xs leading-snug text-slate-600">
                                              Step 2 adapts the approved Listing Copy into the channel pack.
                                          </p>
                                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
                                              {['Listing', 'Coming Soon', 'Social Media', 'Events', 'Blog', 'Video'].map(category => (
-                                                 <span key={category} className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-semibold text-gray-700">
+                                                 <span key={category} className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 font-semibold text-slate-700">
                                                      {category}
                                                  </span>
                                              ))}
@@ -3107,18 +3129,18 @@ const App: React.FC = () => {
                                      </div>
                                  )}
 
-                                 <div className="rounded-lg border border-gray-200 bg-white p-3">
+                                 <div className="rounded-lg border border-stone-200 bg-white p-3">
                                      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                                          <div>
-                                             <p className="text-sm font-semibold text-gray-900">Campaign Library</p>
-                                             <p className="mt-1 max-w-2xl text-xs leading-snug text-gray-600">
+                                             <p className="text-sm font-semibold text-slate-900">Campaign Library</p>
+                                             <p className="mt-1 max-w-2xl text-xs leading-snug text-slate-600">
                                                  {listingCopyReady
                                                     ? `${campaignPackReadyCount}/${TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS} Campaign Pack outputs ready.`
                                                     : `Generate Listing Copy first to unlock Campaign Pack outputs.`}
                                              </p>
                                              <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                                                 <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 font-semibold text-emerald-700">{listingCopyReady ? 'Listing Copy ready' : 'Listing Copy missing'}</span>
-                                                 <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-600">{campaignPackReadyCount}/{TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS} campaign outputs ready</span>
+                                                 <span className={listingCopyReady ? aimUi.chipReady : aimUi.chipWorking}>{listingCopyReady ? 'Listing Copy ready' : 'Listing Copy missing'}</span>
+                                                 <span className={aimUi.chipNeutral}>{campaignPackReadyCount}/{TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS} campaign outputs ready</span>
                                                  {queuedOutputTabs.length > 0 && <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 font-semibold text-amber-800">{queuedOutputTabs.length} queued</span>}
                                              </div>
                                          </div>
@@ -3137,18 +3159,18 @@ const App: React.FC = () => {
                                                     disabled={isDownloadingAll || Boolean(exportFullCampaignBlocker) || readyOutputCount === 0}
                                                     title={getCampaignOperationTitle('exportFullCampaign', readyOutputCount === 0 ? 'No generated outputs in this campaign yet.' : undefined)}
                                                     aria-label="Download campaign document"
-                                                    className="inline-flex min-h-9 items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-sm font-bold text-white transition-all hover:bg-slate-900 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                                                    className={aimUi.darkButton}
                                                  >
                                                      {isDownloadingAll ? <Spinner className="w-4 h-4" /> : <IconDownload className="w-4 h-4" />}
                                                      Download campaign
                                                  </button>
                                                  {isDownloadAllMenuOpen && (
-                                                     <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-md shadow-xl border border-gray-200 py-1.5 z-50">
-                                                         <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">One combined document</p>
-                                                         <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Full campaign includes generated outputs only. Missing outputs are noted but not generated during download.</p>
-                                                         <button onClick={() => handleDownloadAll('word')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFileWord className="w-4 h-4 mr-2 text-blue-600" /> Word (.doc)</button>
-                                                         <button onClick={() => handleDownloadAll('txt')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFileTxt className="w-4 h-4 mr-2 text-gray-600" /> Text (.txt)</button>
-                                                         <button onClick={() => handleDownloadAll('pdf')} className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><IconFilePdf className="w-4 h-4 mr-2 text-red-600" /> Print / PDF</button>
+                                                     <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-md border border-stone-200 bg-white py-1.5 shadow-xl">
+                                                         <p className="mb-1 border-b border-stone-100 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">One combined document</p>
+                                                         <p className="px-4 pb-2 text-[11px] leading-snug text-slate-500">Full campaign includes generated outputs only. Missing outputs are noted but not generated during download.</p>
+                                                         <button onClick={() => handleDownloadAll('word')} className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 hover:bg-stone-50"><IconFileWord className="w-4 h-4 mr-2 text-blue-600" /> Word (.doc)</button>
+                                                         <button onClick={() => handleDownloadAll('txt')} className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 hover:bg-stone-50"><IconFileTxt className="w-4 h-4 mr-2 text-slate-600" /> Text (.txt)</button>
+                                                         <button onClick={() => handleDownloadAll('pdf')} className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 hover:bg-stone-50"><IconFilePdf className="w-4 h-4 mr-2 text-red-600" /> Print / PDF</button>
                                                      </div>
                                                  )}
                                              </div>
@@ -3166,28 +3188,28 @@ const App: React.FC = () => {
                                                  <button
                                                     key={category}
                                                     onClick={() => handleCategoryFilterClick(category)}
-                                                    className={`rounded-full border px-2.5 py-1.5 text-left text-xs font-semibold transition-colors ${isSelected ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
+                                                    className={`rounded-full border px-2.5 py-1.5 text-left text-xs font-semibold transition-colors ${isSelected ? 'border-slate-300 bg-slate-900 text-white' : 'border-stone-200 bg-white text-slate-600 hover:border-stone-300 hover:bg-stone-50'}`}
                                                  >
                                                      <span>{category}</span>
-                                                     <span className="ml-2 font-medium text-gray-500">{stats.ready}/{stats.total} ready</span>
+                                                     <span className={`ml-2 font-medium ${isSelected ? 'text-slate-200' : 'text-slate-500'}`}>{stats.ready}/{stats.total} ready</span>
                                                      {stats.generating > 0 && <span className="ml-1 text-amber-700">Generating</span>}
                                                  </button>
                                              );
                                          })}
                                      </div>
 
-                                     <div className="rounded-lg border border-gray-200 bg-white p-3">
+                                     <div className="rounded-lg border border-stone-200 bg-white p-3">
                                          <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
                                              <div>
-                                                 <p className="text-xs font-bold uppercase tracking-wider text-gray-500">{selectedOutputCategory === 'All' ? 'All output items' : `${selectedOutputCategory} outputs`}</p>
-                                                 <p className="mt-0.5 text-xs text-gray-500">
+                                                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{selectedOutputCategory === 'All' ? 'All output items' : `${selectedOutputCategory} outputs`}</p>
+                                                 <p className="mt-0.5 text-xs text-slate-500">
                                                      {selectedCategoryStats.complete
                                                         ? 'All outputs in this view are ready.'
                                                         : `${selectedCategoryStats.ready} ready, ${selectedCategoryStats.missing} missing${selectedCategoryStats.generating ? `, ${selectedCategoryStats.generating} generating` : ''}.`}
                                                  </p>
                                              </div>
                                              <div className="flex flex-wrap items-center gap-2">
-                                                 <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${selectedCategoryStats.complete ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                                                 <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${selectedCategoryStats.complete ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-stone-200 bg-stone-50 text-slate-600'}`}>
                                                      {selectedCategoryStats.complete ? 'Category ready' : 'In progress'}
                                                  </span>
                                                  {selectedOutputCategory !== 'All' && (
@@ -3203,12 +3225,12 @@ const App: React.FC = () => {
                                                              Download category
                                                          </button>
                                                          {isCategoryExportMenuOpen && (
-                                                             <div className="absolute right-0 top-full mt-2 w-60 rounded-md border border-gray-200 bg-white py-1 shadow-lg z-20">
-                                                                 <p className="px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 border-b border-gray-50 mb-1">{selectedOutputCategory} category</p>
-                                                                 <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports generated outputs in this category only. Missing outputs are not generated during download.</p>
-                                                                 <button onClick={() => handleDownloadCurrentCategory('word')} className="flex w-full items-center px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
-                                                                 <button onClick={() => handleDownloadCurrentCategory('txt')} className="flex w-full items-center px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
-                                                                 <button onClick={() => handleDownloadCurrentCategory('pdf')} className="flex w-full items-center px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
+                                                             <div className="absolute right-0 top-full z-20 mt-2 w-60 rounded-md border border-stone-200 bg-white py-1 shadow-lg">
+                                                                 <p className="mb-1 border-b border-stone-100 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">{selectedOutputCategory} category</p>
+                                                                 <p className="px-4 pb-2 text-[11px] leading-snug text-slate-500">Exports generated outputs in this category only. Missing outputs are not generated during download.</p>
+                                                                 <button onClick={() => handleDownloadCurrentCategory('word')} className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 hover:bg-stone-50"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
+                                                                 <button onClick={() => handleDownloadCurrentCategory('txt')} className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 hover:bg-stone-50"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
+                                                                 <button onClick={() => handleDownloadCurrentCategory('pdf')} className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 hover:bg-stone-50"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
                                                              </div>
                                                          )}
                                                      </div>
@@ -3221,28 +3243,28 @@ const App: React.FC = () => {
                                                  <button
                                                     key={section.id}
                                                     onClick={() => handleTabClick(section.group, section.id)}
-                                                    className={`min-h-[72px] rounded-md border p-2.5 text-left transition-colors ${section.selected ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
+                                                    className={`min-h-[72px] rounded-md border p-2.5 text-left transition-colors ${section.selected ? 'border-slate-300 bg-slate-50 shadow-[inset_3px_0_0_#dc2626]' : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50'}`}
                                                  >
                                                      <div className="flex items-start justify-between gap-2">
                                                          <div>
-                                                             <div className={`text-sm font-semibold ${section.selected ? 'text-red-800' : 'text-gray-800'}`}>{section.shortLabel}</div>
-                                                             <div className="mt-0.5 text-[11px] text-gray-500">{section.group}</div>
+                                                             <div className={`text-sm font-semibold ${section.selected ? 'text-slate-900' : 'text-slate-800'}`}>{section.shortLabel}</div>
+                                                             <div className="mt-0.5 text-[11px] text-slate-500">{section.group}</div>
                                                          </div>
                                                          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${getCampaignOutputStatusClass(section.status)}`}>
                                                              {getCampaignOutputStatusLabel(section.status)}
                                                          </span>
                                                      </div>
-                                                     <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-gray-600">{section.description}</p>
+                                                     <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-slate-600">{section.description}</p>
                                                  </button>
                                          ))}
                                      </div>
                                      </div>
                                  </div>
                                  ) : (
-                                     <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-center">
-                                         <IconFileText className="mx-auto mb-2 h-8 w-8 text-gray-400" />
-                                         <h3 className="text-sm font-bold text-gray-900">Campaign Library is ready for review after Campaign Pack</h3>
-                                         <p className="mx-auto mt-1 max-w-lg text-xs leading-snug text-gray-500">
+                                     <div className="rounded-lg border border-dashed border-stone-300 bg-stone-50 p-4 text-center">
+                                         <IconFileText className="mx-auto mb-2 h-8 w-8 text-stone-400" />
+                                         <h3 className="text-sm font-bold text-slate-900">Campaign Library is ready for review after Campaign Pack</h3>
+                                         <p className="mx-auto mt-1 max-w-lg text-xs leading-snug text-slate-500">
                                              Generate Listing Copy, then Campaign Pack, to review channel outputs here.
                                          </p>
                                          <button
@@ -3250,7 +3272,7 @@ const App: React.FC = () => {
                                             onClick={isCampaignPackReady ? () => setIsCampaignLibraryExpanded(true) : listingCopyReady ? handleGenerateAllMissing : () => generateCopyForTab(LISTING_COPY_TAB)}
                                             disabled={isGenerating || Boolean(generateAllBlocker) || Boolean(generateCopyBlocker) || (!listingCopyReady && !isPropertyBriefReady)}
                                             title={!listingCopyReady && !isPropertyBriefReady ? propertyBriefReadinessHint : undefined}
-                                            className="mt-3 inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed"
+                                            className={`mt-3 ${aimUi.primaryButton}`}
                                          >
                                             {isGenerating ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
                                             {isCampaignPackReady ? 'Review Campaign Pack' : listingCopyReady ? 'Generate Campaign Pack' : 'Generate Listing Copy'}
@@ -3258,36 +3280,36 @@ const App: React.FC = () => {
                                      </div>
                                  )}
 
-                                 <div className="rounded-lg border border-gray-200 bg-white">
-                                     <div className="border-b border-gray-100 p-4">
+                                 <div className="rounded-lg border border-stone-200 bg-white">
+                                     <div className="border-b border-stone-100 p-4">
                                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                              <div className="flex flex-wrap items-center gap-2">
-                                                 <h3 className="text-base font-semibold text-gray-900">{selectedCampaignOutput?.displayLabel || getOutputDisplayLabel(activeSubTab)}</h3>
+                                                 <h3 className="text-base font-semibold text-slate-900">{selectedCampaignOutput?.displayLabel || getOutputDisplayLabel(activeSubTab)}</h3>
                                                  {selectedCampaignOutput && (
                                                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${getCampaignOutputStatusClass(selectedCampaignOutput.status)}`}>
                                                          {getCampaignOutputStatusLabel(selectedCampaignOutput.status)}
                                                      </span>
                                                  )}
                                              </div>
-                                             <div className="flex items-center gap-2 text-xs text-gray-600">
-                                                 <button onClick={() => setActiveVersionIndex(v => Math.max(0, v - 1))} disabled={activeVersionIndex === 0} className="p-1 rounded hover:bg-gray-100 disabled:opacity-20" title="Previous version" aria-label="Previous version"><IconChevronLeft className="w-4 h-4" /></button>
-                                                 <span className="font-bold text-gray-700 min-w-[78px] text-center">Version {activeVersionIndex + 1} / {Math.max(1, versionSets.length)}</span>
-                                                 <button onClick={() => setActiveVersionIndex(v => Math.min(versionSets.length - 1, v + 1))} disabled={activeVersionIndex >= versionSets.length - 1} className="p-1 rounded hover:bg-gray-100 disabled:opacity-20" title="Next version" aria-label="Next version"><IconChevronRight className="w-4 h-4" /></button>
+                                             <div className="flex items-center gap-2 text-xs text-slate-600">
+                                                 <button onClick={() => setActiveVersionIndex(v => Math.max(0, v - 1))} disabled={activeVersionIndex === 0} className="rounded p-1 hover:bg-stone-100 disabled:opacity-20" title="Previous version" aria-label="Previous version"><IconChevronLeft className="w-4 h-4" /></button>
+                                                 <span className="min-w-[78px] text-center font-bold text-slate-700">Version {activeVersionIndex + 1} / {Math.max(1, versionSets.length)}</span>
+                                                 <button onClick={() => setActiveVersionIndex(v => Math.min(versionSets.length - 1, v + 1))} disabled={activeVersionIndex >= versionSets.length - 1} className="rounded p-1 hover:bg-stone-100 disabled:opacity-20" title="Next version" aria-label="Next version"><IconChevronRight className="w-4 h-4" /></button>
                                              </div>
                                          </div>
                                      </div>
 
                                      <div className="p-4">
                                          {generatingTab && generatingTab === activeSubTab ? (
-                                             <div className="h-64 flex flex-col items-center justify-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                             <div className="h-64 flex flex-col items-center justify-center rounded-lg border border-dashed border-stone-300 bg-stone-50">
                                                  <Spinner className="w-8 h-8 text-red-600 mb-3" />
-                                                 <p className="text-gray-500 text-sm">Generating {getOutputDisplayLabel(generatingTab)}...</p>
+                                                 <p className="text-slate-500 text-sm">Generating {getOutputDisplayLabel(generatingTab)}...</p>
                                              </div>
                                          ) : currentCopy ? (
                                              <>
-                                                 <div className="mb-3 flex flex-col gap-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                                                 <div className="mb-3 flex flex-col gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                                                      <label
-                                                        className={`inline-flex min-h-8 items-center gap-2 text-sm font-semibold ${currentCopy ? 'cursor-pointer text-gray-800' : 'cursor-not-allowed text-gray-400'}`}
+                                                        className={`inline-flex min-h-8 items-center gap-2 text-sm font-semibold ${currentCopy ? 'cursor-pointer text-slate-800' : 'cursor-not-allowed text-stone-400'}`}
                                                         title="When enabled, agent profile details are included with this output."
                                                      >
                                                          <input
@@ -3296,31 +3318,31 @@ const App: React.FC = () => {
                                                             disabled={!currentCopy}
                                                             onChange={event => handleToggleContactDetails(event.target.checked)}
                                                             aria-describedby="contact-card-helper"
-                                                            className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500 disabled:cursor-not-allowed"
+                                                            className="h-4 w-4 rounded border-stone-300 text-red-600 focus:ring-red-500 disabled:cursor-not-allowed"
                                                          />
                                                          Contact card
                                                      </label>
-                                                     <p id="contact-card-helper" className="text-[11px] leading-snug text-gray-500">Include the agent profile/contact details with this output.</p>
+                                                     <p id="contact-card-helper" className="text-[11px] leading-snug text-slate-500">Include the agent profile/contact details with this output.</p>
                                                  </div>
                                                  <div
                                                     role="region"
                                                     aria-label={`${getOutputDisplayLabel(activeSubTab)} generated output`}
                                                     tabIndex={0}
-                                                    className="min-h-[520px] w-full whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-4 font-sans text-sm leading-relaxed text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                                                    className="min-h-[520px] w-full whitespace-pre-wrap rounded-lg border border-stone-200 bg-stone-50 p-4 font-sans text-sm leading-relaxed text-slate-800 shadow-inner focus:outline-none focus:ring-2 focus:ring-slate-300"
                                                  >
                                                     {currentCopy}
                                                  </div>
                                              </>
                                          ) : (
-                                             <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
-                                                 <IconSparkles className="mx-auto mb-3 h-10 w-10 text-gray-400" />
-                                                 <h3 className="text-sm font-bold text-gray-900">No output for this item yet</h3>
-                                                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-gray-500">{activeSubTab === LISTING_COPY_TAB ? isPropertyBriefReady ? 'Generate Listing Copy to create the campaign baseline.' : propertyBriefReadinessHint : currentVersionSet[LISTING_COPY_TAB] ? 'Generate this output from the current Listing Copy.' : 'Generate Listing Copy first, then create this campaign output.'}</p>
+                                             <div className="rounded-lg border border-dashed border-stone-300 bg-stone-50 p-6 text-center">
+                                                 <IconSparkles className="mx-auto mb-3 h-10 w-10 text-stone-400" />
+                                                 <h3 className="text-sm font-bold text-slate-900">No output for this item yet</h3>
+                                                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-slate-500">{activeSubTab === LISTING_COPY_TAB ? isPropertyBriefReady ? 'Generate Listing Copy to create the campaign baseline.' : propertyBriefReadinessHint : currentVersionSet[LISTING_COPY_TAB] ? 'Generate this output from the current Listing Copy.' : 'Generate Listing Copy first, then create this campaign output.'}</p>
                                                  <button
                                                     onClick={() => handleGenerateThisOutput(activeSubTab)}
                                                     disabled={Boolean(generateCopyBlocker) || (activeSubTab === LISTING_COPY_TAB && !isPropertyBriefReady) || (activeSubTab !== LISTING_COPY_TAB && !currentVersionSet[LISTING_COPY_TAB]) || generatingTab === activeSubTab || queuedOutputTabs.includes(activeSubTab)}
                                                     title={getCampaignOperationTitle('generateFullCopy', activeSubTab === LISTING_COPY_TAB && !isPropertyBriefReady ? propertyBriefReadinessHint : activeSubTab !== LISTING_COPY_TAB && !currentVersionSet[LISTING_COPY_TAB] ? 'Generate Listing Copy before creating this output.' : undefined)}
-                                                    className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed"
+                                                    className={`mt-4 ${aimUi.primaryButton}`}
                                                  >
                                                     {generatingTab === activeSubTab ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
                                                     {queuedOutputTabs.includes(activeSubTab) ? 'Queued' : 'Generate this output'}
@@ -3329,7 +3351,7 @@ const App: React.FC = () => {
                                          )}
                                      </div>
 
-                                     <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3">
+                                     <div className="border-t border-stone-100 bg-stone-50/80 px-4 py-3">
                                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                              <div className="flex flex-wrap items-center gap-2">
                                                  <button onClick={() => handleCopyToClipboard(currentCopy)} disabled={!currentCopy} title={currentCopy ? 'Copy current output' : 'No generated output selected.'} aria-label="Copy current output" className={compactActionButtonClass}><IconClipboard className="w-4 h-4" /> Copy</button>
@@ -3339,18 +3361,18 @@ const App: React.FC = () => {
                                                          Download
                                                      </button>
                                                      {isExportMenuOpen && (
-                                                         <div className="absolute left-0 top-full mt-2 w-56 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-20">
-                                                             <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 mb-1">Current output only</p>
-                                                             <p className="px-4 pb-2 text-[11px] leading-snug text-gray-500">Exports this generated draft only.</p>
-                                                             <button onClick={() => handleDownloadCurrentOutput('word')} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
-                                                             <button onClick={() => handleDownloadCurrentOutput('txt')} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
-                                                             <button onClick={() => handleDownloadCurrentOutput('pdf')} className="flex items-center w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-700"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
+                                                         <div className="absolute left-0 top-full z-20 mt-2 w-56 rounded-md border border-stone-200 bg-white py-1 shadow-lg">
+                                                             <p className="mb-1 border-b border-stone-100 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">Current output only</p>
+                                                             <p className="px-4 pb-2 text-[11px] leading-snug text-slate-500">Exports this generated draft only.</p>
+                                                             <button onClick={() => handleDownloadCurrentOutput('word')} className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 hover:bg-stone-50"><IconFileWord className="w-4 h-4 mr-2" /> Word (.doc)</button>
+                                                             <button onClick={() => handleDownloadCurrentOutput('txt')} className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 hover:bg-stone-50"><IconFileTxt className="w-4 h-4 mr-2" /> Text (.txt)</button>
+                                                             <button onClick={() => handleDownloadCurrentOutput('pdf')} className="flex w-full items-center px-4 py-2 text-left text-sm text-slate-700 hover:bg-stone-50"><IconFilePdf className="w-4 h-4 mr-2" /> Print / PDF</button>
                                                          </div>
                                                      )}
                                                  </div>
                                              </div>
                                          </div>
-                                         <p className="mt-2 max-w-3xl text-[11px] leading-snug text-gray-500">
+                                         <p className="mt-2 max-w-3xl text-[11px] leading-snug text-slate-500">
                                              Generated draft. Update campaign inputs and regenerate for changes; final edits happen outside Real Estate AIM.
                                          </p>
                                      </div>
@@ -3360,8 +3382,8 @@ const App: React.FC = () => {
                     </div>
                  </div>
 
-                 <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-                    AI-generated copy must be reviewed before publication. Check property claims against source material, review public web research and attribution, and do not rely on AI output for legal, valuation or compliance advice. Users are responsible for rights, accuracy and publication decisions.
+                 <div className="mt-4 rounded-lg border border-amber-200 bg-white px-4 py-3 text-xs leading-relaxed text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                    <span className="font-semibold text-amber-900">Generated draft review:</span> AI-generated copy must be reviewed before publication. Check property claims against source material, review public web research and attribution, and do not rely on AI output for legal, valuation or compliance advice. Users are responsible for rights, accuracy and publication decisions.
                  </div>
 
                  <div id="print-render-area" className="hidden"></div>

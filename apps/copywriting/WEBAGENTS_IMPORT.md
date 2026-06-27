@@ -218,6 +218,19 @@ Status date: `2026-06-26`
 - Product code changed: yes
 - Current presentation summary: private-beta framing, generated-draft review wording, plain-language progress, tester feedback guidance, and a collapsed-by-default `Beta diagnostics` presentation were added.
 - Current build log summary: Campaign Build Log remains available through `Show build log`; model, token, cost, usage, grounding/tool-charge caveats, input/output summaries, and errors remain inspectable when expanded.
+
+## Hub Style Design Polish 001 Status
+
+Status date: `2026-06-27`
+
+- Goal: `WEBAGENTS-COPYWRITING-HUB-STYLE-DESIGN-POLISH-001`
+- Review artifact: `docs/hub-style-design-polish-001.md`
+- Runtime behavior changed: no intended workflow change; visual styling changed in `App.tsx`.
+- Product code changed: yes.
+- Dependencies changed: no.
+- Current visual summary: the workspace now uses lightweight local `aimUi` class tokens for page shell, cards, sections, controls, buttons and chips; AIM red is concentrated on generation actions and brand accents; Brief Builder, Output Workspace, Campaign Library, Visual Highlights, beta diagnostics and the generated-draft warning received calmer Hub-adjacent visual treatment.
+- Current preservation summary: Brief Builder / Output Workspace split, compact density, collapsible Property Overview and Suburb & Area Profile, summary-first Visual Highlights, generated-only exports, read-only outputs, collapsed Beta diagnostics, floating assistant disabled state, and removed floating Generate Listing Copy button are preserved.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and Image Analysis remains on the server-configured Gemini Flash model.
 - Current export summary: generated-only current-output, current-category, and campaign downloads remain on existing handlers and do not generate missing outputs.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
