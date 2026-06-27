@@ -267,6 +267,23 @@ Status date: `2026-06-27`
 - Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Brief Output Workspace 001 Status
+
+Status date: `2026-06-27`
+
+- Goal: `WEBAGENTS-COPYWRITING-BRIEF-OUTPUT-WORKSPACE-001`
+- Review artifact: `docs/brief-output-workspace-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current layout summary: the workspace is now explicitly split into `Brief Builder` for property facts, fetched-property review, audience/context, features and photos, and `Output Workspace` for Listing Copy, Campaign Pack, Campaign Blueprint, Campaign Library, output review and downloads.
+- Current brief-readiness summary: Listing Copy generation is gated behind either a confirmed fetched property brief or a simple manual brief with address, property facts and feature/context detail.
+- Current review summary: successful Fetch Details now places the fetched information in a `Review property brief` state with Confirm brief, Correct details and Refetch actions.
+- Current generate-button summary: the legacy sticky Generate Listing Copy bar was removed; generation actions live inside Output Workspace.
+- Current campaign library summary: before Campaign Pack, the app shows a compact included-category summary; the detailed 17-output tile grid remains as Campaign Library review navigation and was not deleted.
+- Current blueprint summary: Campaign Blueprint remains planned beta only and cannot trigger generation.
+- Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

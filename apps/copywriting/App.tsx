@@ -18,6 +18,7 @@ type ActiveCampaignOperation = {
     label: string;
 };
 type AnalysisRunStatus = 'idle' | 'success' | 'error';
+type PropertyBriefReviewState = 'missing' | 'review' | 'confirmed';
 type AddressSuggestionCacheEntry = {
     suggestions: string[];
     usage?: UsageStats;
@@ -557,6 +558,7 @@ const App: React.FC = () => {
     const [isSuggesting, setIsSuggesting] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [isFetchComplete, setIsFetchComplete] = useState(false);
+    const [propertyBriefReviewState, setPropertyBriefReviewState] = useState<PropertyBriefReviewState>('missing');
 
     const [includeAddress, setIncludeAddress] = useState(true);
     const [propertyDetails, setPropertyDetails] = useState<PropertyDetails>({
@@ -660,6 +662,34 @@ const App: React.FC = () => {
     const [betaCodeInput, setBetaCodeInput] = useState('');
     const [betaAccessError, setBetaAccessError] = useState<string | null>(null);
     const [isVerifyingBetaAccess, setIsVerifyingBetaAccess] = useState(false);
+
+    const hasFetchedPropertyBrief = isFetchComplete && Boolean(address.trim()) && Boolean(researchData || keyFeatures || profileData);
+    const hasManualPropertyFacts = Boolean(address.trim()) && [
+        propertyDetails.beds,
+        propertyDetails.baths,
+        propertyDetails.cars,
+        propertyDetails.landSize
+    ].some(value => value !== null);
+    const hasManualPropertyContext = Boolean(propertyFeatures.trim() || copyContext.featuresToHighlight.trim());
+    const isManualPropertyBrief = !hasFetchedPropertyBrief && hasManualPropertyFacts && hasManualPropertyContext;
+    const isFetchedPropertyBriefConfirmed = hasFetchedPropertyBrief && propertyBriefReviewState === 'confirmed';
+    const isPropertyBriefReady = isFetchedPropertyBriefConfirmed || isManualPropertyBrief;
+    const propertyBriefStatusLabel = isPropertyBriefReady
+        ? isManualPropertyBrief ? 'Manual brief' : 'Property brief ready'
+        : hasFetchedPropertyBrief && propertyBriefReviewState === 'review'
+            ? 'Review property brief'
+            : address.trim()
+                ? 'Fetch details to start'
+                : 'Property brief missing';
+    const propertyBriefReadinessHint = isPropertyBriefReady
+        ? isManualPropertyBrief
+            ? 'Manual property facts and features are available. AI research and suburb analysis still depend on Fetch Details.'
+            : 'The fetched property facts have been reviewed and confirmed for generation.'
+        : hasFetchedPropertyBrief && propertyBriefReviewState === 'review'
+            ? 'Review and adjust the property facts before generating copy.'
+            : address.trim()
+                ? 'Fetch details or add enough manual property facts and features before generating Listing Copy.'
+                : 'Enter a property address to begin the brief.';
 
     const addLog = (entry: Partial<DebugLogEntry> & { stepName: string, status: 'pending' | 'success' | 'error' }) => {
         const newLog: DebugLogEntry = {
@@ -909,6 +939,7 @@ const App: React.FC = () => {
         setIsSuggesting(false);
         setIsAddressLookupQueued(false);
         setIsFetchComplete(false);
+        setPropertyBriefReviewState('missing');
         upsertAddressSuggestionLog({
             status: 'success',
             inputs: confirmedAddress,
@@ -920,6 +951,7 @@ const App: React.FC = () => {
         setAddress(value);
         setShowSuggestions(true);
         setIsFetchComplete(false);
+        setPropertyBriefReviewState('missing');
         if (selectedAddress && value.trim() !== selectedAddress.label) {
             setSelectedAddress(null);
         }
@@ -931,6 +963,15 @@ const App: React.FC = () => {
 
     const handleContextChange = (field: keyof CopyContext, value: any) => {
         setCopyContext(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleConfirmPropertyBrief = () => {
+        if (!hasFetchedPropertyBrief) {
+            setNotification('Fetch property details before confirming the brief.');
+            return;
+        }
+        setPropertyBriefReviewState('confirmed');
+        setNotification('Property brief confirmed.');
     };
 
     const handleWritingStyleToggle = (style: string) => {
@@ -1160,6 +1201,7 @@ const App: React.FC = () => {
         setIsResearching(true);
         setResearchError(null);
         setIsFetchComplete(false);
+        setPropertyBriefReviewState('missing');
         setCopyContextAnalysisStatus('idle');
         setPropertyFeaturesAnalysisStatus('idle');
         setCopyContextAnalysisError(null);
@@ -1203,12 +1245,14 @@ const App: React.FC = () => {
             }
 
             setIsFetchComplete(true);
+            setPropertyBriefReviewState('review');
             updateLog(logId, { status: 'success', outputs: `Specs: ${JSON.stringify(researchResult.specs)}`, usage: result.usage });
         } catch (error) {
             console.error(error);
             const msg = error instanceof Error ? error.message : "An unknown error occurred during research.";
             setResearchError(msg);
             setIsFetchComplete(false);
+            setPropertyBriefReviewState('missing');
             updateLog(logId, { status: 'error', message: msg });
             setNotification("Research failed. Existing property details were kept.");
         } finally {
@@ -1295,6 +1339,14 @@ const App: React.FC = () => {
 
     const generateCopyForTab = async (tab: PreviewTab, isRegeneration = false) => {
         const outputLabel = getOutputDisplayLabel(tab);
+        if (tab === LISTING_COPY_TAB && !isPropertyBriefReady) {
+            const msg = hasFetchedPropertyBrief && propertyBriefReviewState === 'review'
+                ? 'Confirm the property brief before generating Listing Copy.'
+                : 'Prepare a property brief before generating Listing Copy.';
+            setGenerationError(msg);
+            setNotification(msg);
+            return;
+        }
         if (!beginCampaignOperation('generateFullCopy', tab === LISTING_COPY_TAB ? 'Listing copy generation' : `${outputLabel} generation`)) return;
         setIsGenerating(true);
         setGeneratingTab(tab);
@@ -1849,7 +1901,8 @@ const App: React.FC = () => {
     };
     const campaignStatusSteps = [
         { label: 'Address', state: address.trim() ? 'complete' : 'missing' },
-        { label: 'Research', state: isResearching ? 'current' : isFetchComplete ? 'complete' : 'missing' },
+        { label: 'Research', state: isResearching ? 'current' : hasFetchedPropertyBrief ? 'complete' : 'missing' },
+        { label: 'Brief', state: isPropertyBriefReady ? 'complete' : hasFetchedPropertyBrief ? 'current' : isManualPropertyBrief ? 'complete' : 'missing' },
         { label: 'Strategy', state: isAnalyzingStrategy ? 'current' : copyContextAnalysisStatus === 'success' ? 'complete' : 'missing' },
         { label: 'Features', state: isAnalyzingFeatures ? 'current' : propertyFeatures.trim() ? 'complete' : 'missing' },
         { label: 'Images', state: isAnalyzingImages ? 'current' : imageAnalysis ? 'complete' : 'missing' },
@@ -1859,6 +1912,7 @@ const App: React.FC = () => {
     const campaignStatusAnchors: Record<typeof campaignStatusSteps[number]['label'], string> = {
         Address: 'property-address',
         Research: 'property-overview',
+        Brief: 'property-details',
         Strategy: 'copy-context',
         Features: 'property-features',
         Images: 'property-photos',
@@ -1943,10 +1997,17 @@ const App: React.FC = () => {
                 tone: 'ready' as const,
             };
         }
-        if (isFetchComplete) {
+        if (hasFetchedPropertyBrief && propertyBriefReviewState === 'review') {
             return {
-                label: 'Ready to create drafts',
-                description: 'Review the approved context, then generate listing copy.',
+                label: 'Review property brief',
+                description: 'Review and confirm the property facts before generating Listing Copy.',
+                tone: 'attention' as const,
+            };
+        }
+        if (isPropertyBriefReady) {
+            return {
+                label: propertyBriefStatusLabel,
+                description: 'Generate Listing Copy from the approved property brief, then continue to Campaign Pack.',
                 tone: 'ready' as const,
             };
         }
@@ -1962,7 +2023,7 @@ const App: React.FC = () => {
             description: 'Enter a property address to begin the private beta workflow.',
             tone: 'idle' as const,
         };
-    }, [isAddressLookupQueued, isSuggesting, isResearching, isAnalyzingStrategy, isAnalyzingFeatures, isAnalyzingImages, isGenerating, isDownloadingAll, generatingTab, allTabsGenerated, readyOutputCount, missingOutputCount, isFetchComplete, address]);
+    }, [isAddressLookupQueued, isSuggesting, isResearching, isAnalyzingStrategy, isAnalyzingFeatures, isAnalyzingImages, isGenerating, isDownloadingAll, generatingTab, allTabsGenerated, readyOutputCount, missingOutputCount, hasFetchedPropertyBrief, isPropertyBriefReady, propertyBriefStatusLabel, propertyBriefReviewState, address]);
     const plainCampaignProgressClass = plainCampaignProgress.tone === 'working'
         ? 'border-amber-200 bg-amber-50 text-amber-900'
         : plainCampaignProgress.tone === 'ready'
@@ -2167,6 +2228,13 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="space-y-8 h-full xl:overflow-y-auto xl:h-[calc(100vh-140px)] pr-2 pb-10 flex flex-col">
+                        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Brief Builder</p>
+                            <h2 className="mt-1 text-xl font-bold text-gray-900">Build and approve the property brief</h2>
+                            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-600">
+                                Gather the property facts, agent details, audience, features and visual highlights before generating copy.
+                            </p>
+                        </div>
 
                         <Section id="property-address" title="Property Address">
                             <div className="space-y-4">
@@ -2345,7 +2413,54 @@ const App: React.FC = () => {
                             </div>
                         </Section>
 
-                        <Section title="Property Details" isActive={isResearching} activeLabel="Fetching...">
+                        <Section id="property-details" title="Property Details" isActive={isResearching} activeLabel="Fetching...">
+                            <div className={`mb-4 rounded-md border p-3 ${isPropertyBriefReady ? 'border-emerald-200 bg-emerald-50' : hasFetchedPropertyBrief ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                        <p className={`text-sm font-bold ${isPropertyBriefReady ? 'text-emerald-800' : hasFetchedPropertyBrief ? 'text-amber-900' : 'text-gray-800'}`}>
+                                            {propertyBriefStatusLabel}
+                                        </p>
+                                        <p className={`mt-1 text-xs leading-relaxed ${isPropertyBriefReady ? 'text-emerald-700' : hasFetchedPropertyBrief ? 'text-amber-800' : 'text-gray-600'}`}>
+                                            {propertyBriefReadinessHint}
+                                        </p>
+                                        {hasFetchedPropertyBrief && propertyBriefReviewState === 'review' && (
+                                            <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                                                If this is the wrong property, refetch from the address field before confirming.
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 sm:justify-end">
+                                        {hasFetchedPropertyBrief && propertyBriefReviewState !== 'confirmed' && (
+                                            <button
+                                                type="button"
+                                                onClick={handleConfirmPropertyBrief}
+                                                className="inline-flex min-h-8 items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                                            >
+                                                <IconCheckCircle className="h-3.5 w-3.5" />
+                                                Confirm brief
+                                            </button>
+                                        )}
+                                        {hasFetchedPropertyBrief && (
+                                            <button
+                                                type="button"
+                                                onClick={() => document.getElementById('property-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                                                className={compactActionButtonClass}
+                                            >
+                                                Correct details
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={handleFetchDetails}
+                                            disabled={isResearching || Boolean(propertyResearchBlocker) || !address.trim()}
+                                            title={getCampaignOperationTitle('propertyResearch', !address.trim() ? 'Enter a property address first.' : undefined)}
+                                            className={compactActionButtonClass}
+                                        >
+                                            Refetch
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                             {isFetchComplete && address && (
                                 <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
                                     <p className="font-semibold text-gray-800 text-sm">{address}</p>
@@ -2399,6 +2514,68 @@ const App: React.FC = () => {
                                 <SelectInput label="Property Type" value={propertyDetails.propertyType} onChange={(v) => handleDetailChange('propertyType', v)} options={PROPERTY_TYPES} />
                         </div>
                         </Section>
+
+                        <Section id="property-overview" title="Property Overview" isActive={isResearching} activeLabel="Fetching...">
+                             {researchData ? (
+                                 <div>
+                                     <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{researchData}</p>
+                                     {groundingSources.length > 0 && (
+                                         <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
+                                             {groundingSources.map((source, idx) => (
+                                                 <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="inline-flex items-center bg-red-50 text-red-700 hover:bg-red-100 rounded-full px-3 py-1 text-xs truncate max-w-[150px]">
+                                                     {source.type === 'maps' ? <IconMapPin className="w-3 h-3 mr-1" /> : <IconWorld className="w-3 h-3 mr-1" />}
+                                                     {source.title}
+                                                 </a>
+                                             ))}
+                                         </div>
+                                     )}
+                                 </div>
+                             ) : (
+                                 <Placeholder icon={<IconFileText />} title="Property Overview" description="Fetch details to gather information." />
+                             )}
+                         </Section>
+
+                         <Section title="Suburb & Area Profile" isActive={isResearching} activeLabel="Fetching...">
+                             {profileData ? (
+                                 <div>
+                                    <div className="flex flex-col gap-2 mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">COPYWRITING INCLUSION SETTINGS:</p>
+                                        <div className="flex flex-wrap gap-4 text-xs">
+                                            {['none', 'suburb', 'area', 'both'].map(m => (
+                                                <label key={m} className="flex items-center cursor-pointer capitalize font-medium">
+                                                    <input type="radio" checked={profileInclusion === m} onChange={() => setProfileInclusion(m as any)} className="mr-1.5 text-red-600 focus:ring-red-500" />
+                                                    {m}
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-6">
+                                        {profileData.suburb && (
+                                            <div>
+                                                <h4 className={`font-bold text-gray-800 text-sm mb-2 uppercase tracking-wider border-b border-gray-100 pb-1 ${(profileInclusion === 'suburb' || profileInclusion === 'both') ? 'text-red-700' : 'opacity-60'}`}>
+                                                    Suburb Insight {(profileInclusion === 'suburb' || profileInclusion === 'both') ? '' : '(Preview)'}
+                                                </h4>
+                                                <div className={(profileInclusion === 'suburb' || profileInclusion === 'both') ? '' : 'opacity-70'}>
+                                                    {renderProfileContent(profileData.suburb)}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {profileData.area && (
+                                            <div>
+                                                <h4 className={`font-bold text-gray-800 text-sm mb-2 uppercase tracking-wider border-b border-gray-100 pb-1 ${(profileInclusion === 'area' || profileInclusion === 'both') ? 'text-red-700' : 'opacity-60'}`}>
+                                                    Regional Context {(profileInclusion === 'area' || profileInclusion === 'both') ? '' : '(Preview)'}
+                                                </h4>
+                                                <div className={(profileInclusion === 'area' || profileInclusion === 'both') ? '' : 'opacity-70'}>
+                                                    {renderProfileContent(profileData.area)}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                 </div>
+                             ) : (
+                                 <Placeholder icon={<IconMapPin />} title="Suburb & Area Profile" description="Local insights appear here." />
+                             )}
+                         </Section>
 
                         <Section
                             id="copy-context"
@@ -2574,98 +2751,53 @@ const App: React.FC = () => {
                             )}
                         </Section>
 
-                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 sticky bottom-6 z-10">
-                            <div className="flex items-center justify-between mb-4">
-                                <span className="text-sm font-medium text-gray-700">~{outputSettings.wordCount} words</span>
-                                <input type="range" min="50" max="1000" step="50" value={outputSettings.wordCount} onChange={(e) => setOutputSettings(prev => ({ ...prev, wordCount: parseInt(e.target.value) }))} className="w-1/2 h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-red-600" />
-                            </div>
-                            <button
-                                onClick={() => generateCopyForTab(LISTING_COPY_TAB, listingCopyReady)}
-                                disabled={isGenerating || Boolean(generateCopyBlocker)}
-                                title={getCampaignOperationTitle('generateFullCopy')}
-                                className="w-full inline-flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 disabled:bg-red-400 transition-transform transform hover:scale-[1.01]"
-                            >
-                                {isListingCopyGenerating ? <Spinner className="mr-2" /> : <IconSparkles className="mr-2 w-5 h-5" />}
-                                {listingCopyReady ? 'Regenerate Listing Copy' : 'Generate Listing Copy'}
-                            </button>
-                        </div>
+                        <Section title="Visual Highlights" isActive={isAnalyzingImages} activeLabel="Analyzing...">
+                            {imageAnalysis ? renderVisualHighlights() : <Placeholder icon={<IconCamera />} title="Visual Analysis" description="Analyze photos to see features." />}
+                        </Section>
                     </div>
 
                     <div className="h-full flex flex-col space-y-6 overflow-y-auto pr-2">
-                         <Section id="property-overview" title="Property Overview" isActive={isResearching} activeLabel="Fetching...">
-                             {researchData ? (
-                                 <div>
-                                     <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{researchData}</p>
-                                     {groundingSources.length > 0 && (
-                                         <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
-                                             {groundingSources.map((source, idx) => (
-                                                 <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="inline-flex items-center bg-red-50 text-red-700 hover:bg-red-100 rounded-full px-3 py-1 text-xs truncate max-w-[150px]">
-                                                     {source.type === 'maps' ? <IconMapPin className="w-3 h-3 mr-1" /> : <IconWorld className="w-3 h-3 mr-1" />}
-                                                     {source.title}
-                                                 </a>
-                                             ))}
-                                         </div>
-                                     )}
-                                 </div>
-                             ) : (
-                                 <Placeholder icon={<IconFileText />} title="Property Overview" description="Fetch details to gather information." />
-                             )}
-                         </Section>
-
-                         <Section title="Suburb & Area Profile" isActive={isResearching} activeLabel="Fetching...">
-                             {profileData ? (
-                                 <div>
-                                    <div className="flex flex-col gap-2 mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
-                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">COPYWRITING INCLUSION SETTINGS:</p>
-                                        <div className="flex flex-wrap gap-4 text-xs">
-                                            {['none', 'suburb', 'area', 'both'].map(m => (
-                                                <label key={m} className="flex items-center cursor-pointer capitalize font-medium">
-                                                    <input type="radio" checked={profileInclusion === m} onChange={() => setProfileInclusion(m as any)} className="mr-1.5 text-red-600 focus:ring-red-500" />
-                                                    {m}
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="space-y-6">
-                                        {profileData.suburb && (
-                                            <div>
-                                                <h4 className={`font-bold text-gray-800 text-sm mb-2 uppercase tracking-wider border-b border-gray-100 pb-1 ${(profileInclusion === 'suburb' || profileInclusion === 'both') ? 'text-red-700' : 'opacity-60'}`}>
-                                                    Suburb Insight {(profileInclusion === 'suburb' || profileInclusion === 'both') ? '' : '(Preview)'}
-                                                </h4>
-                                                <div className={(profileInclusion === 'suburb' || profileInclusion === 'both') ? '' : 'opacity-70'}>
-                                                    {renderProfileContent(profileData.suburb)}
-                                                </div>
-                                            </div>
-                                        )}
-                                        {profileData.area && (
-                                            <div>
-                                                <h4 className={`font-bold text-gray-800 text-sm mb-2 uppercase tracking-wider border-b border-gray-100 pb-1 ${(profileInclusion === 'area' || profileInclusion === 'both') ? 'text-red-700' : 'opacity-60'}`}>
-                                                    Regional Context {(profileInclusion === 'area' || profileInclusion === 'both') ? '' : '(Preview)'}
-                                                </h4>
-                                                <div className={(profileInclusion === 'area' || profileInclusion === 'both') ? '' : 'opacity-70'}>
-                                                    {renderProfileContent(profileData.area)}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                 </div>
-                             ) : (
-                                 <Placeholder icon={<IconMapPin />} title="Suburb & Area Profile" description="Local insights appear here." />
-                             )}
-                         </Section>
-
-                         <Section title="Visual Highlights" isActive={isAnalyzingImages} activeLabel="Analyzing...">
-                             {imageAnalysis ? renderVisualHighlights() : <Placeholder icon={<IconCamera />} title="Visual Analysis" description="Analyze photos to see features." />}
-                         </Section>
+                         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                             <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Output Workspace</p>
+                             <h2 className="mt-1 text-xl font-bold text-gray-900">Write the listing and prepare the campaign</h2>
+                             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-600">
+                                 The listing copy is the master narrative. The approved property brief remains the factual source. Campaign outputs adapt both for each channel.
+                             </p>
+                         </div>
 
                          <Section id="campaign-outputs" title="Campaign Outputs" isActive={isCampaignOutputsActive} activeLabel={isDownloadingAll ? 'Preparing...' : 'Generating...'}>
                              <div className="flex flex-col gap-5">
                                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                                     <div className="mb-4">
-                                         <p className="text-sm font-semibold text-slate-900">Choose the campaign outcome for this property.</p>
-                                         <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
-                                             Prepare the property brief, generate Listing Copy first, then continue to Campaign Pack when you need the full channel package.
-                                         </p>
+                                     <div className="mb-4 flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                                         <div>
+                                             <p className="text-sm font-semibold text-slate-900">Choose the campaign outcome for this property.</p>
+                                             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
+                                                 Build the property brief, generate Listing Copy first, then continue to Campaign Pack when you need the full channel package.
+                                             </p>
+                                             <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                                 <span className={`rounded-full border px-2.5 py-1 font-semibold ${isPropertyBriefReady ? 'border-emerald-200 bg-white text-emerald-700' : 'border-amber-200 bg-white text-amber-800'}`}>
+                                                     {propertyBriefStatusLabel}
+                                                 </span>
+                                                 <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-600">
+                                                     {listingCopyReady ? 'Listing Copy ready' : 'Listing Copy not generated'}
+                                                 </span>
+                                             </div>
+                                         </div>
+                                         <div className="min-w-[220px] rounded-md border border-slate-200 bg-white p-3">
+                                             <div className="flex items-center justify-between gap-3">
+                                                 <span className="text-xs font-semibold text-gray-700">Listing length</span>
+                                                 <span className="text-sm font-bold text-gray-800">~{outputSettings.wordCount} words</span>
+                                             </div>
+                                             <input
+                                                type="range"
+                                                min="50"
+                                                max="1000"
+                                                step="50"
+                                                value={outputSettings.wordCount}
+                                                onChange={(e) => setOutputSettings(prev => ({ ...prev, wordCount: parseInt(e.target.value) }))}
+                                                className="mt-3 w-full h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-red-600"
+                                             />
+                                         </div>
                                      </div>
                                      <div className="grid grid-cols-1 gap-3 2xl:grid-cols-3">
                                          {COPYWRITING_OFFERS.map(offer => {
@@ -2673,17 +2805,19 @@ const App: React.FC = () => {
                                              const isCampaignPackOffer = offer.id === 'campaign-pack';
                                              const isBlueprintOffer = offer.id === 'campaign-blueprint';
                                              const stateLabel = isListingOffer
-                                                ? isListingCopyGenerating ? 'Generating' : listingCopyReady ? 'Ready' : 'Missing'
+                                                ? isListingCopyGenerating ? 'Generating' : listingCopyReady ? 'Ready' : isPropertyBriefReady ? 'Ready to generate' : hasFetchedPropertyBrief ? 'Confirm brief first' : 'Brief required'
                                                 : isCampaignPackOffer
                                                     ? isCampaignPackGenerating ? 'Generating' : !listingCopyReady ? 'Available after Listing Copy' : isCampaignPackReady ? 'Ready' : `${campaignPackMissingCount} outputs remaining`
                                                     : 'Not available yet';
                                              const stateClass = isBlueprintOffer
                                                 ? 'border-gray-200 bg-gray-100 text-gray-600'
-                                                : stateLabel === 'Ready'
+                                                : stateLabel === 'Ready' || stateLabel === 'Ready to generate'
                                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                                    : stateLabel === 'Generating'
+                                                : stateLabel === 'Generating'
                                                         ? 'border-amber-200 bg-amber-50 text-amber-800'
-                                                        : 'border-gray-200 bg-white text-gray-600';
+                                                        : stateLabel === 'Brief required' || stateLabel === 'Confirm brief first'
+                                                            ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                                            : 'border-gray-200 bg-white text-gray-600';
                                              const statusLabel = offer.status === 'recommended'
                                                 ? 'Recommended'
                                                 : offer.status === 'planned'
@@ -2695,11 +2829,11 @@ const App: React.FC = () => {
                                                     ? 'border-gray-200 bg-gray-100 text-gray-600'
                                                     : 'border-emerald-200 bg-emerald-50 text-emerald-700';
                                              const actionLabel = isListingOffer
-                                                ? listingCopyReady ? 'Review Listing Copy' : offer.primaryActionLabel
+                                                ? listingCopyReady ? 'Review Listing Copy' : isPropertyBriefReady ? offer.primaryActionLabel : 'Brief required'
                                                 : isCampaignPackOffer
                                                     ? !listingCopyReady ? 'Listing Copy required' : isCampaignPackReady ? 'Review Campaign Pack' : offer.primaryActionLabel
                                                     : offer.primaryActionLabel;
-                                             const disabled = isBlueprintOffer || isGenerating || (isCampaignPackOffer && !listingCopyReady);
+                                             const disabled = isBlueprintOffer || isGenerating || (isListingOffer && !isPropertyBriefReady) || (isCampaignPackOffer && !listingCopyReady);
                                              const onOfferAction = () => {
                                                 if (isListingOffer) {
                                                     if (listingCopyReady) {
@@ -2744,7 +2878,7 @@ const App: React.FC = () => {
                                                             type="button"
                                                             onClick={onOfferAction}
                                                             disabled={disabled}
-                                                            title={isCampaignPackOffer && !listingCopyReady ? 'Generate Listing Copy before Campaign Pack.' : offer.disabledReason}
+                                                            title={isListingOffer && !isPropertyBriefReady ? propertyBriefReadinessHint : isCampaignPackOffer && !listingCopyReady ? 'Generate Listing Copy before Campaign Pack.' : offer.disabledReason}
                                                             className={`inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isCampaignPackOffer ? 'bg-red-600 text-white hover:bg-red-700 disabled:bg-red-400' : isBlueprintOffer ? 'border border-gray-200 bg-gray-100 text-gray-500' : 'bg-slate-800 text-white hover:bg-slate-900 disabled:bg-slate-400'}`}
                                                         >
                                                             {(isListingCopyGenerating && isListingOffer) || (isCampaignPackGenerating && isCampaignPackOffer) ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
@@ -2754,8 +2888,8 @@ const App: React.FC = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => generateCopyForTab(LISTING_COPY_TAB, true)}
-                                                                disabled={isGenerating || Boolean(generateCopyBlocker)}
-                                                                title={getCampaignOperationTitle('generateFullCopy')}
+                                                                disabled={isGenerating || Boolean(generateCopyBlocker) || !isPropertyBriefReady}
+                                                                title={getCampaignOperationTitle('generateFullCopy', !isPropertyBriefReady ? propertyBriefReadinessHint : undefined)}
                                                                 className={compactActionButtonClass}
                                                             >
                                                                 Regenerate Listing Copy
@@ -2767,6 +2901,22 @@ const App: React.FC = () => {
                                          })}
                                      </div>
                                  </div>
+
+                                 {!isCampaignPackReady && (
+                                     <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                         <p className="text-sm font-semibold text-gray-900">Campaign Pack includes</p>
+                                         <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-600">
+                                             Step 2 adapts the approved Listing Copy and property brief into the channel pack. The detailed output library stays secondary until there is campaign work to review.
+                                         </p>
+                                         <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                             {['Listing', 'Coming Soon', 'Social Media', 'Events', 'Blog', 'Video'].map(category => (
+                                                 <span key={category} className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-semibold text-gray-700">
+                                                     {category}
+                                                 </span>
+                                             ))}
+                                         </div>
+                                     </div>
+                                 )}
 
                                  <div className="rounded-lg border border-gray-200 bg-white p-4">
                                      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
@@ -2909,7 +3059,8 @@ const App: React.FC = () => {
                                          <button
                                             type="button"
                                             onClick={isCampaignPackReady ? () => setIsCampaignLibraryExpanded(true) : listingCopyReady ? handleGenerateAllMissing : () => generateCopyForTab(LISTING_COPY_TAB)}
-                                            disabled={isGenerating || Boolean(generateAllBlocker) || Boolean(generateCopyBlocker)}
+                                            disabled={isGenerating || Boolean(generateAllBlocker) || Boolean(generateCopyBlocker) || (!listingCopyReady && !isPropertyBriefReady)}
+                                            title={!listingCopyReady && !isPropertyBriefReady ? propertyBriefReadinessHint : undefined}
                                             className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed"
                                          >
                                             {isGenerating ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
@@ -2975,11 +3126,11 @@ const App: React.FC = () => {
                                              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
                                                  <IconSparkles className="mx-auto mb-3 h-10 w-10 text-gray-400" />
                                                  <h3 className="text-sm font-bold text-gray-900">No output for this item yet</h3>
-                                                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-gray-500">{activeSubTab === LISTING_COPY_TAB ? 'Generate Listing Copy to create the campaign baseline.' : currentVersionSet[LISTING_COPY_TAB] ? 'Generate this output from the current Listing Copy.' : 'Generate Listing Copy first, then create this campaign output.'}</p>
+                                                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-gray-500">{activeSubTab === LISTING_COPY_TAB ? isPropertyBriefReady ? 'Generate Listing Copy to create the campaign baseline.' : propertyBriefReadinessHint : currentVersionSet[LISTING_COPY_TAB] ? 'Generate this output from the current Listing Copy.' : 'Generate Listing Copy first, then create this campaign output.'}</p>
                                                  <button
                                                     onClick={() => handleGenerateThisOutput(activeSubTab)}
-                                                    disabled={Boolean(generateCopyBlocker) || (activeSubTab !== LISTING_COPY_TAB && !currentVersionSet[LISTING_COPY_TAB]) || generatingTab === activeSubTab || queuedOutputTabs.includes(activeSubTab)}
-                                                    title={getCampaignOperationTitle('generateFullCopy', activeSubTab !== LISTING_COPY_TAB && !currentVersionSet[LISTING_COPY_TAB] ? 'Generate Listing Copy before creating this output.' : undefined)}
+                                                    disabled={Boolean(generateCopyBlocker) || (activeSubTab === LISTING_COPY_TAB && !isPropertyBriefReady) || (activeSubTab !== LISTING_COPY_TAB && !currentVersionSet[LISTING_COPY_TAB]) || generatingTab === activeSubTab || queuedOutputTabs.includes(activeSubTab)}
+                                                    title={getCampaignOperationTitle('generateFullCopy', activeSubTab === LISTING_COPY_TAB && !isPropertyBriefReady ? propertyBriefReadinessHint : activeSubTab !== LISTING_COPY_TAB && !currentVersionSet[LISTING_COPY_TAB] ? 'Generate Listing Copy before creating this output.' : undefined)}
                                                     className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed"
                                                  >
                                                     {generatingTab === activeSubTab ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}

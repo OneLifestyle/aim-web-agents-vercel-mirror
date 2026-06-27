@@ -10,6 +10,8 @@ After import, the app was proven locally with `npm ci`, `npm run build`, a dev s
 
 The connected-beta offer direction is documented in `docs/offer-architecture-001.md`: Listing Copy, Campaign Pack, and Campaign Blueprint. The first UI pass is documented in `docs/offer-ui-001.md`; it implements the offer-led interface without billing, Hub sync, provider routing changes, or Campaign Blueprint generation.
 
+The current private-beta structure is documented in `docs/brief-output-workspace-001.md`. It separates the app into `Brief Builder` and `Output Workspace`, removes the legacy sticky Generate Listing Copy bar, gates Listing Copy generation behind a ready property brief, and keeps the 17-output tile grid as Campaign Library review navigation rather than the primary pre-generation choice.
+
 The floating general `AI Assistant` chat surface is disabled for the private beta. The decision and deferred contextual-assistant/export-settings ideas are recorded in `docs/chat-assistant-disabled-001.md`.
 
 ## Project Overview
@@ -42,6 +44,7 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
     *   **Video:** Scripts for property tour videos with director notes.
 *   **Versioning:** Maintains multiple versions of copy for A/B testing or revisions.
 *   **Offer-Led Flow:** Guides users through Listing Copy first, then Campaign Pack for the full downstream output package. Campaign Blueprint is visible as planned beta only.
+*   **Brief Builder / Output Workspace:** Input gathering, fetched-property review and context live in Brief Builder. Listing Copy, Campaign Pack, Campaign Library review and downloads live in Output Workspace.
 
 ### 5. V1 Review Workflow
 *   **Generated Drafts:** Campaign outputs are read-only drafts in the primary v1 UI.

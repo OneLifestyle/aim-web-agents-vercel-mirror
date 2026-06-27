@@ -52,6 +52,8 @@ It is now labelled as Campaign Library and is treated as a review/navigation sur
 
 The library can still show category filters, output tiles, ready/missing/generating states, on-demand missing-output generation, current output download, current category download, and campaign download.
 
+Follow-up note: `WEBAGENTS-COPYWRITING-BRIEF-OUTPUT-WORKSPACE-001` moved this offer model into a clearer `Brief Builder` and `Output Workspace` structure. Listing Copy generation is now gated by property brief readiness, the legacy sticky Generate Listing Copy bar was removed, and the Campaign Library is kept as review navigation after the output workflow starts.
+
 ## Preserved Behavior
 
 - Beta access gate remains on the existing path.
