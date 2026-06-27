@@ -18,7 +18,7 @@ Chosen direction: hybrid of Option A and Option B.
 
 ## What Changed
 
-- Added a visible `Brief Builder` header around address, agent, open-house, property facts, research review, local profile, copy context, property features, photos and visual highlights.
+- Added a visible `Brief Builder` header around address, agent, open-house, property facts, research review, local profile, campaign direction, property features, photos and visual highlights.
 - Added a visible `Output Workspace` header around Listing Copy, Campaign Pack, planned Campaign Blueprint, Campaign Library, output review and downloads.
 - Moved Property Overview, Suburb & Area Profile, and Visual Highlights into Brief Builder so the right column is no longer a mixed research/output surface.
 - Removed the sticky/floating `Generate Listing Copy` bar from the Brief Builder column.
@@ -89,6 +89,8 @@ Before Campaign Pack is ready, the app shows a compact `Campaign Pack includes` 
 
 The detailed tiles remain secondary and expandable as `Campaign Library`. After Campaign Pack is generated or partly generated, Campaign Library remains the review navigator with category filters, ready/missing/generating states, current selection, current-output downloads, category downloads, campaign download, and secondary on-demand missing-output generation.
 
+Follow-up note: `WEBAGENTS-COPYWRITING-WORKSPACE-DENSITY-VISUALS-001` tightened spacing, compacted offer cards, made Property Overview and Suburb & Area Profile collapsible, renamed the visible `Copy Context` section to `Campaign Direction`, added visible 20-photo numbering, and changed Visual Highlights to summary-first expandable rows.
+
 ## Campaign Pack Behaviour
 
 Campaign Pack continues to wrap the existing downstream generation behavior:
@@ -105,7 +107,7 @@ Campaign Pack continues to wrap the existing downstream generation behavior:
 - Floating AI Assistant remains disabled from the primary UI.
 - Address lookup remains on the existing path.
 - Fetch Details remains on the existing property research path.
-- Copy Context AI Analysis remains on the existing strategy-analysis path.
+- Campaign Direction AI Analysis remains on the existing strategy-analysis path.
 - Property Features AI Analysis remains on the existing feature-analysis path.
 - AI Strategy Analysis remains routed to the server-configured Gemini Pro model.
 - Image Analysis remains routed to the server-configured Gemini Flash model.

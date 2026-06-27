@@ -82,7 +82,7 @@ Follow-up note: `WEBAGENTS-COPYWRITING-CHAT-ASSISTANT-DISABLE-001` removed the p
 
 - Address lookup remains on the existing path.
 - Fetch Details remains on the existing property research path.
-- Copy Context AI Analysis remains on the existing strategy-analysis path.
+- Campaign Direction AI Analysis remains on the existing strategy-analysis path.
 - Property Features AI Analysis remains on the existing feature-analysis path.
 - Image analysis remains on the existing photo-analysis path.
 - Generate Listing Copy remains on the existing generation path.

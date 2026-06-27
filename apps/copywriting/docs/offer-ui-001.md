@@ -54,13 +54,15 @@ The library can still show category filters, output tiles, ready/missing/generat
 
 Follow-up note: `WEBAGENTS-COPYWRITING-BRIEF-OUTPUT-WORKSPACE-001` moved this offer model into a clearer `Brief Builder` and `Output Workspace` structure. Listing Copy generation is now gated by property brief readiness, the legacy sticky Generate Listing Copy bar was removed, and the Campaign Library is kept as review navigation after the output workflow starts.
 
+Follow-up note: `WEBAGENTS-COPYWRITING-WORKSPACE-DENSITY-VISUALS-001` compacted the offer cards and Campaign Library while preserving Listing Copy, Campaign Pack, planned-only Campaign Blueprint, generated-only exports, and the existing generation paths.
+
 ## Preserved Behavior
 
 - Beta access gate remains on the existing path.
 - Floating AI Assistant remains disabled from the primary UI.
 - Address lookup remains on the existing path.
 - Fetch Details remains on the existing property research path.
-- Copy Context AI Analysis remains on the existing strategy-analysis path.
+- Campaign Direction AI Analysis remains on the existing strategy-analysis path.
 - Property Features AI Analysis remains on the existing feature-analysis path.
 - AI Strategy Analysis remains routed to the server-configured Gemini Pro model.
 - Image Analysis remains routed to the server-configured Gemini Flash model.

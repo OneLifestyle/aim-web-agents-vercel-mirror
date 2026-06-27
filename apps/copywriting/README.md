@@ -12,6 +12,8 @@ The connected-beta offer direction is documented in `docs/offer-architecture-001
 
 The current private-beta structure is documented in `docs/brief-output-workspace-001.md`. It separates the app into `Brief Builder` and `Output Workspace`, removes the legacy sticky Generate Listing Copy bar, gates Listing Copy generation behind a ready property brief, and keeps the 17-output tile grid as Campaign Library review navigation rather than the primary pre-generation choice.
 
+The workspace density and photo-analysis follow-up is documented in `docs/workspace-density-visuals-001.md`. It tightens card spacing, adds collapsible Property Overview and Suburb & Area Profile sections, renames the visible `Copy Context` section to `Campaign Direction`, makes the 20-photo cap visible, numbers uploaded images, and renders Visual Highlights as summary-first expandable rows.
+
 The floating general `AI Assistant` chat surface is disabled for the private beta. The decision and deferred contextual-assistant/export-settings ideas are recorded in `docs/chat-assistant-disabled-001.md`.
 
 ## Project Overview
@@ -28,12 +30,12 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
 *   **Suburb & Area Profiles:** Automatically extracts and summarizes suburb and regional lifestyle data.
 
 ### 2. Intelligent Context & Strategy
-*   **AI Strategy Analysis:** Analyzes research data to automatically suggest the best "Target Market" (e.g., Young Families, Downsizers) and "Writing Style" (e.g., Aspirational, Professional).
+*   **Campaign Direction:** Analyzes research data to automatically suggest the best "Target Market" (e.g., Young Families, Downsizers) and "Writing Style" (e.g., Aspirational, Professional).
 *   **Feature Extraction:** Automatically populates property features based on online data and image analysis.
 *   **Voice-to-Text:** Integrated dictation for hands-free input of specific highlights or things to avoid.
 
 ### 3. Visual Analysis
-*   **Gemini Vision Integration:** Users can drag and drop property photos. The AI analyzes these images to identify architectural features, finishes, and selling points (e.g., "stone benchtops", "raked ceilings"), integrating them into the copy.
+*   **Gemini Vision Integration:** Users can drag and drop up to 20 numbered property photos. The AI analyzes these images to identify architectural features, finishes, and selling points, then renders Visual Highlights as per-image summaries with expandable details.
 
 ### 4. Content Generation Suite
 *   **Multi-Format Output:** Generates content for various channels:

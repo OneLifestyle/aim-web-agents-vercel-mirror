@@ -284,6 +284,23 @@ Status date: `2026-06-27`
 - Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Workspace Density Visuals 001 Status
+
+Status date: `2026-06-27`
+
+- Goal: `WEBAGENTS-COPYWRITING-WORKSPACE-DENSITY-VISUALS-001`
+- Review artifact: `docs/workspace-density-visuals-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Current density summary: shared section padding, workspace gaps, left-rail cards, offer cards, Campaign Library controls, and secondary helper text are tighter while preserving the one-workspace Brief Builder / Output Workspace structure.
+- Current collapsible summary: Property Overview and Suburb & Area Profile are collapsible after Fetch Details and start expanded after generation. Suburb & Area Profile inclusion settings remain visible and editable when collapsed.
+- Current naming summary: the visible `Copy Context` card is now `Campaign Direction`; internal `copyContext` state and operation ids remain stable.
+- Current photo summary: Property Photos shows a visible 20-photo cap, disables upload after 20 photos, and numbers thumbnails as Image 1, Image 2, and so on.
+- Current visual highlights summary: Visual Highlights render as summary-first, per-image, collapsed rows with expandable details, using the same image numbers as uploaded thumbnails.
+- Current output summary: Listing Copy, Campaign Pack, and planned-only Campaign Blueprint offer cards remain in place and are more compact.
+- Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

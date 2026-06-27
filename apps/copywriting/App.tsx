@@ -46,6 +46,12 @@ type CopywritingOfferMeta = {
     includedSummary: string;
     disabledReason?: string;
 };
+type VisualHighlightEntry = {
+    imageNumber: number;
+    summary: string;
+    details: string[];
+    rawDetail: string;
+};
 
 const previewTabConfig: Record<string, PreviewTab[]> = {
     'Listing': ['Full Copy', 'Just Listed', 'Brochure Copy', 'Email', 'Flyer'],
@@ -69,26 +75,26 @@ const COPYWRITING_OFFERS: CopywritingOfferMeta[] = [
     {
         id: 'listing-copy',
         title: 'Listing Copy',
-        shortDescription: 'Create the core property story.',
+        shortDescription: 'Core property story.',
         status: 'active',
         primaryActionLabel: 'Generate Listing Copy',
-        includedSummary: 'Core listing narrative and headline direction from the approved property brief.',
+        includedSummary: 'Listing narrative and headline direction from the approved brief.',
     },
     {
         id: 'campaign-pack',
         title: 'Campaign Pack',
-        shortDescription: 'Turn the listing into the complete campaign pack.',
+        shortDescription: 'Full channel package from the listing.',
         status: 'recommended',
         primaryActionLabel: 'Generate Campaign Pack',
-        includedSummary: 'Social, email, brochure, flyer, blog, video and open house copy from the approved listing.',
+        includedSummary: 'Social, email, brochure, flyer, blog, video and open house copy.',
     },
     {
         id: 'campaign-blueprint',
         title: 'Campaign Blueprint',
-        shortDescription: 'Add rollout, search/discovery and content strategy.',
+        shortDescription: 'Future rollout and discovery plan.',
         status: 'planned',
         primaryActionLabel: 'Planned beta',
-        includedSummary: 'Future rollout plan, discovery brief, content calendar and coordinator handoff.',
+        includedSummary: 'Future rollout plan, discovery brief, calendar and handoff.',
         disabledReason: 'Campaign Blueprint is planned for a later beta and does not generate yet.',
     },
 ];
@@ -201,9 +207,75 @@ const OUTPUT_MUTATING_OPERATIONS = new Set<CampaignOperationId>(['generateFullCo
 const ADDRESS_LOOKUP_MIN_CHARS = 5;
 const ADDRESS_LOOKUP_DEBOUNCE_MS = 450;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 20;
+const IMAGE_UPLOAD_LIMIT = 20;
 const compactActionButtonClass = 'inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50';
+const profileInclusionLabels: Record<'none' | 'suburb' | 'area' | 'both', string> = {
+    none: 'None',
+    suburb: 'Suburb',
+    area: 'Area',
+    both: 'Both',
+};
 
 const normalizeAddressLookupQuery = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
+
+const stripGenericImageLanguage = (value: string): string => {
+    return value
+        .replace(/\*\*/g, '')
+        .replace(/^\s*(?:[-*•]\s*)?based on (?:the )?(?:image|photo)(?: provided)?[:,\s-]*/i, '')
+        .replace(/^\s*(?:[-*•]\s*)?(?:this|the) (?:image|photo) (?:shows|features|captures|depicts)\s+/i, '')
+        .trim();
+};
+
+const getCompactSummary = (content: string | null | undefined, fallback: string): string => {
+    const text = (content || '').replace(/\s+/g, ' ').trim();
+    if (!text) return fallback;
+    return text.length > 140 ? `${text.slice(0, 137).trim()}...` : text;
+};
+
+const parseVisualHighlightContent = (content: string, imageNumber: number): VisualHighlightEntry => {
+    const rawLines = content.split('\n').map(line => line.trim()).filter(Boolean);
+    const cleanedLines = rawLines
+        .map(line => stripGenericImageLanguage(line.replace(/^Summary\s*:\s*/i, '').replace(/^Details\s*:?\s*/i, '')))
+        .filter(Boolean);
+    const explicitSummary = rawLines.find(line => /^Summary\s*:/i.test(line));
+    const bulletDetails = rawLines
+        .filter(line => /^[-*•]\s+/.test(line))
+        .map(line => stripGenericImageLanguage(line.replace(/^[-*•]\s+/, '')))
+        .filter(Boolean);
+
+    const summarySource = explicitSummary
+        ? explicitSummary.replace(/^Summary\s*:\s*/i, '')
+        : cleanedLines.find(line => !/^[-*•]/.test(line)) || cleanedLines[0] || `Visual highlights from Image ${imageNumber}`;
+    const summary = stripGenericImageLanguage(summarySource);
+    const details = bulletDetails.length > 0
+        ? bulletDetails
+        : cleanedLines
+            .filter(line => line !== summary)
+            .slice(0, 4);
+
+    return {
+        imageNumber,
+        summary,
+        details,
+        rawDetail: stripGenericImageLanguage(content),
+    };
+};
+
+const parseVisualHighlights = (analysis: string): VisualHighlightEntry[] => {
+    const entryPattern = /(?:^|\n)Image\s+(\d+):\s*/g;
+    const matches = Array.from(analysis.matchAll(entryPattern));
+
+    if (matches.length === 0) {
+        return [parseVisualHighlightContent(analysis, 1)];
+    }
+
+    return matches.map((match, index) => {
+        const imageNumber = Number(match[1]) || index + 1;
+        const start = (match.index ?? 0) + match[0].length;
+        const end = index + 1 < matches.length ? matches[index + 1].index ?? analysis.length : analysis.length;
+        return parseVisualHighlightContent(analysis.slice(start, end).trim(), imageNumber);
+    });
+};
 
 const campaignOperationsConflict = (nextOperation: CampaignOperationId, activeOperation: CampaignOperationId): boolean => {
     if (nextOperation === activeOperation) return true;
@@ -221,8 +293,8 @@ const Section: React.FC<{
     activeLabel?: string;
     showActiveChip?: boolean;
 }> = ({ id, title, children, className, rightElement, isActive = false, activeLabel = 'Updating...', showActiveChip = true }) => (
-  <div id={id} className={`bg-white p-6 rounded-lg shadow-sm border flex flex-col scroll-mt-24 transition-colors ${isActive ? 'border-amber-300 ring-2 ring-amber-100' : 'border-gray-200'} ${className || ''}`}>
-    <div className="flex justify-between items-center mb-4">
+  <div id={id} className={`bg-white p-4 rounded-lg shadow-sm border flex flex-col scroll-mt-24 transition-colors ${isActive ? 'border-amber-300 ring-2 ring-amber-100' : 'border-gray-200'} ${className || ''}`}>
+    <div className="flex justify-between items-center mb-3">
         <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
         <div className="flex items-center gap-2">
             {isActive && showActiveChip && (
@@ -239,9 +311,9 @@ const Section: React.FC<{
 );
 
 const Placeholder: React.FC<{ icon: React.ReactNode; title: string; description: string }> = ({ icon, title, description }) => (
-    <div className="flex flex-col items-center justify-center text-center p-8 bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg min-h-[160px]">
-        <div className="mb-3 text-gray-400">
-            {React.cloneElement(icon as React.ReactElement, { className: "w-10 h-10" })}
+    <div className="flex flex-col items-center justify-center text-center p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg min-h-[130px]">
+        <div className="mb-2 text-gray-400">
+            {React.cloneElement(icon as React.ReactElement, { className: "w-8 h-8" })}
         </div>
         <h3 className="text-sm font-bold text-gray-900 mb-1">{title}</h3>
         <p className="text-xs text-gray-500 max-w-xs leading-relaxed">{description}</p>
@@ -612,6 +684,7 @@ const App: React.FC = () => {
     const [imageAnalysisError, setImageAnalysisError] = useState<string | null>(null);
     const [includeVisualHighlights, setIncludeVisualHighlights] = useState(true);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
+    const [expandedVisualHighlights, setExpandedVisualHighlights] = useState<Record<number, boolean>>({});
 
     const [groundingSources, setGroundingSources] = useState<GroundingSource[]>([]);
 
@@ -633,6 +706,8 @@ const App: React.FC = () => {
     const [propertyFeaturesAnalysisStatus, setPropertyFeaturesAnalysisStatus] = useState<AnalysisRunStatus>('idle');
     const [copyContextAnalysisError, setCopyContextAnalysisError] = useState<string | null>(null);
     const [propertyFeaturesAnalysisError, setPropertyFeaturesAnalysisError] = useState<string | null>(null);
+    const [isPropertyOverviewExpanded, setIsPropertyOverviewExpanded] = useState(true);
+    const [isSuburbProfileExpanded, setIsSuburbProfileExpanded] = useState(true);
     const [activeCampaignOperations, setActiveCampaignOperations] = useState<ActiveCampaignOperation[]>([]);
     const activeCampaignOperationsRef = useRef<Map<CampaignOperationId, ActiveCampaignOperation>>(new Map());
     const addressLookupRequestRef = useRef(0);
@@ -990,11 +1065,11 @@ const App: React.FC = () => {
 
     const processFiles = (files: FileList | null) => {
         if (files) {
-            if (imageFiles.length + files.length > 20) {
-                setNotification("Maximum 20 images allowed. Only the first few valid ones were added.");
+            if (imageFiles.length + files.length > IMAGE_UPLOAD_LIMIT) {
+                setNotification(`Maximum ${IMAGE_UPLOAD_LIMIT} images allowed. Only the first valid photos were added.`);
             }
 
-            const remainingSlots = 20 - imageFiles.length;
+            const remainingSlots = IMAGE_UPLOAD_LIMIT - imageFiles.length;
             if (remainingSlots <= 0) return;
 
             const fileArray = Array.from(files).slice(0, remainingSlots).map((file: File): ImageFile => ({
@@ -1006,6 +1081,7 @@ const App: React.FC = () => {
             setImageFiles(prev => [...prev, ...fileArray]);
             setImageAnalysis(null);
             setImageAnalysisError(null);
+            setExpandedVisualHighlights({});
 
             addLog({
                 stepName: 'Upload Photos',
@@ -1045,6 +1121,7 @@ const App: React.FC = () => {
                 setImageAnalysis(null);
                 setImageAnalysisError(null);
             }
+            setExpandedVisualHighlights({});
             return newFiles;
         });
     };
@@ -1091,6 +1168,7 @@ const App: React.FC = () => {
             if (results.length > 0) {
                 const combinedAnalysis = results.join('\n\n');
                 setImageAnalysis(combinedAnalysis);
+                setExpandedVisualHighlights({});
                 updateLog(logId, {
                     status: 'success',
                     outputs: `Analyzed ${results.length} images using the configured Gemini Flash model.`,
@@ -1246,6 +1324,8 @@ const App: React.FC = () => {
 
             setIsFetchComplete(true);
             setPropertyBriefReviewState('review');
+            setIsPropertyOverviewExpanded(true);
+            setIsSuburbProfileExpanded(true);
             updateLog(logId, { status: 'success', outputs: `Specs: ${JSON.stringify(researchResult.specs)}`, usage: result.usage });
         } catch (error) {
             console.error(error);
@@ -1263,10 +1343,10 @@ const App: React.FC = () => {
 
     const handleStrategyAnalysis = async () => {
         if (!researchData) return;
-        if (!beginCampaignOperation('copyContextAnalysis', 'Copy Context AI Analysis')) return;
+        if (!beginCampaignOperation('copyContextAnalysis', 'Campaign Direction analysis')) return;
         setIsAnalyzingStrategy(true);
         setCopyContextAnalysisError(null);
-        const logId = addLog({ stepName: 'AI Strategy Analysis', status: 'pending', inputs: 'Analyzing research for strategy' });
+        const logId = addLog({ stepName: 'AI Strategy Analysis', status: 'pending', inputs: 'Analyzing research for campaign direction' });
         try {
             const profileStr = profileData ? `Suburb: ${profileData.suburb}\nArea: ${profileData.area}` : null;
             const result = await geminiService.analyzeStrategy(researchData, profileStr, imageAnalysis);
@@ -2039,30 +2119,59 @@ const App: React.FC = () => {
     const scrollToCampaignStatusStep = (label: typeof campaignStatusSteps[number]['label']) => {
         document.getElementById(campaignStatusAnchors[label])?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
+    const visualHighlightEntries = useMemo(() => imageAnalysis ? parseVisualHighlights(imageAnalysis) : [], [imageAnalysis]);
 
     const renderVisualHighlights = () => {
-        if (!imageAnalysis) return null;
+        if (visualHighlightEntries.length === 0) return null;
 
-        const parts = imageAnalysis.split(/(Image \d+:)/g).filter(p => p.trim());
+        return (
+            <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-gray-700">{visualHighlightEntries.length} image highlight{visualHighlightEntries.length === 1 ? '' : 's'} analyzed</p>
+                    <p className="text-[11px] text-gray-500">Expand a row for detail.</p>
+                </div>
+                {visualHighlightEntries.map(highlight => {
+                    const isExpanded = Boolean(expandedVisualHighlights[highlight.imageNumber]);
+                    const details = highlight.details.length > 0 ? highlight.details : [highlight.rawDetail].filter(Boolean);
 
-        if (parts.length > 1) {
-            const formatted = [];
-            for (let i = 0; i < parts.length; i += 2) {
-                const title = parts[i];
-                const desc = parts[i + 1];
-                if (desc) {
-                    formatted.push(
-                        <div key={i} className="mb-4">
-                            <h4 className="font-bold text-gray-800 text-sm mb-1">{title}</h4>
-                            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{desc.trim()}</p>
+                    return (
+                        <div key={highlight.imageNumber} className="rounded-md border border-gray-200 bg-white">
+                            <button
+                                type="button"
+                                onClick={() => setExpandedVisualHighlights(prev => ({
+                                    ...prev,
+                                    [highlight.imageNumber]: !prev[highlight.imageNumber],
+                                }))}
+                                className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left hover:bg-gray-50"
+                                aria-expanded={isExpanded}
+                            >
+                                <div className="min-w-0">
+                                    <p className="text-xs font-bold uppercase tracking-wide text-red-700">Image {highlight.imageNumber}</p>
+                                    <p className="mt-0.5 text-sm font-semibold leading-snug text-gray-900">{highlight.summary}</p>
+                                </div>
+                                <IconChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                            {isExpanded && (
+                                <div className="border-t border-gray-100 px-3 py-2.5">
+                                    {details.length > 0 ? (
+                                        <ul className="space-y-1.5 text-sm leading-relaxed text-gray-700">
+                                            {details.map((detail, detailIndex) => (
+                                                <li key={detailIndex} className="flex gap-2">
+                                                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-gray-400" />
+                                                    <span>{detail}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-line">{highlight.rawDetail}</p>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     );
-                }
-            }
-            return <div>{formatted}</div>;
-        }
-
-        return <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{imageAnalysis}</p>;
+                })}
+            </div>
+        );
     };
 
     const renderProfileContent = (content: string | null) => {
@@ -2201,21 +2310,21 @@ const App: React.FC = () => {
                 </div>
             </div>
 
-            <main id="app-main" className="mx-auto max-w-[1800px] px-4 py-6 2xl:px-6">
-                 <div className="grid grid-cols-1 gap-6 h-[calc(100vh-120px)] items-start xl:grid-cols-[320px_minmax(360px,0.95fr)_minmax(540px,1.25fr)] 2xl:grid-cols-[320px_minmax(420px,0.9fr)_minmax(680px,1.35fr)]">
+            <main id="app-main" className="mx-auto max-w-[1800px] px-4 py-4 2xl:px-6">
+                 <div className="grid grid-cols-1 gap-4 h-[calc(100vh-112px)] items-start xl:grid-cols-[300px_minmax(360px,0.95fr)_minmax(540px,1.25fr)] 2xl:grid-cols-[300px_minmax(420px,0.9fr)_minmax(680px,1.35fr)]">
 
-                    <div className="h-full xl:h-[calc(100vh-140px)] xl:sticky top-6 flex flex-col">
+                    <div className="h-full xl:h-[calc(100vh-132px)] xl:sticky top-4 flex flex-col">
                         <ActiveTaskMonitor imageFiles={imageFiles} isAnalyzing={isAnalyzingImages} />
-                        <div className={`mb-4 rounded-lg border p-4 shadow-sm ${plainCampaignProgressClass}`}>
+                        <div className={`mb-3 rounded-lg border p-3 shadow-sm ${plainCampaignProgressClass}`}>
                             <div className="flex items-start gap-2">
                                 {plainCampaignProgress.tone === 'working' ? <IconLoader className="mt-0.5 h-4 w-4 animate-spin" /> : <IconCheckCircle className="mt-0.5 h-4 w-4" />}
                                 <div>
                                     <p className="text-sm font-bold">{plainCampaignProgress.label}</p>
-                                    <p className="mt-1 text-xs leading-relaxed">{plainCampaignProgress.description}</p>
+                                    <p className="mt-0.5 text-xs leading-snug">{plainCampaignProgress.description}</p>
                                 </div>
                             </div>
                         </div>
-                        <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4 text-xs leading-relaxed text-gray-600 shadow-sm">
+                        <div className="mb-3 rounded-lg border border-gray-200 bg-white p-3 text-xs leading-snug text-gray-600 shadow-sm">
                             <p className="font-semibold text-gray-900">Draft review workflow</p>
                             <p className="mt-1">For v1, edit final wording in your CRM, email, Word, Google Docs or publishing system.</p>
                             <p className="mt-1">Downloads include generated outputs only. Missing outputs are not generated silently.</p>
@@ -2227,11 +2336,11 @@ const App: React.FC = () => {
                         />
                     </div>
 
-                    <div className="space-y-8 h-full xl:overflow-y-auto xl:h-[calc(100vh-140px)] pr-2 pb-10 flex flex-col">
-                        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                    <div className="space-y-4 h-full xl:overflow-y-auto xl:h-[calc(100vh-132px)] pr-2 pb-8 flex flex-col">
+                        <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
                             <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Brief Builder</p>
-                            <h2 className="mt-1 text-xl font-bold text-gray-900">Build and approve the property brief</h2>
-                            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-600">
+                            <h2 className="mt-0.5 text-lg font-bold text-gray-900">Build and approve the property brief</h2>
+                            <p className="mt-0.5 max-w-2xl text-xs leading-snug text-gray-600">
                                 Gather the property facts, agent details, audience, features and visual highlights before generating copy.
                             </p>
                         </div>
@@ -2298,25 +2407,27 @@ const App: React.FC = () => {
 
                         <Section title="Agent Profile">
                             <div className="space-y-3">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Agent Name</label>
-                                    <input
-                                        type="text"
-                                        value={agentProfile.name}
-                                        onChange={(e) => handleAgentChange('name', e.target.value)}
-                                        placeholder="e.g. Dean Jones"
-                                        className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Agency</label>
-                                    <input
-                                        type="text"
-                                        value={agentProfile.agency}
-                                        onChange={(e) => handleAgentChange('agency', e.target.value)}
-                                        placeholder="e.g. One Lifestyle Real Estate"
-                                        className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                                    />
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Agent Name</label>
+                                        <input
+                                            type="text"
+                                            value={agentProfile.name}
+                                            onChange={(e) => handleAgentChange('name', e.target.value)}
+                                            placeholder="e.g. Dean Jones"
+                                            className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Agency</label>
+                                        <input
+                                            type="text"
+                                            value={agentProfile.agency}
+                                            onChange={(e) => handleAgentChange('agency', e.target.value)}
+                                            placeholder="e.g. One Lifestyle Real Estate"
+                                            className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                                        />
+                                    </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
@@ -2341,10 +2452,10 @@ const App: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div className="mt-4 pt-4 border-t border-gray-100">
-                                    <p className="text-xs font-semibold text-gray-700 mb-2">Inclusion Method:</p>
-                                    <div className="flex flex-col gap-2">
-                                        <label className="flex items-start gap-2 cursor-pointer p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                                <div className="pt-3 border-t border-gray-100">
+                                    <p className="text-xs font-semibold text-gray-700 mb-2">Inclusion method</p>
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        <label className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors ${agentProfile.inclusionMode === 'append' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
                                             <input
                                                 type="radio"
                                                 name="agentMode"
@@ -2352,12 +2463,12 @@ const App: React.FC = () => {
                                                 onChange={() => handleAgentChange('inclusionMode', 'append')}
                                                 className="mt-0.5 text-red-600 focus:ring-red-500"
                                             />
-                                            <div className="text-sm">
+                                            <div className="text-xs leading-snug">
                                                 <span className="font-medium text-gray-800">Append Only</span>
-                                                <p className="text-gray-500 text-xs">AI uses details for context. Use the Contact card checkbox on the selected output to append manually.</p>
+                                                <p className="mt-0.5 text-gray-500">Use the Contact card checkbox to append details.</p>
                                             </div>
                                         </label>
-                                        <label className="flex items-start gap-2 cursor-pointer p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200">
+                                        <label className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors ${agentProfile.inclusionMode === 'integrate' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
                                             <input
                                                 type="radio"
                                                 name="agentMode"
@@ -2365,9 +2476,9 @@ const App: React.FC = () => {
                                                 onChange={() => handleAgentChange('inclusionMode', 'integrate')}
                                                 className="mt-0.5 text-red-600 focus:ring-red-500"
                                             />
-                                            <div className="text-sm">
+                                            <div className="text-xs leading-snug">
                                                 <span className="font-medium text-gray-800">Integrate into Copy</span>
-                                                <p className="text-gray-500 text-xs">AI weaves these details naturally into the generated copy.</p>
+                                                <p className="mt-0.5 text-gray-500">Weave agent details into generated copy.</p>
                                             </div>
                                         </label>
                                     </div>
@@ -2515,18 +2626,45 @@ const App: React.FC = () => {
                         </div>
                         </Section>
 
-                        <Section id="property-overview" title="Property Overview" isActive={isResearching} activeLabel="Fetching...">
+                        <Section
+                            id="property-overview"
+                            title="Property Overview"
+                            isActive={isResearching}
+                            activeLabel="Fetching..."
+                            rightElement={researchData && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsPropertyOverviewExpanded(value => !value)}
+                                    className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                    aria-expanded={isPropertyOverviewExpanded}
+                                >
+                                    {isPropertyOverviewExpanded ? 'Collapse' : 'Expand'}
+                                    <IconChevronDown className={`h-3.5 w-3.5 transition-transform ${isPropertyOverviewExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                            )}
+                        >
                              {researchData ? (
                                  <div>
-                                     <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{researchData}</p>
-                                     {groundingSources.length > 0 && (
-                                         <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
-                                             {groundingSources.map((source, idx) => (
-                                                 <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="inline-flex items-center bg-red-50 text-red-700 hover:bg-red-100 rounded-full px-3 py-1 text-xs truncate max-w-[150px]">
-                                                     {source.type === 'maps' ? <IconMapPin className="w-3 h-3 mr-1" /> : <IconWorld className="w-3 h-3 mr-1" />}
-                                                     {source.title}
-                                                 </a>
-                                             ))}
+                                     {isPropertyOverviewExpanded ? (
+                                         <>
+                                             <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{researchData}</p>
+                                             {groundingSources.length > 0 && (
+                                                 <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
+                                                     {groundingSources.map((source, idx) => (
+                                                         <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="inline-flex items-center bg-red-50 text-red-700 hover:bg-red-100 rounded-full px-3 py-1 text-xs truncate max-w-[150px]">
+                                                             {source.type === 'maps' ? <IconMapPin className="w-3 h-3 mr-1" /> : <IconWorld className="w-3 h-3 mr-1" />}
+                                                             {source.title}
+                                                         </a>
+                                                     ))}
+                                                 </div>
+                                             )}
+                                         </>
+                                     ) : (
+                                         <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                                             <p className="text-sm leading-snug text-slate-700">{getCompactSummary(researchData, 'Property overview available.')}</p>
+                                             {groundingSources.length > 0 && (
+                                                 <p className="mt-1 text-[11px] font-semibold text-gray-500">{groundingSources.length} source{groundingSources.length === 1 ? '' : 's'} available when expanded.</p>
+                                             )}
                                          </div>
                                      )}
                                  </div>
@@ -2535,42 +2673,69 @@ const App: React.FC = () => {
                              )}
                          </Section>
 
-                         <Section title="Suburb & Area Profile" isActive={isResearching} activeLabel="Fetching...">
+                         <Section
+                             title="Suburb & Area Profile"
+                             isActive={isResearching}
+                             activeLabel="Fetching..."
+                             rightElement={profileData && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsSuburbProfileExpanded(value => !value)}
+                                    className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                    aria-expanded={isSuburbProfileExpanded}
+                                >
+                                    {isSuburbProfileExpanded ? 'Collapse' : 'Expand'}
+                                    <IconChevronDown className={`h-3.5 w-3.5 transition-transform ${isSuburbProfileExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                             )}
+                         >
                              {profileData ? (
                                  <div>
-                                    <div className="flex flex-col gap-2 mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
-                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">COPYWRITING INCLUSION SETTINGS:</p>
-                                        <div className="flex flex-wrap gap-4 text-xs">
+                                    <div className="mb-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+                                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Copywriting inclusion</p>
+                                            <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-700">
+                                                {profileInclusionLabels[profileInclusion]}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-3 text-xs">
                                             {['none', 'suburb', 'area', 'both'].map(m => (
                                                 <label key={m} className="flex items-center cursor-pointer capitalize font-medium">
                                                     <input type="radio" checked={profileInclusion === m} onChange={() => setProfileInclusion(m as any)} className="mr-1.5 text-red-600 focus:ring-red-500" />
-                                                    {m}
+                                                    {profileInclusionLabels[m as keyof typeof profileInclusionLabels]}
                                                 </label>
                                             ))}
                                         </div>
                                     </div>
-                                    <div className="space-y-6">
-                                        {profileData.suburb && (
-                                            <div>
-                                                <h4 className={`font-bold text-gray-800 text-sm mb-2 uppercase tracking-wider border-b border-gray-100 pb-1 ${(profileInclusion === 'suburb' || profileInclusion === 'both') ? 'text-red-700' : 'opacity-60'}`}>
-                                                    Suburb Insight {(profileInclusion === 'suburb' || profileInclusion === 'both') ? '' : '(Preview)'}
-                                                </h4>
-                                                <div className={(profileInclusion === 'suburb' || profileInclusion === 'both') ? '' : 'opacity-70'}>
-                                                    {renderProfileContent(profileData.suburb)}
+                                    {isSuburbProfileExpanded ? (
+                                        <div className="space-y-4">
+                                            {profileData.suburb && (
+                                                <div>
+                                                    <h4 className={`font-bold text-gray-800 text-sm mb-2 uppercase tracking-wider border-b border-gray-100 pb-1 ${(profileInclusion === 'suburb' || profileInclusion === 'both') ? 'text-red-700' : 'opacity-60'}`}>
+                                                        Suburb Insight {(profileInclusion === 'suburb' || profileInclusion === 'both') ? '' : '(Preview)'}
+                                                    </h4>
+                                                    <div className={(profileInclusion === 'suburb' || profileInclusion === 'both') ? '' : 'opacity-70'}>
+                                                        {renderProfileContent(profileData.suburb)}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                        {profileData.area && (
-                                            <div>
-                                                <h4 className={`font-bold text-gray-800 text-sm mb-2 uppercase tracking-wider border-b border-gray-100 pb-1 ${(profileInclusion === 'area' || profileInclusion === 'both') ? 'text-red-700' : 'opacity-60'}`}>
-                                                    Regional Context {(profileInclusion === 'area' || profileInclusion === 'both') ? '' : '(Preview)'}
-                                                </h4>
-                                                <div className={(profileInclusion === 'area' || profileInclusion === 'both') ? '' : 'opacity-70'}>
-                                                    {renderProfileContent(profileData.area)}
+                                            )}
+                                            {profileData.area && (
+                                                <div>
+                                                    <h4 className={`font-bold text-gray-800 text-sm mb-2 uppercase tracking-wider border-b border-gray-100 pb-1 ${(profileInclusion === 'area' || profileInclusion === 'both') ? 'text-red-700' : 'opacity-60'}`}>
+                                                        Regional Context {(profileInclusion === 'area' || profileInclusion === 'both') ? '' : '(Preview)'}
+                                                    </h4>
+                                                    <div className={(profileInclusion === 'area' || profileInclusion === 'both') ? '' : 'opacity-70'}>
+                                                        {renderProfileContent(profileData.area)}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                                            {profileData.suburb && <p><span className="font-semibold text-gray-900">Suburb:</span> {getCompactSummary(profileData.suburb, 'Suburb insight available.')}</p>}
+                                            {profileData.area && <p><span className="font-semibold text-gray-900">Area:</span> {getCompactSummary(profileData.area, 'Area profile available.')}</p>}
+                                        </div>
+                                    )}
                                  </div>
                              ) : (
                                  <Placeholder icon={<IconMapPin />} title="Suburb & Area Profile" description="Local insights appear here." />
@@ -2579,7 +2744,7 @@ const App: React.FC = () => {
 
                         <Section
                             id="copy-context"
-                            title="Copy Context"
+                            title="Campaign Direction"
                             isActive={isAnalyzingStrategy}
                             activeLabel="Analyzing..."
                             showActiveChip={false}
@@ -2700,26 +2865,41 @@ const App: React.FC = () => {
                             )}
                         </Section>
 
-                        <Section id="property-photos" title="Property Photos" isActive={isAnalyzingImages} activeLabel="Analyzing...">
+                        <Section
+                            id="property-photos"
+                            title="Property Photos"
+                            isActive={isAnalyzingImages}
+                            activeLabel="Analyzing..."
+                            rightElement={<span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700">{imageFiles.length}/{IMAGE_UPLOAD_LIMIT} photos</span>}
+                        >
                             <div
                                 onDrop={handleImageDrop}
                                 onDragOver={handleDragOver}
                                 onDragLeave={handleDragLeave}
-                                className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-12 hover:bg-gray-50 transition-colors ${isDraggingOver ? 'bg-red-50 border-red-300' : 'border-gray-300'}`}
+                                className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-6 text-center transition-colors ${imageFiles.length >= IMAGE_UPLOAD_LIMIT ? 'border-gray-200 bg-gray-50' : isDraggingOver ? 'bg-red-50 border-red-300' : 'border-gray-300 hover:bg-gray-50'}`}
                             >
-                                <input id="image-upload" type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden" />
-                                <label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center">
-                                    <IconUpload className="w-10 h-10 text-gray-400 mb-2" />
-                                    <span className="text-sm font-medium text-gray-700">Click to upload or drag and drop</span>
+                                <input id="image-upload" type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden" disabled={imageFiles.length >= IMAGE_UPLOAD_LIMIT} />
+                                <label htmlFor="image-upload" className={`flex flex-col items-center ${imageFiles.length >= IMAGE_UPLOAD_LIMIT ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                    <IconUpload className="w-8 h-8 text-gray-400 mb-2" />
+                                    <span className="text-sm font-medium text-gray-700">{imageFiles.length >= IMAGE_UPLOAD_LIMIT ? 'Photo limit reached' : 'Click to upload or drag and drop'}</span>
+                                    <span className="mt-1 text-xs text-gray-500">Up to {IMAGE_UPLOAD_LIMIT} photos. Image numbers match Visual Highlights.</span>
                                 </label>
                             </div>
 
                             {imageFiles.length > 0 && (
-                                <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
                                     {imageFiles.map((img, idx) => (
                                         <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200">
-                                            <img src={img.url} alt={`Upload ${idx}`} className="w-full h-full object-cover" />
-                                            <button onClick={() => handleImageDelete(idx)} className="absolute top-2 right-2 p-1.5 bg-white/80 rounded-full text-red-600 hover:text-red-700 transition-opacity">
+                                            <img src={img.url} alt={`Image ${idx + 1} upload preview`} className="w-full h-full object-cover" />
+                                            <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+                                                Image {idx + 1}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleImageDelete(idx)}
+                                                className="absolute top-2 right-2 p-1.5 bg-white/85 rounded-full text-red-600 hover:text-red-700 transition-opacity"
+                                                aria-label={`Remove Image ${idx + 1}`}
+                                            >
                                                 <IconTrash className="w-4 h-4" />
                                             </button>
                                             {img.status === 'processing' && (
@@ -2751,30 +2931,39 @@ const App: React.FC = () => {
                             )}
                         </Section>
 
-                        <Section title="Visual Highlights" isActive={isAnalyzingImages} activeLabel="Analyzing...">
+                        <Section
+                            title="Visual Highlights"
+                            isActive={isAnalyzingImages}
+                            activeLabel="Analyzing..."
+                            rightElement={imageAnalysis && (
+                                <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700">
+                                    {visualHighlightEntries.length} summar{visualHighlightEntries.length === 1 ? 'y' : 'ies'}
+                                </span>
+                            )}
+                        >
                             {imageAnalysis ? renderVisualHighlights() : <Placeholder icon={<IconCamera />} title="Visual Analysis" description="Analyze photos to see features." />}
                         </Section>
                     </div>
 
-                    <div className="h-full flex flex-col space-y-6 overflow-y-auto pr-2">
-                         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                    <div className="h-full flex flex-col space-y-4 overflow-y-auto pr-2">
+                         <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
                              <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Output Workspace</p>
-                             <h2 className="mt-1 text-xl font-bold text-gray-900">Write the listing and prepare the campaign</h2>
-                             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-600">
-                                 The listing copy is the master narrative. The approved property brief remains the factual source. Campaign outputs adapt both for each channel.
+                             <h2 className="mt-0.5 text-lg font-bold text-gray-900">Write the listing and prepare the campaign</h2>
+                             <p className="mt-0.5 max-w-2xl text-xs leading-snug text-gray-600">
+                                 Listing Copy starts the campaign. Campaign Pack adapts it for the remaining channels.
                              </p>
                          </div>
 
                          <Section id="campaign-outputs" title="Campaign Outputs" isActive={isCampaignOutputsActive} activeLabel={isDownloadingAll ? 'Preparing...' : 'Generating...'}>
-                             <div className="flex flex-col gap-5">
-                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                                     <div className="mb-4 flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                             <div className="flex flex-col gap-4">
+                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                     <div className="mb-3 flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
                                          <div>
-                                             <p className="text-sm font-semibold text-slate-900">Choose the campaign outcome for this property.</p>
-                                             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
-                                                 Build the property brief, generate Listing Copy first, then continue to Campaign Pack when you need the full channel package.
+                                             <p className="text-sm font-semibold text-slate-900">Choose the next campaign step.</p>
+                                             <p className="mt-1 max-w-2xl text-xs leading-snug text-slate-600">
+                                                 Start with Listing Copy, then create Campaign Pack when the channel set is needed.
                                              </p>
-                                             <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                             <div className="mt-2 flex flex-wrap gap-2 text-xs">
                                                  <span className={`rounded-full border px-2.5 py-1 font-semibold ${isPropertyBriefReady ? 'border-emerald-200 bg-white text-emerald-700' : 'border-amber-200 bg-white text-amber-800'}`}>
                                                      {propertyBriefStatusLabel}
                                                  </span>
@@ -2795,11 +2984,11 @@ const App: React.FC = () => {
                                                 step="50"
                                                 value={outputSettings.wordCount}
                                                 onChange={(e) => setOutputSettings(prev => ({ ...prev, wordCount: parseInt(e.target.value) }))}
-                                                className="mt-3 w-full h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-red-600"
+                                                className="mt-2 w-full h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-red-600"
                                              />
                                          </div>
                                      </div>
-                                     <div className="grid grid-cols-1 gap-3 2xl:grid-cols-3">
+                                     <div className="grid grid-cols-1 gap-2 2xl:grid-cols-3">
                                          {COPYWRITING_OFFERS.map(offer => {
                                              const isListingOffer = offer.id === 'listing-copy';
                                              const isCampaignPackOffer = offer.id === 'campaign-pack';
@@ -2857,29 +3046,29 @@ const App: React.FC = () => {
                                              };
 
                                              return (
-                                                <div key={offer.id} className={`flex min-h-[210px] flex-col justify-between rounded-lg border bg-white p-4 ${offer.status === 'recommended' ? 'border-red-200 shadow-sm' : 'border-gray-200'}`}>
+                                                <div key={offer.id} className={`flex min-h-[160px] flex-col justify-between rounded-lg border bg-white p-3 ${offer.status === 'recommended' ? 'border-red-200 shadow-sm' : 'border-gray-200'}`}>
                                                     <div>
-                                                        <div className="mb-3 flex flex-wrap items-center gap-2">
-                                                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${statusClass}`}>{statusLabel}</span>
-                                                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${stateClass}`}>{stateLabel}</span>
+                                                        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                                                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClass}`}>{statusLabel}</span>
+                                                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${stateClass}`}>{stateLabel}</span>
                                                         </div>
-                                                        <h3 className="text-base font-bold text-gray-900">{offer.title}</h3>
-                                                        <p className="mt-1 text-sm text-gray-700">{offer.shortDescription}</p>
-                                                        <p className="mt-3 text-xs leading-relaxed text-gray-500">{offer.includedSummary}</p>
+                                                        <h3 className="text-sm font-bold text-gray-900">{offer.title}</h3>
+                                                        <p className="mt-0.5 text-xs font-medium text-gray-700">{offer.shortDescription}</p>
+                                                        <p className="mt-2 text-xs leading-snug text-gray-500">{offer.includedSummary}</p>
                                                         {isCampaignPackOffer && listingCopyReady && !isCampaignPackReady && (
-                                                            <p className="mt-2 text-xs font-semibold text-red-700">Listing Copy is ready. Campaign outputs have not all been generated yet.</p>
+                                                            <p className="mt-1.5 text-xs font-semibold text-red-700">Campaign outputs still need generation.</p>
                                                         )}
                                                         {offer.disabledReason && (
-                                                            <p className="mt-2 text-xs leading-relaxed text-gray-500">{offer.disabledReason}</p>
+                                                            <p className="mt-1.5 text-xs leading-snug text-gray-500">{offer.disabledReason}</p>
                                                         )}
                                                     </div>
-                                                    <div className="mt-4 flex flex-wrap gap-2">
+                                                    <div className="mt-3 flex flex-wrap gap-2">
                                                         <button
                                                             type="button"
                                                             onClick={onOfferAction}
                                                             disabled={disabled}
                                                             title={isListingOffer && !isPropertyBriefReady ? propertyBriefReadinessHint : isCampaignPackOffer && !listingCopyReady ? 'Generate Listing Copy before Campaign Pack.' : offer.disabledReason}
-                                                            className={`inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isCampaignPackOffer ? 'bg-red-600 text-white hover:bg-red-700 disabled:bg-red-400' : isBlueprintOffer ? 'border border-gray-200 bg-gray-100 text-gray-500' : 'bg-slate-800 text-white hover:bg-slate-900 disabled:bg-slate-400'}`}
+                                                            className={`inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isCampaignPackOffer ? 'bg-red-600 text-white hover:bg-red-700 disabled:bg-red-400' : isBlueprintOffer ? 'border border-gray-200 bg-gray-100 text-gray-500' : 'bg-slate-800 text-white hover:bg-slate-900 disabled:bg-slate-400'}`}
                                                         >
                                                             {(isListingCopyGenerating && isListingOffer) || (isCampaignPackGenerating && isCampaignPackOffer) ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
                                                             {actionLabel}
@@ -2903,12 +3092,12 @@ const App: React.FC = () => {
                                  </div>
 
                                  {!isCampaignPackReady && (
-                                     <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                     <div className="rounded-lg border border-gray-200 bg-white p-3">
                                          <p className="text-sm font-semibold text-gray-900">Campaign Pack includes</p>
-                                         <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-600">
-                                             Step 2 adapts the approved Listing Copy and property brief into the channel pack. The detailed output library stays secondary until there is campaign work to review.
+                                         <p className="mt-1 max-w-2xl text-xs leading-snug text-gray-600">
+                                             Step 2 adapts the approved Listing Copy into the channel pack.
                                          </p>
-                                         <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                         <div className="mt-2 flex flex-wrap gap-2 text-xs">
                                              {['Listing', 'Coming Soon', 'Social Media', 'Events', 'Blog', 'Video'].map(category => (
                                                  <span key={category} className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-semibold text-gray-700">
                                                      {category}
@@ -2918,16 +3107,16 @@ const App: React.FC = () => {
                                      </div>
                                  )}
 
-                                 <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                 <div className="rounded-lg border border-gray-200 bg-white p-3">
                                      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                                          <div>
                                              <p className="text-sm font-semibold text-gray-900">Campaign Library</p>
-                                             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-600">
+                                             <p className="mt-1 max-w-2xl text-xs leading-snug text-gray-600">
                                                  {listingCopyReady
-                                                    ? `Listing Copy ready. Campaign Pack creates ${TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS} campaign outputs for social, email, brochure, blog, video and open house copy.`
-                                                    : `Generate Listing Copy first. The ${TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS} campaign outputs become available through Campaign Pack.`}
+                                                    ? `${campaignPackReadyCount}/${TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS} Campaign Pack outputs ready.`
+                                                    : `Generate Listing Copy first to unlock Campaign Pack outputs.`}
                                              </p>
-                                             <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                             <div className="mt-2 flex flex-wrap gap-2 text-xs">
                                                  <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 font-semibold text-emerald-700">{listingCopyReady ? 'Listing Copy ready' : 'Listing Copy missing'}</span>
                                                  <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-600">{campaignPackReadyCount}/{TOTAL_DOWNSTREAM_CAMPAIGN_OUTPUTS} campaign outputs ready</span>
                                                  {queuedOutputTabs.length > 0 && <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 font-semibold text-amber-800">{queuedOutputTabs.length} queued</span>}
@@ -2977,7 +3166,7 @@ const App: React.FC = () => {
                                                  <button
                                                     key={category}
                                                     onClick={() => handleCategoryFilterClick(category)}
-                                                    className={`rounded-full border px-3 py-2 text-left text-xs font-semibold transition-colors ${isSelected ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
+                                                    className={`rounded-full border px-2.5 py-1.5 text-left text-xs font-semibold transition-colors ${isSelected ? 'border-red-300 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
                                                  >
                                                      <span>{category}</span>
                                                      <span className="ml-2 font-medium text-gray-500">{stats.ready}/{stats.total} ready</span>
@@ -2988,7 +3177,7 @@ const App: React.FC = () => {
                                      </div>
 
                                      <div className="rounded-lg border border-gray-200 bg-white p-3">
-                                         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                                         <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
                                              <div>
                                                  <p className="text-xs font-bold uppercase tracking-wider text-gray-500">{selectedOutputCategory === 'All' ? 'All output items' : `${selectedOutputCategory} outputs`}</p>
                                                  <p className="mt-0.5 text-xs text-gray-500">
@@ -3032,7 +3221,7 @@ const App: React.FC = () => {
                                                  <button
                                                     key={section.id}
                                                     onClick={() => handleTabClick(section.group, section.id)}
-                                                    className={`min-h-[82px] rounded-md border p-3 text-left transition-colors ${section.selected ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
+                                                    className={`min-h-[72px] rounded-md border p-2.5 text-left transition-colors ${section.selected ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
                                                  >
                                                      <div className="flex items-start justify-between gap-2">
                                                          <div>
@@ -3043,25 +3232,25 @@ const App: React.FC = () => {
                                                              {getCampaignOutputStatusLabel(section.status)}
                                                          </span>
                                                      </div>
-                                                     <p className="mt-2 line-clamp-2 text-xs leading-snug text-gray-600">{section.description}</p>
+                                                     <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-gray-600">{section.description}</p>
                                                  </button>
                                          ))}
                                      </div>
                                      </div>
                                  </div>
                                  ) : (
-                                     <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
-                                         <IconFileText className="mx-auto mb-3 h-10 w-10 text-gray-400" />
+                                     <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-center">
+                                         <IconFileText className="mx-auto mb-2 h-8 w-8 text-gray-400" />
                                          <h3 className="text-sm font-bold text-gray-900">Campaign Library is ready for review after Campaign Pack</h3>
-                                         <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-gray-500">
-                                             Listing Copy is step one. Campaign Pack creates the downstream social, email, brochure, blog, video and open house outputs, then this library becomes the review navigator.
+                                         <p className="mx-auto mt-1 max-w-lg text-xs leading-snug text-gray-500">
+                                             Generate Listing Copy, then Campaign Pack, to review channel outputs here.
                                          </p>
                                          <button
                                             type="button"
                                             onClick={isCampaignPackReady ? () => setIsCampaignLibraryExpanded(true) : listingCopyReady ? handleGenerateAllMissing : () => generateCopyForTab(LISTING_COPY_TAB)}
                                             disabled={isGenerating || Boolean(generateAllBlocker) || Boolean(generateCopyBlocker) || (!listingCopyReady && !isPropertyBriefReady)}
                                             title={!listingCopyReady && !isPropertyBriefReady ? propertyBriefReadinessHint : undefined}
-                                            className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed"
+                                            className="mt-3 inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed"
                                          >
                                             {isGenerating ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
                                             {isCampaignPackReady ? 'Review Campaign Pack' : listingCopyReady ? 'Generate Campaign Pack' : 'Generate Listing Copy'}
@@ -3162,7 +3351,7 @@ const App: React.FC = () => {
                                              </div>
                                          </div>
                                          <p className="mt-2 max-w-3xl text-[11px] leading-snug text-gray-500">
-                                             To change the copy, update the property details, features, audience or style, then regenerate. Outputs are generated drafts for review; copy or download them for final editing outside Real Estate AIM.
+                                             Generated draft. Update campaign inputs and regenerate for changes; final edits happen outside Real Estate AIM.
                                          </p>
                                      </div>
                                  </div>

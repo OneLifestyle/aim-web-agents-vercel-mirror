@@ -948,7 +948,16 @@ const analyzeFeatures = async (payload: Record<string, any>): Promise<ServiceRes
 
 const analyzeSingleImage = async (payload: Record<string, any>): Promise<ServiceResponse<string>> => {
     const image = validateImage(payload.image, 'image');
-    const prompt = `Analyze image: concise bullet selling points.`;
+    const prompt = `Analyze this real estate property photo for copywriting.
+Return only this structure:
+Summary: one concise sentence naming the visible selling point.
+Details:
+- 2 to 4 concise bullet points about visible features, buyer appeal, lifestyle positioning, or copy relevance.
+
+Rules:
+- Do not begin with generic phrases like "Based on the image" or "The image shows".
+- Mention only visible or strongly implied details.
+- Keep the language specific, scannable and useful for property marketing copy.`;
     try {
         const model = resolveModelForOperation('analyzeSingleImage');
         if (!model) throw new ApiError(500, 'No model configured for image analysis.');
