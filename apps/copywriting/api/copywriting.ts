@@ -125,8 +125,17 @@ let cachedAi: GoogleGenAI | null = null;
 class ApiError extends Error {
     constructor(public statusCode: number, message: string) {
         super(message);
+        this.name = 'ApiError';
     }
 }
+
+const isRetryableHttpStatus = (statusCode: number): boolean => (
+    statusCode === 408 ||
+    statusCode === 409 ||
+    statusCode === 425 ||
+    statusCode === 429 ||
+    statusCode >= 500
+);
 
 const getApiKey = (): string => {
     const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
@@ -1230,14 +1239,29 @@ export default async function handler(req: any, res: any) {
         sendJson(res, 200, result);
     } catch (error: any) {
         if (error instanceof SyntaxError) {
-            sendJson(res, 400, { error: 'Invalid JSON request body.' });
+            sendJson(res, 400, {
+                error: 'Invalid JSON request body.',
+                statusCode: 400,
+                errorName: 'SyntaxError',
+                isRetryable: false,
+            });
             return;
         }
         if (error instanceof ApiError) {
-            sendJson(res, error.statusCode, { error: error.message });
+            sendJson(res, error.statusCode, {
+                error: error.message,
+                statusCode: error.statusCode,
+                errorName: error.name,
+                isRetryable: isRetryableHttpStatus(error.statusCode),
+            });
             return;
         }
         console.error('Copywriting API error:', error?.message || error);
-        sendJson(res, 500, { error: error instanceof Error ? error.message : 'Copywriting request failed.' });
+        sendJson(res, 500, {
+            error: error instanceof Error ? error.message : 'Copywriting request failed.',
+            statusCode: 500,
+            errorName: error instanceof Error ? error.name : 'Error',
+            isRetryable: true,
+        });
     }
 }

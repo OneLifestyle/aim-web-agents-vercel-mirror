@@ -331,6 +331,22 @@ Status date: `2026-06-27`
 - Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
 
+## Campaign Pack Errors 001 Status
+
+Status date: `2026-06-29`
+
+- Goal: `WEBAGENTS-COPYWRITING-CAMPAIGN-PACK-ERRORS-001`
+- Review artifact: `docs/campaign-pack-errors-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Dependencies changed: no
+- Current failure summary: Campaign Pack mid-run failures now show a recoverable paused state instead of only a generic `Load failed` message when batch context is available.
+- Current progress summary: the app tracks requested output ids, current output id/title/category, sequence position, succeeded output ids, failed output id, remaining output ids, and batch status in local session state.
+- Current retry summary: retrying Campaign Pack continues to generate only missing or failed downstream outputs, skips already-ready outputs, and does not regenerate Listing Copy.
+- Current diagnostics summary: Campaign Build Log failure entries include safe output, batch, error, retry, and token/cost caveat details without raw provider payloads or secrets.
+- Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

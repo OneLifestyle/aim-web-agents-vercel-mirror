@@ -23,7 +23,31 @@ type AddressSuggestionCacheEntry = {
     suggestions: string[];
     usage?: UsageStats;
 };
-type CampaignOutputStatus = 'ready' | 'missing' | 'generating' | 'queued' | 'needs-generation';
+type CampaignOutputStatus = 'ready' | 'missing' | 'generating' | 'queued' | 'needs-generation' | 'retry-needed';
+type SafeErrorDiagnostic = {
+    userMessage: string;
+    technicalMessage: string;
+    errorName?: string;
+    statusCode?: number;
+    providerErrorCode?: string;
+    isRetryable?: boolean;
+    safeMessage: string;
+};
+type CampaignPackBatchStatus = 'idle' | 'generating' | 'partial_failed' | 'complete';
+type CampaignPackBatchState = {
+    status: CampaignPackBatchStatus;
+    startedCount: number;
+    requestedOutputIds: PreviewTab[];
+    currentOutputId: PreviewTab | null;
+    currentOutputTitle: string | null;
+    currentCategory: string | null;
+    currentIndex: number | null;
+    succeededOutputIds: PreviewTab[];
+    failedOutputId: PreviewTab | null;
+    remainingOutputIds: PreviewTab[];
+    userMessage: string | null;
+    diagnostic: SafeErrorDiagnostic | null;
+};
 type CampaignOutputSectionMeta = {
     id: PreviewTab;
     label: PreviewTab;
@@ -226,11 +250,157 @@ const aimUi = {
     chipPlanned: 'rounded-full border border-stone-200 bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-600',
 };
 const compactActionButtonClass = aimUi.secondaryButton;
+const INITIAL_CAMPAIGN_PACK_BATCH_STATE: CampaignPackBatchState = {
+    status: 'idle',
+    startedCount: 0,
+    requestedOutputIds: [],
+    currentOutputId: null,
+    currentOutputTitle: null,
+    currentCategory: null,
+    currentIndex: null,
+    succeededOutputIds: [],
+    failedOutputId: null,
+    remainingOutputIds: [],
+    userMessage: null,
+    diagnostic: null,
+};
 const profileInclusionLabels: Record<'none' | 'suburb' | 'area' | 'both', string> = {
     none: 'None',
     suburb: 'Suburb',
     area: 'Area',
     both: 'Both',
+};
+
+const getCampaignOutputCategory = (tab: PreviewTab): string => (
+    mainTabs.find(tabGroup => previewTabConfig[tabGroup].includes(tab)) || 'Campaign'
+);
+
+const getCampaignPackOutputTitle = (tab: PreviewTab): string => (
+    CAMPAIGN_OUTPUT_SECTION_META[tab]?.displayLabel || getOutputDisplayLabel(tab)
+);
+
+const outputNoun = (count: number): string => `output${count === 1 ? '' : 's'}`;
+
+const redactSafeErrorMessage = (value: string): string => value
+    .replace(/\b(?:api[_-]?key|token|authorization|bearer|secret|password)\b\s*[:=]\s*["']?[^"'\s,}]+/gi, '$1=[redacted]')
+    .replace(/\b[A-Za-z0-9_-]{36,}\b/g, '[redacted]')
+    .trim();
+
+const isRetryableStatusCode = (statusCode: number): boolean => (
+    statusCode === 408 ||
+    statusCode === 409 ||
+    statusCode === 425 ||
+    statusCode === 429 ||
+    statusCode >= 500
+);
+
+const normalizeSafeError = (error: unknown, fallbackUserMessage: string): SafeErrorDiagnostic => {
+    const errorRecord = error && typeof error === 'object' ? error as Record<string, unknown> : {};
+    const rawMessage = error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+            ? error
+            : fallbackUserMessage;
+    const technicalSource = typeof errorRecord.technicalMessage === 'string' && errorRecord.technicalMessage.trim()
+        ? errorRecord.technicalMessage
+        : rawMessage;
+    const safeMessage = redactSafeErrorMessage(technicalSource || fallbackUserMessage) || fallbackUserMessage;
+    const statusCode = typeof errorRecord.statusCode === 'number' ? errorRecord.statusCode : undefined;
+    const providerErrorCode = typeof errorRecord.providerErrorCode === 'string' && errorRecord.providerErrorCode.trim()
+        ? redactSafeErrorMessage(errorRecord.providerErrorCode)
+        : undefined;
+    const errorName = typeof errorRecord.errorName === 'string' && errorRecord.errorName.trim()
+        ? errorRecord.errorName
+        : error instanceof Error
+            ? error.name
+            : undefined;
+    const knownRetryable = typeof errorRecord.isRetryable === 'boolean'
+        ? errorRecord.isRetryable
+        : statusCode
+            ? isRetryableStatusCode(statusCode)
+            : /load failed|failed to fetch|network|timeout|temporar|unavailable/i.test(safeMessage)
+                ? true
+                : undefined;
+    const userMessage = /load failed|failed to fetch|network/i.test(safeMessage)
+        ? 'The request lost connection before the Campaign Pack finished.'
+        : statusCode === 429
+            ? 'The generation service is busy or rate-limited.'
+            : statusCode && statusCode >= 500
+                ? 'The generation service stopped before finishing.'
+                : safeMessage || fallbackUserMessage;
+
+    return {
+        userMessage,
+        technicalMessage: safeMessage,
+        errorName,
+        statusCode,
+        providerErrorCode,
+        isRetryable: knownRetryable,
+        safeMessage,
+    };
+};
+
+const buildCampaignPackPausedMessage = (
+    failedOutputTitle: string | null,
+    succeededCount: number,
+    remainingCount: number
+): string => {
+    const createdVerb = succeededCount === 1 ? 'was' : 'were';
+    const remainingVerb = remainingCount === 1 ? 'remains' : 'remain';
+    const progressText = `${succeededCount} ${outputNoun(succeededCount)} ${createdVerb} created and ${remainingCount} ${remainingVerb}`;
+    if (failedOutputTitle) {
+        return `Campaign Pack paused while generating ${failedOutputTitle}. ${progressText}. Retry the remaining outputs when ready.`;
+    }
+    return `Campaign Pack paused before finishing. ${progressText}. Retry the remaining outputs when ready.`;
+};
+
+const formatCampaignPackOutputList = (tabs: PreviewTab[]): string => (
+    tabs.length > 0
+        ? tabs.map(tab => `${getCampaignPackOutputTitle(tab)} (${tab})`).join(', ')
+        : 'none'
+);
+
+const buildCampaignPackFailureDiagnostics = ({
+    requestedCount,
+    attemptedCount,
+    succeededOutputIds,
+    failedOutputId,
+    remainingOutputIds,
+    diagnostic,
+}: {
+    requestedCount: number;
+    attemptedCount: number;
+    succeededOutputIds: PreviewTab[];
+    failedOutputId: PreviewTab | null;
+    remainingOutputIds: PreviewTab[];
+    diagnostic: SafeErrorDiagnostic;
+}): string => {
+    const failedTitle = failedOutputId ? getCampaignPackOutputTitle(failedOutputId) : 'unknown';
+    const failedCategory = failedOutputId ? getCampaignOutputCategory(failedOutputId) : 'unknown';
+    const failedSequence = failedOutputId ? `${attemptedCount}/${requestedCount}` : 'unknown';
+
+    return [
+        'Campaign Pack partial failure diagnostic',
+        `Operation: Generate Campaign Pack`,
+        `Attempted count: ${attemptedCount}`,
+        `Succeeded count: ${succeededOutputIds.length}`,
+        `Failed count: 1`,
+        `Remaining count: ${remainingOutputIds.length}`,
+        `Current output title: ${failedTitle}`,
+        `Current output id: ${failedOutputId || 'unknown'}`,
+        `Current category: ${failedCategory}`,
+        `Sequence position: ${failedSequence}`,
+        `Succeeded before failure: ${formatCampaignPackOutputList(succeededOutputIds)}`,
+        `Remaining output ids: ${formatCampaignPackOutputList(remainingOutputIds)}`,
+        `Safe error message: ${diagnostic.safeMessage}`,
+        `Error class: ${diagnostic.errorName || 'unknown'}`,
+        `HTTP/provider status: ${diagnostic.statusCode ?? 'unavailable'}`,
+        `Provider error code: ${diagnostic.providerErrorCode || 'unavailable'}`,
+        `Retry safe: ${diagnostic.isRetryable === false ? 'not confirmed; retry only if user chooses' : 'yes; retry missing outputs only'}`,
+        `Retry guidance: Generate Campaign Pack again to create only missing or failed outputs. Already-ready outputs are preserved.`,
+        `Failure recorded: ${new Date().toISOString()}`,
+        `Token/cost note: Token-only estimates are beta diagnostics, not billing statements. Grounding/tool charges are not included.`,
+    ].join('\n');
 };
 
 const normalizeAddressLookupQuery = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -569,6 +739,10 @@ const DebugPanel: React.FC<{
     const pendingCount = useMemo(() => logs.filter(log => log.status === 'pending').length, [logs]);
     const latestLog = logs[0];
     const latestError = errorLogs[0];
+    const formatLogDetail = (value: string, status: DebugLogEntry['status']): string => {
+        if (status === 'error') return value;
+        return `${value.substring(0, 150)}${value.length > 150 ? '...' : ''}`;
+    };
 
     return (
         <div className={`${aimUi.card} overflow-hidden`}>
@@ -665,13 +839,13 @@ const DebugPanel: React.FC<{
                                 {log.inputs && (
                                     <div className="mb-1">
                                         <span className="block text-slate-500 mb-0.5">Inputs:</span>
-                                        <div className="bg-slate-800 p-1.5 rounded text-slate-400 whitespace-pre-wrap overflow-hidden text-[10px]">{log.inputs.substring(0, 150)}{log.inputs.length > 150 ? '...' : ''}</div>
+                                        <div className="bg-slate-800 p-1.5 rounded text-slate-400 whitespace-pre-wrap overflow-hidden text-[10px]">{formatLogDetail(log.inputs, log.status)}</div>
                                     </div>
                                 )}
                                 {log.outputs && (
                                     <div>
                                         <span className="block text-slate-500 mb-0.5">Outputs:</span>
-                                        <div className="bg-slate-800 p-1.5 rounded text-slate-200 whitespace-pre-wrap overflow-hidden text-[10px] border border-slate-700">{log.outputs.substring(0, 150)}{log.outputs.length > 150 ? '...' : ''}</div>
+                                        <div className="bg-slate-800 p-1.5 rounded text-slate-200 whitespace-pre-wrap overflow-hidden text-[10px] border border-slate-700">{formatLogDetail(log.outputs, log.status)}</div>
                                     </div>
                                 )}
                             </div>
@@ -769,6 +943,7 @@ const App: React.FC = () => {
     const [isCampaignLibraryExpanded, setIsCampaignLibraryExpanded] = useState(false);
     const [generatingTab, setGeneratingTab] = useState<PreviewTab | null>(null);
     const [queuedOutputTabs, setQueuedOutputTabs] = useState<PreviewTab[]>([]);
+    const [campaignPackBatch, setCampaignPackBatch] = useState<CampaignPackBatchState>(INITIAL_CAMPAIGN_PACK_BATCH_STATE);
     const [isAnalyzingStrategy, setIsAnalyzingStrategy] = useState(false);
     const [isAnalyzingFeatures, setIsAnalyzingFeatures] = useState(false);
     const [copyContextAnalysisStatus, setCopyContextAnalysisStatus] = useState<AnalysisRunStatus>('idle');
@@ -1582,6 +1757,26 @@ const App: React.FC = () => {
             }
             setActiveSubTab(tab);
             setQueuedOutputTabs(prev => prev.filter(queuedTab => queuedTab !== tab));
+            if (!isVariant) {
+                setCampaignPackBatch(INITIAL_CAMPAIGN_PACK_BATCH_STATE);
+            } else {
+                setCampaignPackBatch(prev => {
+                    if (prev.status !== 'partial_failed' || prev.failedOutputId !== tab) return prev;
+                    const remainingOutputIds = prev.remainingOutputIds.filter(outputId => outputId !== tab);
+                    return {
+                        ...prev,
+                        status: remainingOutputIds.length === 0 ? 'complete' : 'idle',
+                        currentOutputId: null,
+                        currentOutputTitle: null,
+                        currentCategory: null,
+                        currentIndex: null,
+                        failedOutputId: null,
+                        remainingOutputIds,
+                        userMessage: null,
+                        diagnostic: null,
+                    };
+                });
+            }
             updateLog(logId, { status: 'success', outputs: copy.substring(0, 100) + '...', usage });
 
         } catch (error) {
@@ -1608,6 +1803,11 @@ const App: React.FC = () => {
         const missingTabs = DOWNSTREAM_CAMPAIGN_TABS.filter(tab => !currentVersion[tab]);
         if (missingTabs.length === 0) {
             setNotification("Campaign Pack is already ready.");
+            setCampaignPackBatch({
+                ...INITIAL_CAMPAIGN_PACK_BATCH_STATE,
+                status: 'complete',
+                succeededOutputIds: DOWNSTREAM_CAMPAIGN_TABS,
+            });
             endCampaignOperation('generateAllVariations');
             return;
         }
@@ -1628,34 +1828,147 @@ const App: React.FC = () => {
 
         setIsGenerating(true);
         const logId = addLog({ stepName: 'Generate Campaign Pack', status: 'pending', inputs: `Generating ${missingTabs.length} missing campaign output(s) from Listing Copy.` });
+        const childUsages: Array<UsageStats | undefined> = [];
+        const succeededOutputIds: PreviewTab[] = [];
+        let currentOutputId: PreviewTab | null = null;
+        let currentOutputTitle: string | null = null;
+        let currentOutputCategory: string | null = null;
+        let currentIndex = 0;
 
         try {
-            const childUsages: Array<UsageStats | undefined> = [];
+            const targetVersionIndex = activeVersionIndex;
+            const listingCopy = currentVersion[LISTING_COPY_TAB]!;
 
-            for (const tab of missingTabs) {
+            setCampaignPackBatch({
+                status: 'generating',
+                startedCount: missingTabs.length,
+                requestedOutputIds: missingTabs,
+                currentOutputId: null,
+                currentOutputTitle: null,
+                currentCategory: null,
+                currentIndex: null,
+                succeededOutputIds: [],
+                failedOutputId: null,
+                remainingOutputIds: missingTabs,
+                userMessage: null,
+                diagnostic: null,
+            });
+
+            for (const [index, tab] of missingTabs.entries()) {
+                currentIndex = index + 1;
+                currentOutputId = tab;
+                currentOutputTitle = getCampaignPackOutputTitle(tab);
+                currentOutputCategory = getCampaignOutputCategory(tab);
                 setGeneratingTab(tab);
-                const result = await geminiService.generateCopyVariant(currentVersion[LISTING_COPY_TAB]!, tab, generationParams);
+                setCampaignPackBatch(prev => ({
+                    ...prev,
+                    status: 'generating',
+                    currentOutputId,
+                    currentOutputTitle,
+                    currentCategory: currentOutputCategory,
+                    currentIndex,
+                    succeededOutputIds: [...succeededOutputIds],
+                    remainingOutputIds: missingTabs.slice(index),
+                    userMessage: null,
+                    diagnostic: null,
+                }));
+                updateLog(logId, {
+                    inputs: [
+                        `Generating ${missingTabs.length} missing campaign output(s) from Listing Copy.`,
+                        `Current output: ${currentOutputTitle}`,
+                        `Current output id: ${tab}`,
+                        `Category: ${currentOutputCategory}`,
+                        `Sequence position: ${currentIndex}/${missingTabs.length}`,
+                        `Succeeded so far: ${succeededOutputIds.length}`,
+                    ].join('\n'),
+                });
+
+                const result = await geminiService.generateCopyVariant(listingCopy, tab, generationParams);
                 childUsages.push(result.usage);
+                succeededOutputIds.push(tab);
 
                 setVersionSets(prev => {
                     const newSets = [...prev];
-                    const current = { ...newSets[activeVersionIndex] };
+                    const current = { ...newSets[targetVersionIndex] };
                     current[tab] = result.data;
-                    newSets[activeVersionIndex] = current;
+                    newSets[targetVersionIndex] = current;
                     return newSets;
                 });
+                setCampaignPackBatch(prev => ({
+                    ...prev,
+                    succeededOutputIds: [...succeededOutputIds],
+                    remainingOutputIds: missingTabs.slice(index + 1),
+                }));
             }
+            setCampaignPackBatch({
+                status: 'complete',
+                startedCount: missingTabs.length,
+                requestedOutputIds: missingTabs,
+                currentOutputId: null,
+                currentOutputTitle: null,
+                currentCategory: null,
+                currentIndex: null,
+                succeededOutputIds: [...succeededOutputIds],
+                failedOutputId: null,
+                remainingOutputIds: [],
+                userMessage: null,
+                diagnostic: null,
+            });
             updateLog(logId, {
                 status: 'success',
                 message: 'Campaign Pack processed',
+                outputs: [
+                    `Requested outputs: ${missingTabs.length}`,
+                    `Succeeded outputs: ${succeededOutputIds.length}`,
+                    `Remaining outputs: 0`,
+                    `Generated output ids: ${formatCampaignPackOutputList(succeededOutputIds)}`,
+                ].join('\n'),
                 usage: aggregateUsage('Generate Campaign Pack', childUsages, 'mixed variant models')
             });
             setNotification("Campaign Pack processed successfully!");
         } catch (error) {
             console.error("Error generating Campaign Pack:", error);
-            const msg = error instanceof Error ? error.message : "Error generating Campaign Pack.";
-            setNotification(msg);
-            updateLog(logId, { status: 'error', message: msg });
+            const attemptedCount = currentIndex;
+            const failedOutputId = currentOutputId;
+            const failedTitle = currentOutputTitle;
+            const remainingOutputIds = failedOutputId
+                ? missingTabs.slice(Math.max(0, attemptedCount - 1))
+                : missingTabs.filter(tab => !succeededOutputIds.includes(tab));
+            const diagnostic = normalizeSafeError(error, 'Campaign Pack generation stopped before finishing.');
+            const userMessage = buildCampaignPackPausedMessage(failedTitle, succeededOutputIds.length, remainingOutputIds.length);
+            if (failedOutputId) {
+                setActiveMainTab(getCampaignOutputCategory(failedOutputId));
+                setActiveSubTab(failedOutputId);
+            }
+
+            setCampaignPackBatch({
+                status: 'partial_failed',
+                startedCount: missingTabs.length,
+                requestedOutputIds: missingTabs,
+                currentOutputId: failedOutputId,
+                currentOutputTitle: failedTitle,
+                currentCategory: currentOutputCategory,
+                currentIndex: attemptedCount || null,
+                succeededOutputIds: [...succeededOutputIds],
+                failedOutputId,
+                remainingOutputIds,
+                userMessage,
+                diagnostic,
+            });
+            setNotification(userMessage);
+            updateLog(logId, {
+                status: 'error',
+                message: userMessage,
+                outputs: buildCampaignPackFailureDiagnostics({
+                    requestedCount: missingTabs.length,
+                    attemptedCount: attemptedCount || succeededOutputIds.length,
+                    succeededOutputIds,
+                    failedOutputId,
+                    remainingOutputIds,
+                    diagnostic,
+                }),
+                usage: childUsages.length > 0 ? aggregateUsage('Generate Campaign Pack partial', childUsages, 'mixed variant models') : undefined,
+            });
         } finally {
             setIsGenerating(false);
             setGeneratingTab(null);
@@ -2032,6 +2345,8 @@ const App: React.FC = () => {
                 ? 'generating'
                 : queuedOutputTabs.includes(section.tab)
                     ? 'queued'
+                : campaignPackBatch.status === 'partial_failed' && campaignPackBatch.failedOutputId === section.tab
+                    ? 'retry-needed'
                 : section.generated
                     ? 'ready'
                     : section.tab === LISTING_COPY_TAB || !currentVersionSet[LISTING_COPY_TAB]
@@ -2050,8 +2365,9 @@ const App: React.FC = () => {
                 status,
             };
         });
-    }, [activeSubTab, currentCampaignExportPlan.sectionDocuments, currentVersionSet, generatingTab, queuedOutputTabs]);
+    }, [activeSubTab, currentCampaignExportPlan.sectionDocuments, currentVersionSet, generatingTab, queuedOutputTabs, campaignPackBatch.status, campaignPackBatch.failedOutputId]);
     const selectedCampaignOutput = campaignOutputSections.find(section => section.id === activeSubTab);
+    const isSelectedOutputRetryNeeded = selectedCampaignOutput?.status === 'retry-needed';
     const readyOutputCount = currentCampaignExportPlan.generatedSections.length;
     const missingOutputCount = currentCampaignExportPlan.missingSections.length;
     const filteredCampaignOutputSections = useMemo(() => {
@@ -2088,6 +2404,7 @@ const App: React.FC = () => {
         if (status === 'ready') return 'Ready';
         if (status === 'generating') return 'Generating';
         if (status === 'queued') return 'Queued';
+        if (status === 'retry-needed') return 'Retry needed';
         if (status === 'missing') return 'Missing';
         return 'Needs generation';
     };
@@ -2095,6 +2412,7 @@ const App: React.FC = () => {
         if (status === 'ready') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
         if (status === 'generating') return 'bg-amber-50 text-amber-800 border-amber-200';
         if (status === 'queued') return 'bg-amber-50 text-amber-800 border-amber-200';
+        if (status === 'retry-needed') return 'bg-amber-50 text-amber-800 border-amber-200';
         if (status === 'missing') return 'bg-stone-100 text-stone-600 border-stone-200';
         return 'bg-amber-50 text-amber-800 border-amber-200';
     };
@@ -2173,6 +2491,13 @@ const App: React.FC = () => {
                 tone: 'working' as const,
             };
         }
+        if (campaignPackBatch.status === 'partial_failed' && campaignPackBatch.userMessage) {
+            return {
+                label: 'Campaign Pack paused',
+                description: campaignPackBatch.userMessage,
+                tone: 'attention' as const,
+            };
+        }
         if (allTabsGenerated) {
             return {
                 label: 'Campaign ready',
@@ -2222,7 +2547,7 @@ const App: React.FC = () => {
             description: 'Enter a property address to begin the private beta workflow.',
             tone: 'idle' as const,
         };
-    }, [isAddressLookupQueued, isSuggesting, isResearching, isAnalyzingStrategy, isAnalyzingFeatures, isAnalyzingImages, isGenerating, isDownloadingAll, generatingTab, allTabsGenerated, readyOutputCount, missingOutputCount, hasFetchedPropertyBrief, isPropertyBriefReady, propertyBriefStatusLabel, propertyBriefReviewState, address]);
+    }, [isAddressLookupQueued, isSuggesting, isResearching, isAnalyzingStrategy, isAnalyzingFeatures, isAnalyzingImages, isGenerating, isDownloadingAll, generatingTab, campaignPackBatch.status, campaignPackBatch.userMessage, allTabsGenerated, readyOutputCount, missingOutputCount, hasFetchedPropertyBrief, isPropertyBriefReady, propertyBriefStatusLabel, propertyBriefReviewState, address]);
     const plainCampaignProgressClass = plainCampaignProgress.tone === 'working'
         ? 'border-amber-200 bg-amber-50 text-amber-900'
         : plainCampaignProgress.tone === 'ready'
@@ -3118,16 +3443,17 @@ const App: React.FC = () => {
                                              const isListingOffer = offer.id === 'listing-copy';
                                              const isCampaignPackOffer = offer.id === 'campaign-pack';
                                              const isBlueprintOffer = offer.id === 'campaign-blueprint';
+                                             const isCampaignPackPaused = isCampaignPackOffer && campaignPackBatch.status === 'partial_failed';
                                              const stateLabel = isListingOffer
                                                 ? isListingCopyGenerating ? 'Generating' : listingCopyReady ? 'Ready' : isPropertyBriefReady ? 'Ready to generate' : hasFetchedPropertyBrief ? 'Confirm brief first' : 'Brief required'
                                                 : isCampaignPackOffer
-                                                    ? isCampaignPackGenerating ? 'Generating' : !listingCopyReady ? 'Available after Listing Copy' : isCampaignPackReady ? 'Ready' : `${campaignPackMissingCount} outputs remaining`
+                                                    ? isCampaignPackGenerating ? 'Generating' : !listingCopyReady ? 'Available after Listing Copy' : isCampaignPackReady ? 'Ready' : isCampaignPackPaused ? 'Paused' : `${campaignPackMissingCount} outputs remaining`
                                                     : 'Not available yet';
                                              const stateClass = isBlueprintOffer
                                                 ? 'border-stone-200 bg-stone-100 text-stone-600'
                                                 : stateLabel === 'Ready' || stateLabel === 'Ready to generate'
                                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                                : stateLabel === 'Generating'
+                                                : stateLabel === 'Generating' || stateLabel === 'Paused'
                                                         ? 'border-amber-200 bg-amber-50 text-amber-800'
                                                 : stateLabel === 'Brief required' || stateLabel === 'Confirm brief first'
                                                             ? 'border-amber-200 bg-amber-50 text-amber-800'
@@ -3145,7 +3471,7 @@ const App: React.FC = () => {
                                              const actionLabel = isListingOffer
                                                 ? isPropertyBriefReady ? offer.primaryActionLabel : 'Brief required'
                                                 : isCampaignPackOffer
-                                                    ? !listingCopyReady ? 'Listing Copy required' : isCampaignPackReady ? 'Review Campaign Pack' : offer.primaryActionLabel
+                                                    ? !listingCopyReady ? 'Listing Copy required' : isCampaignPackReady ? 'Review Campaign Pack' : isCampaignPackPaused ? 'Retry remaining outputs' : offer.primaryActionLabel
                                                     : offer.primaryActionLabel;
                                              const disabled = isBlueprintOffer || isGenerating || (isListingOffer && !isPropertyBriefReady) || (isCampaignPackOffer && !listingCopyReady);
                                              const showOfferAction = !(isListingOffer && listingCopyReady);
@@ -3175,7 +3501,9 @@ const App: React.FC = () => {
                                                         <p className="mt-0.5 text-xs font-medium text-slate-700">{offer.shortDescription}</p>
                                                         <p className="mt-2 text-xs leading-snug text-slate-500">{offer.includedSummary}</p>
                                                         {isCampaignPackOffer && listingCopyReady && !isCampaignPackReady && (
-                                                            <p className="mt-1.5 text-xs font-semibold text-red-700">Campaign outputs still need generation.</p>
+                                                            <p className={`mt-1.5 text-xs font-semibold ${isCampaignPackPaused ? 'text-amber-800' : 'text-red-700'}`}>
+                                                                {isCampaignPackPaused ? 'Campaign Pack paused. Retry remaining outputs.' : 'Campaign outputs still need generation.'}
+                                                            </p>
                                                         )}
                                                         {isListingOffer && listingCopyReady && (
                                                             <p className="mt-1.5 text-xs font-semibold text-emerald-700">Listing Copy is ready in the output area.</p>
@@ -3213,6 +3541,31 @@ const App: React.FC = () => {
                                              );
                                          })}
                                      </div>
+                                     {campaignPackBatch.status === 'partial_failed' && campaignPackBatch.userMessage && (
+                                         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
+                                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                 <div>
+                                                     <p className="text-sm font-semibold text-amber-950">Campaign Pack paused</p>
+                                                     <p className="mt-1 max-w-3xl text-xs leading-relaxed text-amber-900">{campaignPackBatch.userMessage}</p>
+                                                     {campaignPackBatch.failedOutputId && (
+                                                         <p className="mt-1 text-[11px] leading-snug text-amber-800">
+                                                             Paused output: {getCampaignPackOutputTitle(campaignPackBatch.failedOutputId)} ({campaignPackBatch.failedOutputId}), {getCampaignOutputCategory(campaignPackBatch.failedOutputId)}.
+                                                         </p>
+                                                     )}
+                                                 </div>
+                                                 <button
+                                                    type="button"
+                                                    onClick={handleGenerateAllMissing}
+                                                    disabled={isGenerating || Boolean(generateAllBlocker)}
+                                                    title={getCampaignOperationTitle('generateAllVariations', 'Retry missing Campaign Pack outputs.')}
+                                                    className="inline-flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded-md bg-amber-900 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-amber-950 disabled:cursor-not-allowed disabled:bg-amber-300"
+                                                 >
+                                                    {isCampaignPackGenerating ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
+                                                    Retry remaining outputs
+                                                 </button>
+                                             </div>
+                                         </div>
+                                     )}
                                  </div>
 
                                  {!isCampaignPackReady && (
@@ -3442,7 +3795,13 @@ const App: React.FC = () => {
                                              <div className="rounded-lg border border-dashed border-stone-300 bg-stone-50 p-6 text-center">
                                                  <IconSparkles className="mx-auto mb-3 h-10 w-10 text-stone-400" />
                                                  <h3 className="text-sm font-bold text-slate-900">No output for this item yet</h3>
-                                                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-slate-500">{activeSubTab === LISTING_COPY_TAB ? isPropertyBriefReady ? 'Generate Listing Copy from the offer card above to create the campaign baseline.' : propertyBriefReadinessHint : currentVersionSet[LISTING_COPY_TAB] ? 'Generate this output from the current Listing Copy.' : 'Generate Listing Copy first, then create this campaign output.'}</p>
+                                                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-slate-500">
+                                                     {isSelectedOutputRetryNeeded
+                                                        ? 'Campaign Pack paused on this output. Retry this output, or retry the remaining Campaign Pack outputs above.'
+                                                        : activeSubTab === LISTING_COPY_TAB
+                                                            ? isPropertyBriefReady ? 'Generate Listing Copy from the offer card above to create the campaign baseline.' : propertyBriefReadinessHint
+                                                            : currentVersionSet[LISTING_COPY_TAB] ? 'Generate this output from the current Listing Copy.' : 'Generate Listing Copy first, then create this campaign output.'}
+                                                 </p>
                                                  {activeSubTab !== LISTING_COPY_TAB && (
                                                      <button
                                                         onClick={() => handleGenerateThisOutput(activeSubTab)}
@@ -3451,7 +3810,7 @@ const App: React.FC = () => {
                                                         className={`mt-4 ${aimUi.primaryButton}`}
                                                      >
                                                         {generatingTab === activeSubTab ? <Spinner className="w-4 h-4" /> : <IconSparkles className="w-4 h-4" />}
-                                                        {queuedOutputTabs.includes(activeSubTab) ? 'Queued' : 'Generate this output'}
+                                                        {queuedOutputTabs.includes(activeSubTab) ? 'Queued' : isSelectedOutputRetryNeeded ? 'Retry this output' : 'Generate this output'}
                                                      </button>
                                                  )}
                                              </div>

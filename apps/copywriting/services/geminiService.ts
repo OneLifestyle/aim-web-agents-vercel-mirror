@@ -20,6 +20,40 @@ type CopywritingOperation =
     | 'refineCopy'
     | 'getChatbotResponse';
 
+type CopywritingErrorPayload = {
+    error?: unknown;
+    statusCode?: unknown;
+    providerErrorCode?: unknown;
+    errorName?: unknown;
+    isRetryable?: unknown;
+};
+
+type CopywritingRequestErrorOptions = {
+    statusCode?: number;
+    providerErrorCode?: string;
+    errorName?: string;
+    isRetryable?: boolean;
+    technicalMessage?: string;
+};
+
+export class CopywritingRequestError extends Error {
+    statusCode?: number;
+    providerErrorCode?: string;
+    errorName?: string;
+    isRetryable?: boolean;
+    technicalMessage?: string;
+
+    constructor(message: string, options: CopywritingRequestErrorOptions = {}) {
+        super(message);
+        this.name = 'CopywritingRequestError';
+        this.statusCode = options.statusCode;
+        this.providerErrorCode = options.providerErrorCode;
+        this.errorName = options.errorName;
+        this.isRetryable = options.isRetryable;
+        this.technicalMessage = options.technicalMessage;
+    }
+}
+
 const getStoredBetaToken = (): string => {
     if (typeof window === 'undefined') return '';
     return window.sessionStorage.getItem(BETA_ACCESS_TOKEN_STORAGE_KEY) || '';
@@ -39,14 +73,26 @@ export const hasVerifiedBetaAccess = (): boolean => {
     return Boolean(getStoredBetaToken());
 };
 
-const parseErrorMessage = async (response: Response): Promise<string> => {
+const isRetryableStatus = (statusCode: number): boolean => (
+    statusCode === 408 ||
+    statusCode === 409 ||
+    statusCode === 425 ||
+    statusCode === 429 ||
+    statusCode >= 500
+);
+
+const safeString = (value: unknown): string | undefined => {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+};
+
+const parseErrorPayload = async (response: Response): Promise<CopywritingErrorPayload> => {
     try {
         const body = await response.json();
-        if (body && typeof body.error === 'string') return body.error;
+        if (body && typeof body === 'object') return body as CopywritingErrorPayload;
     } catch {
         // Fall back to status text below.
     }
-    return response.statusText || 'Copywriting request failed.';
+    return {};
 };
 
 const postCopywritingOperation = async <T>(
@@ -58,16 +104,36 @@ const postCopywritingOperation = async <T>(
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (betaToken) headers['x-beta-access-code'] = betaToken;
 
-    const response = await fetch(API_PATH, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ operation, payload }),
-        signal: options.signal,
-    });
+    let response: Response;
+    try {
+        response = await fetch(API_PATH, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ operation, payload }),
+            signal: options.signal,
+        });
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') throw error;
+        const technicalMessage = error instanceof Error ? error.message : 'Network request failed.';
+        throw new CopywritingRequestError('Copywriting request could not reach the server. Retry when ready.', {
+            errorName: error instanceof Error ? error.name : 'NetworkError',
+            isRetryable: true,
+            technicalMessage,
+        });
+    }
 
     if (!response.ok) {
         if (response.status === 401) clearBetaAccess();
-        throw new Error(await parseErrorMessage(response));
+        const body = await parseErrorPayload(response);
+        const message = safeString(body.error) || response.statusText || 'Copywriting request failed.';
+        const responseStatusCode = typeof body.statusCode === 'number' ? body.statusCode : response.status;
+        throw new CopywritingRequestError(message, {
+            statusCode: responseStatusCode,
+            providerErrorCode: safeString(body.providerErrorCode),
+            errorName: safeString(body.errorName),
+            isRetryable: typeof body.isRetryable === 'boolean' ? body.isRetryable : isRetryableStatus(responseStatusCode),
+            technicalMessage: message,
+        });
     }
 
     return response.json() as Promise<T>;
@@ -85,7 +151,16 @@ export const verifyBetaAccess = async (code: string): Promise<void> => {
 
     if (!response.ok) {
         clearBetaAccess();
-        throw new Error(await parseErrorMessage(response));
+        const body = await parseErrorPayload(response);
+        const message = safeString(body.error) || response.statusText || 'Beta access check failed.';
+        const responseStatusCode = typeof body.statusCode === 'number' ? body.statusCode : response.status;
+        throw new CopywritingRequestError(message, {
+            statusCode: responseStatusCode,
+            providerErrorCode: safeString(body.providerErrorCode),
+            errorName: safeString(body.errorName),
+            isRetryable: typeof body.isRetryable === 'boolean' ? body.isRetryable : isRetryableStatus(responseStatusCode),
+            technicalMessage: message,
+        });
     }
 
     const body = await response.json();

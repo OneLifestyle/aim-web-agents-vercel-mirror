@@ -18,6 +18,8 @@ The Hub-style visual polish pass is documented in `docs/hub-style-design-polish-
 
 The pre-Kevin UX polish pass is documented in `docs/pre-kevin-ux-fixes-001.md`. It fixes Additional Property Features double-bullet rendering, removes duplicate Listing Copy generation buttons, keeps the primary Listing Copy action red, guards same-input regeneration, and warns before clearing Campaign Pack outputs during Listing Copy regeneration.
 
+The Campaign Pack error-handling pass is documented in `docs/campaign-pack-errors-001.md`. It keeps successful downstream outputs after a mid-run failure, marks the failed output where available, shows a recoverable retry message, and expands Campaign Build Log diagnostics without adding provider routing, billing, storage, Hub sync, or dependencies.
+
 The floating general `AI Assistant` chat surface is disabled for the private beta. The decision and deferred contextual-assistant/export-settings ideas are recorded in `docs/chat-assistant-disabled-001.md`.
 
 ## Project Overview
@@ -61,7 +63,7 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
 
 ### 6. Workflow & Export
 *   **Campaign Status:** Plain-language progress and output state labels for trusted beta testers.
-*   **Campaign Build Log:** Collapsed beta diagnostics with public-facing step names plus expandable technical details, token usage, and token-only cost estimates.
+*   **Campaign Build Log:** Collapsed beta diagnostics with public-facing step names plus expandable technical details, token usage, token-only cost estimates, and recoverable Campaign Pack partial-failure detail.
 *   **Export Options:** Current output, current category, and full campaign document downloads in Word-compatible `.doc`, plain text, and print/PDF pathways.
 *   **Generated-Only Downloads:** Download actions export generated outputs only. Missing outputs are not generated silently.
 
