@@ -25,6 +25,7 @@ Secret values were not imported. Local `.env` and `.env.local` files were not im
 Required environment variable names:
 
 - `BETA_ACCESS_CODE`
+- `BETA_ACCESS_CODES` optional for additional private beta access codes
 - `GEMINI_FLASH_MODEL`
 - `GEMINI_API_KEY`
 - `GEMINI_PRO_MODEL`
@@ -60,6 +61,7 @@ Status date: `2026-06-21`
 Required environment variable names:
 
 - `BETA_ACCESS_CODE`
+- `BETA_ACCESS_CODES` optional for additional private beta access codes
 - `GEMINI_API_KEY`
 - `GEMINI_PRO_MODEL`
 - `GEMINI_FLASH_MODEL`
@@ -84,6 +86,7 @@ Configure environment variables manually from the existing standalone Copywritin
 Required variable names to configure in Vercel:
 
 - `BETA_ACCESS_CODE`
+- `BETA_ACCESS_CODES` optional for additional private beta access codes
 - `GEMINI_API_KEY`
 - `GEMINI_PRO_MODEL`
 - `GEMINI_FLASH_MODEL`
@@ -346,6 +349,19 @@ Status date: `2026-06-29`
 - Current diagnostics summary: Campaign Build Log failure entries include safe output, batch, error, retry, and token/cost caveat details without raw provider payloads or secrets.
 - Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
 - Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
+## Beta Access Codes 001 Status
+
+Status date: `2026-06-29`
+
+- Goal: `WEBAGENTS-COPYWRITING-BETA-CODES-001`
+- Review artifact: `docs/beta-access-codes-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Dependencies changed: no
+- Current beta access summary: `BETA_ACCESS_CODE` remains supported as the existing primary code, and optional `BETA_ACCESS_CODES` supports additional private beta codes separated by comma, semicolon, newline, or whitespace.
+- Current security summary: beta code values remain server-side environment configuration, are not committed, are not returned to the browser, and should not be logged.
+- Current auth summary: this remains a private-beta gate only. No Clerk, auth accounts, Hub integration, tenant logging, database, billing, storage, or provider-router work was added.
 
 ## Non-Goals
 

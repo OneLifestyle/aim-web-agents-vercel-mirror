@@ -161,6 +161,23 @@ const requireEnvString = (name: string): string => {
 const getProModel = (): string => requireEnvString('GEMINI_PRO_MODEL');
 const getFlashModel = (): string => requireEnvString('GEMINI_FLASH_MODEL');
 
+const parseBetaAccessCodeList = (value: string | undefined): string[] => {
+    if (!value) return [];
+    return value
+        .split(/[,;\s]+/)
+        .map(code => code.trim())
+        .filter(Boolean);
+};
+
+const getConfiguredBetaAccessCodes = (): string[] => {
+    const primaryCode = process.env.BETA_ACCESS_CODE?.trim();
+    const secondaryCodes = parseBetaAccessCodeList(process.env.BETA_ACCESS_CODES);
+    return Array.from(new Set([
+        ...(primaryCode ? [primaryCode] : []),
+        ...secondaryCodes,
+    ]));
+};
+
 const resolveModelForOperation = (operation: CopywritingOperation, variantType?: PreviewTab): string | null => {
     let tier = OPERATION_MODEL_TIER[operation];
     if (operation === 'generateCopyVariant' && variantType && PRO_VARIANT_TABS.has(variantType)) {
@@ -677,28 +694,31 @@ const isValidBetaSessionToken = (credential: string, requiredCode: string): bool
 };
 
 const enforceBetaAccess = (req: any): void => {
-    const requiredCode = process.env.BETA_ACCESS_CODE;
-    if (!requiredCode) return;
+    const validCodes = getConfiguredBetaAccessCodes();
+    if (validCodes.length === 0) return;
 
     const providedCode = req.headers?.['x-beta-access-code'];
     if (
         typeof providedCode !== 'string' ||
-        (providedCode !== requiredCode && !isValidBetaSessionToken(providedCode, requiredCode))
+        !validCodes.some(validCode => providedCode === validCode || isValidBetaSessionToken(providedCode, validCode))
     ) {
         throw new ApiError(401, 'Valid beta access code is required.');
     }
 };
 
 const verifyBetaAccess = (req: any): { ok: true; token: string | null } => {
-    const requiredCode = process.env.BETA_ACCESS_CODE;
-    if (!requiredCode) return { ok: true, token: null };
+    const validCodes = getConfiguredBetaAccessCodes();
+    if (validCodes.length === 0) return { ok: true, token: null };
 
     const providedCode = req.headers?.['x-beta-access-code'];
-    if (typeof providedCode !== 'string' || providedCode !== requiredCode) {
+    const matchedCode = typeof providedCode === 'string'
+        ? validCodes.find(validCode => providedCode === validCode)
+        : undefined;
+    if (!matchedCode) {
         throw new ApiError(401, 'Valid beta access code is required.');
     }
 
-    return { ok: true, token: createBetaSessionToken(requiredCode) };
+    return { ok: true, token: createBetaSessionToken(matchedCode) };
 };
 
 const enforceThrottle = (req: any): void => {

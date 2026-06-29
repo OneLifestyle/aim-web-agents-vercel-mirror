@@ -20,6 +20,8 @@ The pre-Kevin UX polish pass is documented in `docs/pre-kevin-ux-fixes-001.md`. 
 
 The Campaign Pack error-handling pass is documented in `docs/campaign-pack-errors-001.md`. It keeps successful downstream outputs after a mid-run failure, marks the failed output where available, shows a recoverable retry message, and expands Campaign Build Log diagnostics without adding provider routing, billing, storage, Hub sync, or dependencies.
 
+The secondary beta-access-code pass is documented in `docs/beta-access-codes-001.md`. `BETA_ACCESS_CODE` remains supported, and optional `BETA_ACCESS_CODES` can be configured in deployment environment variables for additional private beta testers without committing code values.
+
 The floating general `AI Assistant` chat surface is disabled for the private beta. The decision and deferred contextual-assistant/export-settings ideas are recorded in `docs/chat-assistant-disabled-001.md`.
 
 ## Project Overview
@@ -84,3 +86,12 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
 *   `api/copywriting.ts`: Server-side Gemini execution, beta gate, model routing, input validation, retry, and token-only usage estimates.
 *   `types.ts`: TypeScript interfaces for robust type safety.
 *   `constants.tsx`: UI constants, icons, and configuration lists.
+
+## Beta Access Environment
+
+The private beta gate reads beta code configuration on the server only.
+
+*   `BETA_ACCESS_CODE`: existing primary beta access code.
+*   `BETA_ACCESS_CODES`: optional additional beta access codes separated by comma, semicolon, newline, or whitespace.
+
+Do not commit beta access code values. Tester-specific codes should be configured in Vercel environment variables and may require a redeploy after changes. This beta gate is not real user authentication and does not create user accounts or tenant logging.
