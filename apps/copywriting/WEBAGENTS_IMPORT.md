@@ -363,6 +363,23 @@ Status date: `2026-06-29`
 - Current security summary: beta code values remain server-side environment configuration, are not committed, are not returned to the browser, and should not be logged.
 - Current auth summary: this remains a private-beta gate only. No Clerk, auth accounts, Hub integration, tenant logging, database, billing, storage, or provider-router work was added.
 
+## Laptop First Flow 001 Status
+
+Status date: `2026-07-03`
+
+- Goal: `WEBAGENTS-COPYWRITING-LAPTOP-FIRST-FLOW-001`
+- Review artifact: `docs/laptop-first-flow-001.md`
+- Runtime behavior changed: yes
+- Product code changed: yes
+- Dependencies changed: no
+- Current address summary: Fetch Details requires a selected address suggestion. Typed address text alone does not enable property research, and editing the address after selection invalidates the selected-address state.
+- Current layout summary: the visible workflow now uses five product steps: Property Brief, Agent and Open Home, Campaign Direction, Features and Photos, and Outputs and Downloads. Laptop-sized layouts stack the main workflow before diagnostics; the three-column layout is reserved for very wide desktop.
+- Current diagnostics summary: Beta diagnostics and Campaign Build Log remain collapsed by default and available, but no longer occupy the first prime column on laptop.
+- Current brief summary: fetched facts, address, overview, suburb/area profile, and editable property facts read as Property Brief context. Overview and profile sections start compact after Fetch Details.
+- Current output summary: generating Listing Copy scrolls/focuses the generated draft, and Campaign Pack generation shows current batch progress inside Output Workspace before exposing Campaign Library and download options.
+- Current export summary: current output, current category, and campaign downloads remain generated-only export actions and do not generate missing outputs.
+- Current model routing summary: unchanged. AI Strategy Analysis remains on the server-configured Gemini Pro model, and image analysis remains on the server-configured Gemini Flash model.
+
 ## Non-Goals
 
 - No Clerk integration.

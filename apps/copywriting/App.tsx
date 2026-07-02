@@ -971,6 +971,9 @@ const App: React.FC = () => {
     const exportMenuRef = useRef<HTMLDivElement>(null);
     const categoryExportMenuRef = useRef<HTMLDivElement>(null);
     const downloadAllMenuRef = useRef<HTMLDivElement>(null);
+    const outputWorkspaceRef = useRef<HTMLDivElement>(null);
+    const selectedOutputCardRef = useRef<HTMLDivElement>(null);
+    const generatedOutputRef = useRef<HTMLDivElement>(null);
 
     const [includeContactDetails, setIncludeContactDetails] = useState(false);
 
@@ -982,6 +985,17 @@ const App: React.FC = () => {
     const [betaAccessError, setBetaAccessError] = useState<string | null>(null);
     const [isVerifyingBetaAccess, setIsVerifyingBetaAccess] = useState(false);
 
+    const hasSelectedAddressForFetch = Boolean(
+        selectedAddress &&
+        address.trim() &&
+        normalizeAddressLookupQuery(selectedAddress.label) === normalizeAddressLookupQuery(address)
+    );
+    const fetchDetailsRequirementText = 'Select a suggested address before fetching property details.';
+    const fetchDetailsDisabledReason = !address.trim()
+        ? 'Start typing a property address first.'
+        : !hasSelectedAddressForFetch
+            ? fetchDetailsRequirementText
+            : undefined;
     const hasFetchedPropertyBrief = isFetchComplete && Boolean(address.trim()) && Boolean(researchData || keyFeatures || profileData);
     const hasManualPropertyFacts = Boolean(address.trim()) && [
         propertyDetails.beds,
@@ -998,7 +1012,7 @@ const App: React.FC = () => {
         : hasFetchedPropertyBrief && propertyBriefReviewState === 'review'
             ? 'Review property brief'
             : address.trim()
-                ? 'Fetch details to start'
+                ? hasSelectedAddressForFetch ? 'Fetch details to start' : 'Select suggested address'
                 : 'Property brief missing';
     const propertyBriefReadinessHint = isPropertyBriefReady
         ? isManualPropertyBrief
@@ -1007,7 +1021,9 @@ const App: React.FC = () => {
         : hasFetchedPropertyBrief && propertyBriefReviewState === 'review'
             ? 'Review and adjust the property facts before generating copy.'
             : address.trim()
-                ? 'Fetch details or add enough manual property facts and features before generating Listing Copy.'
+                ? hasSelectedAddressForFetch
+                    ? 'Fetch details, review the facts, then confirm the brief before generating Listing Copy.'
+                    : fetchDetailsRequirementText
                 : 'Enter a property address to begin the brief.';
 
     const addLog = (entry: Partial<DebugLogEntry> & { stepName: string, status: 'pending' | 'success' | 'error' }) => {
@@ -1083,6 +1099,20 @@ const App: React.FC = () => {
 
     const handleOpenHouseChange = (field: keyof OpenHouseDetails, value: string) => {
         setOpenHouse(prev => ({ ...prev, [field]: value }));
+    };
+
+    const clearFetchedPropertyContext = () => {
+        setResearchData(null);
+        setKeyFeatures(null);
+        setProfileData(null);
+        setGroundingSources([]);
+        setPriceGuide(null);
+        setLastSoldDetails(null);
+        setProfileInclusion('none');
+        setCopyContextAnalysisStatus('idle');
+        setPropertyFeaturesAnalysisStatus('idle');
+        setCopyContextAnalysisError(null);
+        setPropertyFeaturesAnalysisError(null);
     };
 
     useEffect(() => {
@@ -1259,6 +1289,7 @@ const App: React.FC = () => {
         setIsAddressLookupQueued(false);
         setIsFetchComplete(false);
         setPropertyBriefReviewState('missing');
+        clearFetchedPropertyContext();
         upsertAddressSuggestionLog({
             status: 'success',
             inputs: confirmedAddress,
@@ -1273,6 +1304,7 @@ const App: React.FC = () => {
         setPropertyBriefReviewState('missing');
         if (selectedAddress && value.trim() !== selectedAddress.label) {
             setSelectedAddress(null);
+            clearFetchedPropertyContext();
         }
     };
 
@@ -1502,12 +1534,19 @@ const App: React.FC = () => {
             normalizeAddressLookupQuery(selectedAddress.label) === normalizeAddressLookupQuery(typedAddressSnapshot)
             ? selectedAddress.label.trim()
             : null;
-        const addressForResearch = selectedAddressSnapshot || typedAddressSnapshot;
 
-        if (!addressForResearch) {
-            setResearchError("Please enter a property address to fetch details.");
+        if (!typedAddressSnapshot) {
+            setResearchError("Start typing a property address, then select a suggested address before fetching details.");
             return;
         }
+
+        if (!selectedAddressSnapshot) {
+            setResearchError(fetchDetailsRequirementText);
+            setNotification(fetchDetailsRequirementText);
+            return;
+        }
+
+        const addressForResearch = selectedAddressSnapshot;
         addressLookupRequestRef.current += 1;
         activeAddressLookupAbortRef.current?.abort();
         activeAddressLookupAbortRef.current = null;
@@ -1568,8 +1607,8 @@ const App: React.FC = () => {
 
             setIsFetchComplete(true);
             setPropertyBriefReviewState('review');
-            setIsPropertyOverviewExpanded(true);
-            setIsSuburbProfileExpanded(true);
+            setIsPropertyOverviewExpanded(false);
+            setIsSuburbProfileExpanded(false);
             updateLog(logId, { status: 'success', outputs: `Specs: ${JSON.stringify(researchResult.specs)}`, usage: result.usage });
         } catch (error) {
             console.error(error);
@@ -1688,6 +1727,7 @@ const App: React.FC = () => {
         setIsGenerating(true);
         setGeneratingTab(tab);
         setGenerationError(null);
+        scrollToOutputWorkspace();
 
         const logId = addLog({
             stepName: `Generate Copy (${outputLabel})`,
@@ -1778,6 +1818,10 @@ const App: React.FC = () => {
                 });
             }
             updateLog(logId, { status: 'success', outputs: copy.substring(0, 100) + '...', usage });
+            focusSelectedOutput();
+            if (tab === LISTING_COPY_TAB) {
+                setNotification('Listing Copy is ready. Review it below, then generate Campaign Pack if needed.');
+            }
 
         } catch (error) {
             console.error(error);
@@ -1800,6 +1844,7 @@ const App: React.FC = () => {
         if (!beginCampaignOperation('generateAllVariations', 'Campaign Pack generation')) return;
 
         setIsCampaignLibraryExpanded(true);
+        scrollToOutputWorkspace();
         const missingTabs = DOWNSTREAM_CAMPAIGN_TABS.filter(tab => !currentVersion[tab]);
         if (missingTabs.length === 0) {
             setNotification("Campaign Pack is already ready.");
@@ -1859,6 +1904,8 @@ const App: React.FC = () => {
                 currentOutputId = tab;
                 currentOutputTitle = getCampaignPackOutputTitle(tab);
                 currentOutputCategory = getCampaignOutputCategory(tab);
+                setActiveMainTab(currentOutputCategory);
+                setActiveSubTab(tab);
                 setGeneratingTab(tab);
                 setCampaignPackBatch(prev => ({
                     ...prev,
@@ -1925,7 +1972,9 @@ const App: React.FC = () => {
                 ].join('\n'),
                 usage: aggregateUsage('Generate Campaign Pack', childUsages, 'mixed variant models')
             });
-            setNotification("Campaign Pack processed successfully!");
+            setSelectedOutputCategory('All');
+            focusSelectedOutput();
+            setNotification("Campaign Pack is ready. Review the Campaign Library or download generated outputs.");
         } catch (error) {
             console.error("Error generating Campaign Pack:", error);
             const attemptedCount = currentIndex;
@@ -2417,25 +2466,37 @@ const App: React.FC = () => {
         return 'bg-amber-50 text-amber-800 border-amber-200';
     };
     const campaignStatusSteps = [
-        { label: 'Address', state: address.trim() ? 'complete' : 'missing' },
-        { label: 'Research', state: isResearching ? 'current' : hasFetchedPropertyBrief ? 'complete' : 'missing' },
-        { label: 'Brief', state: isPropertyBriefReady ? 'complete' : hasFetchedPropertyBrief ? 'current' : isManualPropertyBrief ? 'complete' : 'missing' },
-        { label: 'Strategy', state: isAnalyzingStrategy ? 'current' : copyContextAnalysisStatus === 'success' ? 'complete' : 'missing' },
-        { label: 'Features', state: isAnalyzingFeatures ? 'current' : propertyFeatures.trim() ? 'complete' : 'missing' },
-        { label: 'Images', state: isAnalyzingImages ? 'current' : imageAnalysis ? 'complete' : 'missing' },
-        { label: 'Outputs', state: isCampaignOutputsActive ? 'current' : readyOutputCount > 0 ? 'complete' : 'missing' },
-        { label: 'Review', state: allTabsGenerated ? 'complete' : readyOutputCount > 0 ? 'current' : 'missing' },
+        {
+            number: 1,
+            label: 'Property Brief',
+            anchor: 'property-brief',
+            state: isResearching ? 'current' : isPropertyBriefReady ? 'complete' : hasFetchedPropertyBrief || address.trim() ? 'current' : 'missing',
+        },
+        {
+            number: 2,
+            label: 'Agent and Open Home',
+            anchor: 'agent-open-home',
+            state: agentProfile.name || agentProfile.agency || agentProfile.phone || agentProfile.email || openHouse.date || openHouse.time || openHouse.url ? 'complete' : 'missing',
+        },
+        {
+            number: 3,
+            label: 'Campaign Direction',
+            anchor: 'copy-context',
+            state: isAnalyzingStrategy ? 'current' : copyContextAnalysisStatus === 'success' || copyContext.primaryTargetMarket || copyContext.writingStyle.length > 0 ? 'complete' : 'missing',
+        },
+        {
+            number: 4,
+            label: 'Features and Photos',
+            anchor: 'features-photos',
+            state: isAnalyzingFeatures || isAnalyzingImages ? 'current' : propertyFeatures.trim() || imageAnalysis || imageFiles.length > 0 ? 'complete' : 'missing',
+        },
+        {
+            number: 5,
+            label: 'Outputs and Downloads',
+            anchor: 'campaign-outputs',
+            state: isCampaignOutputsActive ? 'current' : readyOutputCount > 0 ? 'complete' : 'missing',
+        },
     ] as const;
-    const campaignStatusAnchors: Record<typeof campaignStatusSteps[number]['label'], string> = {
-        Address: 'property-address',
-        Research: 'property-overview',
-        Brief: 'property-details',
-        Strategy: 'copy-context',
-        Features: 'property-features',
-        Images: 'property-photos',
-        Outputs: 'campaign-outputs',
-        Review: 'campaign-outputs',
-    };
     const campaignStatusLabel = activeCampaignOperations.length > 0
         ? 'Working'
         : readyOutputCount > 0
@@ -2536,18 +2597,25 @@ const App: React.FC = () => {
             };
         }
         if (address.trim()) {
+            if (!hasSelectedAddressForFetch && !hasFetchedPropertyBrief) {
+                return {
+                    label: 'Select an address',
+                    description: fetchDetailsRequirementText,
+                    tone: 'attention' as const,
+                };
+            }
             return {
-                label: 'Ready to fetch details',
-                description: 'Fetch details or enter property information before generating copy.',
+                label: hasSelectedAddressForFetch ? 'Ready to fetch details' : 'Review property brief',
+                description: hasSelectedAddressForFetch ? 'Fetch details to build the property brief.' : 'Review and confirm the property facts before generating copy.',
                 tone: 'idle' as const,
             };
         }
         return {
             label: 'Ready to start',
-            description: 'Enter a property address to begin the private beta workflow.',
+            description: 'Start with a property address and select one of the suggestions.',
             tone: 'idle' as const,
         };
-    }, [isAddressLookupQueued, isSuggesting, isResearching, isAnalyzingStrategy, isAnalyzingFeatures, isAnalyzingImages, isGenerating, isDownloadingAll, generatingTab, campaignPackBatch.status, campaignPackBatch.userMessage, allTabsGenerated, readyOutputCount, missingOutputCount, hasFetchedPropertyBrief, isPropertyBriefReady, propertyBriefStatusLabel, propertyBriefReviewState, address]);
+    }, [isAddressLookupQueued, isSuggesting, isResearching, isAnalyzingStrategy, isAnalyzingFeatures, isAnalyzingImages, isGenerating, isDownloadingAll, generatingTab, campaignPackBatch.status, campaignPackBatch.userMessage, allTabsGenerated, readyOutputCount, missingOutputCount, hasFetchedPropertyBrief, isPropertyBriefReady, propertyBriefStatusLabel, propertyBriefReviewState, address, hasSelectedAddressForFetch]);
     const plainCampaignProgressClass = plainCampaignProgress.tone === 'working'
         ? 'border-amber-200 bg-amber-50 text-amber-900'
         : plainCampaignProgress.tone === 'ready'
@@ -2560,8 +2628,17 @@ const App: React.FC = () => {
         if (state === 'current') return 'border-amber-200 bg-amber-50 text-amber-800';
         return 'border-stone-200 bg-white text-slate-500';
     };
-    const scrollToCampaignStatusStep = (label: typeof campaignStatusSteps[number]['label']) => {
-        document.getElementById(campaignStatusAnchors[label])?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const scrollToCampaignStatusStep = (anchor: string) => {
+        document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    const scrollToOutputWorkspace = () => {
+        outputWorkspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    const focusSelectedOutput = () => {
+        window.setTimeout(() => {
+            selectedOutputCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            generatedOutputRef.current?.focus({ preventScroll: true });
+        }, 80);
     };
     const visualHighlightEntries = useMemo(() => imageAnalysis ? parseVisualHighlights(imageAnalysis) : [], [imageAnalysis]);
 
@@ -2720,7 +2797,7 @@ const App: React.FC = () => {
                         </p>
                     </div>
                     <div className="max-w-md rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-                        Testing notes: if something looks wrong, record the address, action and output type.
+                        Beta feedback: note the property, action and output type when something needs review.
                     </div>
                 </div>
             </header>
@@ -2748,10 +2825,11 @@ const App: React.FC = () => {
                             <button
                                 key={step.label}
                                 type="button"
-                                onClick={() => scrollToCampaignStatusStep(step.label)}
-                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors hover:border-stone-400 ${getCampaignStepClass(step.state)}`}
+                                onClick={() => scrollToCampaignStatusStep(step.anchor)}
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors hover:border-stone-400 ${getCampaignStepClass(step.state)}`}
                                 title={`Scroll to ${step.label}`}
                             >
+                                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/70 text-[10px]">{step.number}</span>
                                 {step.label}
                             </button>
                         ))}
@@ -2760,9 +2838,9 @@ const App: React.FC = () => {
             </div>
 
             <main id="app-main" className="mx-auto max-w-[1800px] px-4 py-4 2xl:px-6">
-                 <div className="grid grid-cols-1 gap-4 h-[calc(100vh-112px)] items-start xl:grid-cols-[300px_minmax(360px,0.95fr)_minmax(540px,1.25fr)] 2xl:grid-cols-[300px_minmax(420px,0.9fr)_minmax(680px,1.35fr)]">
+                 <div className="grid grid-cols-1 gap-4 items-start 2xl:h-[calc(100vh-132px)] 2xl:grid-cols-[minmax(420px,0.95fr)_minmax(700px,1.35fr)_280px]">
 
-                    <div className="h-full xl:h-[calc(100vh-132px)] xl:sticky top-4 flex flex-col">
+                    <div className="order-3 flex flex-col 2xl:sticky 2xl:top-4 2xl:order-3 2xl:h-[calc(100vh-132px)]">
                         <ActiveTaskMonitor imageFiles={imageFiles} isAnalyzing={isAnalyzingImages} />
                         <div className={`mb-3 rounded-lg border p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)] ${plainCampaignProgressClass}`}>
                             <div className="flex items-start gap-2">
@@ -2774,8 +2852,8 @@ const App: React.FC = () => {
                             </div>
                         </div>
                         <div className={`mb-3 p-3 text-xs leading-snug text-slate-600 ${aimUi.card}`}>
-                            <p className="font-semibold text-slate-900">Draft review workflow</p>
-                            <p className="mt-1">For v1, edit final wording in your CRM, email, Word, Google Docs or publishing system.</p>
+                            <p className="font-semibold text-slate-900">Review and export</p>
+                            <p className="mt-1">Final wording can be polished in CRM, email, Word, Google Docs or a publishing system.</p>
                             <p className="mt-1">Downloads include generated outputs only. Missing outputs are not generated silently.</p>
                         </div>
                         <DebugPanel
@@ -2785,16 +2863,16 @@ const App: React.FC = () => {
                         />
                     </div>
 
-                    <div className="space-y-4 h-full xl:overflow-y-auto xl:h-[calc(100vh-132px)] pr-2 pb-8 flex flex-col">
+                    <div className="order-1 flex flex-col space-y-4 pb-8 2xl:order-1 2xl:h-[calc(100vh-132px)] 2xl:overflow-y-auto 2xl:pr-2">
                         <div className={`p-3 ${aimUi.card}`}>
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Brief Builder</p>
-                            <h2 className="mt-0.5 text-lg font-bold text-slate-900">Build and approve the property brief</h2>
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Steps 1-4</p>
+                            <h2 className="mt-0.5 text-lg font-bold text-slate-900">Prepare the property brief</h2>
                             <p className="mt-0.5 max-w-2xl text-xs leading-snug text-slate-600">
-                                Gather the property facts, agent details, audience, features and visual highlights before generating copy.
+                                Confirm the property, review the brief, set the campaign direction, then add feature notes or photos if useful.
                             </p>
                         </div>
 
-                        <Section id="property-address" title="Property Address">
+                        <Section id="property-brief" title="Property Brief">
                             <div className="space-y-4">
                                 <div className="relative">
                                     <input
@@ -2827,6 +2905,13 @@ const App: React.FC = () => {
                                         </div>
                                     )}
                                 </div>
+                                <div className={`rounded-md border px-3 py-2 text-xs leading-snug ${hasSelectedAddressForFetch ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                                    {hasSelectedAddressForFetch
+                                        ? `Selected address: ${selectedAddress?.label}`
+                                        : address.trim()
+                                            ? fetchDetailsRequirementText
+                                            : 'Start typing, then choose one of the suggested addresses.'}
+                                </div>
                                 <div className="flex justify-between items-center">
                                     <div className="flex items-center">
                                          <input
@@ -2842,8 +2927,8 @@ const App: React.FC = () => {
                                     </div>
                                     <button
                                         onClick={handleFetchDetails}
-                                        disabled={isResearching || Boolean(propertyResearchBlocker) || !address.trim()}
-                                        title={getCampaignOperationTitle('propertyResearch', !address.trim() ? 'Enter a property address first.' : undefined)}
+                                        disabled={isResearching || Boolean(propertyResearchBlocker) || !hasSelectedAddressForFetch}
+                                        title={getCampaignOperationTitle('propertyResearch', fetchDetailsDisabledReason)}
                                         className={aimUi.darkButton}
                                     >
                                         {isResearching ? <Spinner className="mr-2" /> : <IconFileText className="mr-2"/>}
@@ -2854,8 +2939,12 @@ const App: React.FC = () => {
                             </div>
                         </Section>
 
-                        <Section title="Agent Profile">
+                        <Section id="agent-open-home" title="Agent and Open Home (optional)">
                             <div className="space-y-3">
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-800">Agent details</p>
+                                    <p className="mt-0.5 text-xs leading-snug text-slate-500">Add contact details only if they should appear in generated copy or downloads.</p>
+                                </div>
                                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Agent Name</label>
@@ -2932,12 +3021,11 @@ const App: React.FC = () => {
                                         </label>
                                     </div>
                                 </div>
-                            </div>
-                        </Section>
-
-                        <Section title="Open House Details">
-                            <div className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="border-t border-stone-100 pt-3">
+                                    <p className="text-sm font-semibold text-slate-800">Open home</p>
+                                    <p className="mt-0.5 text-xs leading-snug text-slate-500">Optional event details for open-home copy.</p>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
                                         <input
@@ -2969,11 +3057,10 @@ const App: React.FC = () => {
                                         className={aimUi.input}
                                     />
                                 </div>
-                                <p className="text-xs text-slate-500">Provide these to generate specific Open House event collateral.</p>
                             </div>
                         </Section>
 
-                        <Section id="property-details" title="Property Details" isActive={isResearching} activeLabel="Fetching...">
+                        <Section id="property-details" title="Review Brief" isActive={isResearching} activeLabel="Fetching...">
                             <div className={`mb-4 rounded-md border p-3 ${isPropertyBriefReady ? 'border-emerald-200 bg-emerald-50' : hasFetchedPropertyBrief ? 'border-amber-200 bg-amber-50' : 'border-stone-200 bg-stone-50'}`}>
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                     <div>
@@ -3012,8 +3099,8 @@ const App: React.FC = () => {
                                         <button
                                             type="button"
                                             onClick={handleFetchDetails}
-                                            disabled={isResearching || Boolean(propertyResearchBlocker) || !address.trim()}
-                                            title={getCampaignOperationTitle('propertyResearch', !address.trim() ? 'Enter a property address first.' : undefined)}
+                                            disabled={isResearching || Boolean(propertyResearchBlocker) || !hasSelectedAddressForFetch}
+                                            title={getCampaignOperationTitle('propertyResearch', fetchDetailsDisabledReason)}
                                             className={compactActionButtonClass}
                                         >
                                             Refetch
@@ -3023,12 +3110,19 @@ const App: React.FC = () => {
                             </div>
                             {isFetchComplete && address && (
                                 <div className="mb-4 rounded-md border border-stone-200 bg-stone-50 p-3">
-                                    <p className="font-semibold text-slate-800 text-sm">{address}</p>
+                                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Confirmed address</p>
+                                    <p className="mt-1 font-semibold text-slate-800 text-sm">{address}</p>
+                                    {(priceGuide || lastSoldDetails) && (
+                                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                                            {priceGuide && <span className={aimUi.chipNeutral}>Price guide: {priceGuide}</span>}
+                                            {lastSoldDetails && <span className={aimUi.chipNeutral}>Last sold: {lastSoldDetails}</span>}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
                             <div className="mb-6 border-b border-stone-200 pb-4">
-                                    <h4 className="font-semibold text-slate-700 mb-2">Additional Property Features:</h4>
+                                    <h4 className="font-semibold text-slate-700 mb-2">Fetched property facts and features</h4>
                                     {isResearching ? (
                                         <div className="flex justify-center items-center p-4"><Spinner /></div>
                                     ) : keyFeatures && keyFeatures.length > 0 ? (
@@ -3056,7 +3150,7 @@ const App: React.FC = () => {
                                     ) : (
                                         <p className="text-sm text-slate-500 italic">
                                             {researchData === null
-                                                ? "Additional features discovered from online research will be listed here."
+                                                ? "Fetched property facts and features will appear here after Fetch Details."
                                                 : "No additional features found."
                                             }
                                         </p>
@@ -3078,7 +3172,7 @@ const App: React.FC = () => {
 
                         <Section
                             id="property-overview"
-                            title="Property Overview"
+                            title="Property Brief: Overview"
                             isActive={isResearching}
                             activeLabel="Fetching..."
                             rightElement={researchData && (
@@ -3124,7 +3218,7 @@ const App: React.FC = () => {
                          </Section>
 
                          <Section
-                             title="Suburb & Area Profile"
+                             title="Property Brief: Suburb & Area Profile"
                              isActive={isResearching}
                              activeLabel="Fetching..."
                              rightElement={profileData && (
@@ -3213,8 +3307,11 @@ const App: React.FC = () => {
                             }
                         >
                             <div className="space-y-4">
+                                <p className="text-sm leading-relaxed text-slate-600">
+                                    Set the audience, tone and copy lens before generating drafts.
+                                </p>
                                 <div>
-                                    <h3 className="block text-sm font-medium text-slate-700 mb-1">Target Market</h3>
+                                    <h3 className="block text-sm font-medium text-slate-700 mb-1">Target market</h3>
                                     <div className="grid grid-cols-2 gap-4">
                                         <SelectInput
                                             label="Primary"
@@ -3233,7 +3330,7 @@ const App: React.FC = () => {
                                 </div>
 
                                 <div>
-                                    <h3 className="block text-sm font-medium text-slate-700 mb-2">Writing Style <span className="text-xs font-normal text-slate-500">(Max 2)</span></h3>
+                                    <h3 className="block text-sm font-medium text-slate-700 mb-2">Writing style <span className="text-xs font-normal text-slate-500">(Max 2)</span></h3>
                                     <div className="flex flex-wrap gap-2">
                                         {WRITING_STYLES.map(style => {
                                             const isSelected = copyContext.writingStyle.includes(style);
@@ -3268,7 +3365,7 @@ const App: React.FC = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Things to avoid / What not to write</label>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Avoid in copy</label>
                                     <textarea
                                         rows={2}
                                         value={copyContext.thingsToAvoid}
@@ -3284,8 +3381,8 @@ const App: React.FC = () => {
                         </Section>
 
                         <Section
-                            id="property-features"
-                            title="Property Features"
+                            id="features-photos"
+                            title="Key Selling Points"
                             isActive={isAnalyzingFeatures}
                             activeLabel="Analyzing..."
                             showActiveChip={false}
@@ -3303,11 +3400,14 @@ const App: React.FC = () => {
                                 </div>
                             }
                         >
+                            <p className="mb-2 text-sm leading-relaxed text-slate-600">
+                                Use this as the buyer-facing feature focus for the generated copy.
+                            </p>
                             <textarea
                                 rows={5}
                                 value={propertyFeatures}
                                 onChange={(e) => setPropertyFeatures(e.target.value)}
-                                placeholder="List features, lifestyle aspects, upgrades..."
+                                placeholder="List selling points, upgrades, lifestyle notes and must-mention details..."
                                 className={aimUi.input}
                             />
                             {propertyFeaturesAnalysisError && (
@@ -3395,10 +3495,10 @@ const App: React.FC = () => {
                         </Section>
                     </div>
 
-                    <div className="h-full flex flex-col space-y-4 overflow-y-auto pr-2">
+                    <div ref={outputWorkspaceRef} className="order-2 flex flex-col space-y-4 pb-8 2xl:order-2 2xl:h-[calc(100vh-132px)] 2xl:overflow-y-auto 2xl:pr-2">
                          <div className={`p-3 ${aimUi.card}`}>
-                             <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Output Workspace</p>
-                             <h2 className="mt-0.5 text-lg font-bold text-slate-900">Write the listing and prepare the campaign</h2>
+                             <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Step 5</p>
+                             <h2 className="mt-0.5 text-lg font-bold text-slate-900">Generate outputs and downloads</h2>
                              <p className="mt-0.5 max-w-2xl text-xs leading-snug text-slate-600">
                                  Listing Copy starts the campaign. Campaign Pack adapts it for the remaining channels.
                              </p>
@@ -3541,6 +3641,27 @@ const App: React.FC = () => {
                                              );
                                          })}
                                      </div>
+                                     {campaignPackBatch.status === 'generating' && (
+                                         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
+                                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                 <div>
+                                                     <p className="text-sm font-semibold text-amber-950">Generating Campaign Pack</p>
+                                                     <p className="mt-1 max-w-3xl text-xs leading-relaxed text-amber-900">
+                                                         {campaignPackBatch.currentOutputTitle
+                                                            ? `Creating ${campaignPackBatch.currentOutputTitle}${campaignPackBatch.currentCategory ? ` for ${campaignPackBatch.currentCategory}` : ''}.`
+                                                            : 'Preparing the next campaign output.'}
+                                                     </p>
+                                                     <p className="mt-1 text-[11px] font-semibold text-amber-800">
+                                                         {campaignPackBatch.currentIndex && campaignPackBatch.startedCount
+                                                            ? `${campaignPackBatch.currentIndex}/${campaignPackBatch.startedCount} in progress`
+                                                            : 'Generation in progress'}
+                                                         {` · ${campaignPackBatch.succeededOutputIds.length} ready · ${campaignPackBatch.remainingOutputIds.length} remaining`}
+                                                     </p>
+                                                 </div>
+                                                 <IconLoader className="h-5 w-5 shrink-0 animate-spin text-amber-800" />
+                                             </div>
+                                         </div>
+                                     )}
                                      {campaignPackBatch.status === 'partial_failed' && campaignPackBatch.userMessage && (
                                          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
                                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -3738,7 +3859,7 @@ const App: React.FC = () => {
                                      </div>
                                  )}
 
-                                 <div className="rounded-lg border border-stone-200 bg-white">
+                                 <div ref={selectedOutputCardRef} id="selected-output-card" className="rounded-lg border border-stone-200 bg-white scroll-mt-24">
                                      <div className="border-b border-stone-100 p-4">
                                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                              <div className="flex flex-wrap items-center gap-2">
@@ -3758,6 +3879,16 @@ const App: React.FC = () => {
                                      </div>
 
                                      <div className="p-4">
+                                         {currentCopy && activeSubTab === LISTING_COPY_TAB && (
+                                             <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                                                 <span className="font-semibold">Listing Copy is ready.</span> Review the draft here, then generate Campaign Pack if you need channel outputs.
+                                             </div>
+                                         )}
+                                         {currentCopy && activeSubTab !== LISTING_COPY_TAB && isCampaignPackReady && (
+                                             <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                                                 <span className="font-semibold">Campaign Pack is ready.</span> Use Campaign Library filters or download options when ready.
+                                             </div>
+                                         )}
                                          {generatingTab && generatingTab === activeSubTab ? (
                                              <div className="h-64 flex flex-col items-center justify-center rounded-lg border border-dashed border-stone-300 bg-stone-50">
                                                  <Spinner className="w-8 h-8 text-red-600 mb-3" />
@@ -3783,6 +3914,7 @@ const App: React.FC = () => {
                                                      <p id="contact-card-helper" className="text-[11px] leading-snug text-slate-500">Include the agent profile/contact details with this output.</p>
                                                  </div>
                                                  <div
+                                                    ref={generatedOutputRef}
                                                     role="region"
                                                     aria-label={`${getOutputDisplayLabel(activeSubTab)} generated output`}
                                                     tabIndex={0}

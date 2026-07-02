@@ -22,6 +22,8 @@ The Campaign Pack error-handling pass is documented in `docs/campaign-pack-error
 
 The secondary beta-access-code pass is documented in `docs/beta-access-codes-001.md`. `BETA_ACCESS_CODE` remains supported, and optional `BETA_ACCESS_CODES` can be configured in deployment environment variables for additional private beta testers without committing code values.
 
+The laptop-first flow pass is documented in `docs/laptop-first-flow-001.md`. It requires a selected address suggestion before Fetch Details, introduces the five-step Property Brief to Outputs workflow, collapses the layout to a main stacked flow on laptop, demotes beta diagnostics, groups fetched context under Property Brief, and scrolls/focuses generated outputs after generation.
+
 The floating general `AI Assistant` chat surface is disabled for the private beta. The decision and deferred contextual-assistant/export-settings ideas are recorded in `docs/chat-assistant-disabled-001.md`.
 
 ## Project Overview
@@ -65,6 +67,7 @@ Unlike generic AI writing tools, this application is context-aware, incorporatin
 
 ### 6. Workflow & Export
 *   **Campaign Status:** Plain-language progress and output state labels for trusted beta testers.
+*   **Laptop-First Flow:** A five-step workflow anchors Property Brief, Agent and Open Home, Campaign Direction, Features and Photos, and Outputs and Downloads. Fetch Details requires a selected address suggestion before property research starts.
 *   **Campaign Build Log:** Collapsed beta diagnostics with public-facing step names plus expandable technical details, token usage, token-only cost estimates, and recoverable Campaign Pack partial-failure detail.
 *   **Export Options:** Current output, current category, and full campaign document downloads in Word-compatible `.doc`, plain text, and print/PDF pathways.
 *   **Generated-Only Downloads:** Download actions export generated outputs only. Missing outputs are not generated silently.

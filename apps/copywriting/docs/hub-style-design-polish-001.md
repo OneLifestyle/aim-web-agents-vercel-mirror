@@ -112,6 +112,8 @@ No package, shared design system, dependency, Tailwind migration, shadcn migrati
 
 `WEBAGENTS-COPYWRITING-PRE-KEVIN-UX-FIXES-001` fixed post-polish tester issues by normalising Additional Property Features bullet display, removing duplicate Listing Copy generation buttons, making the primary Listing Copy action red, demoting Review Listing Copy to a ready state, adding a same-input regenerate guard, and warning before Listing Copy regeneration clears Campaign Pack outputs.
 
+`WEBAGENTS-COPYWRITING-LAPTOP-FIRST-FLOW-001` followed Kevin's laptop test by demoting diagnostics below the main workflow on laptop, reserving the three-column layout for very wide desktop, requiring selected address suggestions before Fetch Details, and focusing generated outputs after Listing Copy or Campaign Pack generation.
+
 ## Internal Review
 
 Scope Auditor: no Hub, auth, billing, storage, provider-router, provider integration, environment file, dependency, database, pricing, SEO, AI search, or Campaign Blueprint implementation was added.

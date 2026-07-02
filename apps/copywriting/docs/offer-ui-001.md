@@ -58,6 +58,8 @@ Follow-up note: `WEBAGENTS-COPYWRITING-WORKSPACE-DENSITY-VISUALS-001` compacted 
 
 Follow-up note: `WEBAGENTS-COPYWRITING-PRE-KEVIN-UX-FIXES-001` made the Listing Copy offer card the only primary pre-generation Listing Copy action, changed that action to the AIM red primary style, removed the redundant Review Listing Copy button, added a same-input regenerate guard, and warns before regeneration clears existing Campaign Pack outputs.
 
+Follow-up note: `WEBAGENTS-COPYWRITING-LAPTOP-FIRST-FLOW-001` keeps Listing Copy and Campaign Pack as the output actions but connects them more directly to the generated output area through scroll/focus behavior and in-workspace Campaign Pack progress.
+
 ## Preserved Behavior
 
 - Beta access gate remains on the existing path.

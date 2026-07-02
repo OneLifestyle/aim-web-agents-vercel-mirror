@@ -93,6 +93,8 @@ Follow-up note: `WEBAGENTS-COPYWRITING-WORKSPACE-DENSITY-VISUALS-001` tightened 
 
 Follow-up note: `WEBAGENTS-COPYWRITING-PRE-KEVIN-UX-FIXES-001` removed duplicate pre-generation Listing Copy buttons from Campaign Library and the selected Listing Copy empty state. The Listing Copy offer card remains the single primary pre-generation entry point, while downstream on-demand generation remains available for campaign outputs.
 
+Follow-up note: `WEBAGENTS-COPYWRITING-LAPTOP-FIRST-FLOW-001` preserved the one-page workspace but changed the visible navigation to five product steps, required a selected address suggestion before Fetch Details, stacked the main workflow before diagnostics on laptop, compacted Property Brief context, and scrolls/focuses generated outputs after generation.
+
 ## Campaign Pack Behaviour
 
 Campaign Pack continues to wrap the existing downstream generation behavior:
