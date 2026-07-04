@@ -40,6 +40,12 @@ This is the current orchestration recommendation. Earlier repo-local planning pl
 5. Video Web: later workstation using existing web source and old Vision Ken Burns logic as source mines.
 6. Measure Web: mostly editing, cleanup, report, export, and Hub packaging after mobile capture.
 
+## App-Scoped Worktree Convention
+
+Focused Codex projects or Git worktrees may be used for one app-specific source-lift lane at a time, targeting a single `apps/<agent>` folder. Final imported app code must land as ordinary files in the root `aim-web-agents` monorepo, not as permanent nested Git repositories inside `apps/*`.
+
+See [App-Scoped Source-Lift Worktrees](../workflow/app-scoped-source-lift-worktrees.md) for the working convention.
+
 ## Cross-App Gates
 
 Every web agent should pass these gates before import, integration, or public launch:

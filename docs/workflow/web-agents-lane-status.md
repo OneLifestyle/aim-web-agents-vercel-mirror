@@ -60,6 +60,18 @@ Appraisal Web remains a strong source-lift candidate after or alongside Photo We
 5. Source-mine Video Web later from existing web source and old Vision Ken Burns source.
 6. Source-mine Measure Web last as editing, cleanup, report/export, and Hub packaging after mobile capture.
 
+## App-Scoped Lanes
+
+The next app-specific lanes are:
+
+1. Copywriting app-scoped import/readiness lane.
+2. Photo AI source-lift lane.
+3. Appraisal source-lift lane after or alongside Photo AI.
+
+These lanes may use focused Codex projects or Git worktrees scoped to one `apps/<agent>` folder. Final app code must land as ordinary files in the root monorepo, with no permanent nested Git repositories inside `apps/*`.
+
+See [App-Scoped Source-Lift Worktrees](app-scoped-source-lift-worktrees.md).
+
 ## Explicit Non-Goals
 
 Do not import all existing web apps into `aim-web-agents` immediately.
