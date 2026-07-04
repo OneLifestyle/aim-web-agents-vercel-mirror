@@ -1,19 +1,21 @@
-# Appraisal Web First New Source-Lift Candidate
+# Appraisal Web Source-Lift Candidate
 
-Status: first new source-lift candidate after Copywriting.
+Status: strong source-lift candidate, but no longer the sole next recommendation.
+
+This document originally recorded Appraisal Web as the first new source-lift candidate after Copywriting. `WEBAGENTS-SOURCE-LIFT-PLAN-001` keeps that context but updates the current orchestration recommendation: Photo Web is likely next, and Appraisal Web should follow after or run alongside Photo Web as a private/internal evidence workstation.
 
 ## Position
 
-Appraisal Web remains the next likely new source-lift candidate after Copywriting Web.
+Appraisal Web remains a strong source-lift candidate after Copywriting Web, but it should not be treated as the next public production lane.
 
 It should not be the first app imported into `aim-web-agents`.
 
 The safer working path is:
 
-1. Copywriting Web import into `apps/copywriting`.
-2. Copywriting Web runtime proof from the monorepo location.
-3. Appraisal Web standalone source-mine audit and hardening.
-4. Appraisal Web import later, only after risk guardrails and a frozen baseline.
+1. Keep Copywriting Web frozen as the standalone private-beta baseline until separately approved.
+2. Source-mine Photo Web as the likely next AI upgrade and batch-production workstation.
+3. Source-mine Appraisal Web after or alongside Photo Web, private/internal first.
+4. Import Appraisal Web later only after risk guardrails, human-review rules, and a frozen baseline are in place.
 
 ## Why It Comes After Copywriting
 
@@ -24,6 +26,8 @@ Appraisal Web carries more product and compliance risk than Copywriting Web beca
 - attribution and source quality matter;
 - it must avoid AVM framing;
 - it must avoid licensed Australian property data dependencies unless those rights are explicit;
+- it must not scrape portals;
+- human review is mandatory;
 - it must remain private/internal first.
 
 ## Source-Mine Scope
@@ -39,6 +43,9 @@ Minimum audit:
 - confirm provider keys are protected;
 - audit evidence, citations, and source quality;
 - remove or block valuation-advice and AVM framing;
+- block portal scraping;
+- avoid licensed Australian property-data dependencies unless rights are explicit outside this repo;
+- require human review;
 - add or confirm private/internal preview protection;
 - correct model and cost assumptions;
 - tag or freeze a hardened standalone baseline.

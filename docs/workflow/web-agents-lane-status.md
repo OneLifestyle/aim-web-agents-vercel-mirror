@@ -39,22 +39,26 @@ Web Agents may create, edit, review, preview, or prepare assets. Durable propert
 
 ## Current Baseline
 
-Copywriting Web is the first likely import candidate for this monorepo. It is expected to land later in:
+Copywriting Web is already operational as a standalone private-beta baseline and remains frozen until a separate task approves import or maintenance. Its future import target is likely:
 
 ```text
 apps/copywriting
 ```
 
-Copywriting Web is already complete as a frozen standalone private-beta baseline. It is not yet imported into `aim-web-agents`.
+Do not import or expand Copywriting Web in this repo without an explicit task.
 
-Appraisal Web remains the next likely new source-lift candidate after Copywriting. It should not be the first proof of the Web Agents monorepo structure because it is evidence-sensitive and carries valuation-adjacent risk.
+Photo Web is the current likely next source-lift candidate because AI photo upgrades, batch production, before/after review, and output-integrity workflows are more natural on web than on the initial mobile Photo Agent.
+
+Appraisal Web remains a strong source-lift candidate after or alongside Photo Web. It should stay private/internal first because it is evidence-sensitive and carries valuation-adjacent risk.
 
 ## Working Sequence
 
-1. Copywriting Web import into `apps/copywriting`.
-2. Copywriting Web runtime proof from the monorepo location.
-3. Appraisal Web standalone source-mine audit and hardening.
-4. Appraisal Web import later, only after risk guardrails and a frozen baseline.
+1. Keep Copywriting Web frozen as the standalone private-beta baseline until separately approved.
+2. Source-mine Photo Web as the likely next AI upgrade and batch-production workstation.
+3. Source-mine Appraisal Web after or alongside Photo Web, private/internal first.
+4. Source-mine Website Web as the web-first property site builder.
+5. Source-mine Video Web later from existing web source and old Vision Ken Burns source.
+6. Source-mine Measure Web last as editing, cleanup, report/export, and Hub packaging after mobile capture.
 
 ## Explicit Non-Goals
 
@@ -64,8 +68,10 @@ Do not build a giant shared root stack first.
 
 Do not use the Copywriting import to add Clerk, Hub, Stripe, Firebase, Cloudflare, OpenRouter, Vercel AI SDK, shared packages, production-domain work, auth, billing, provider routes, database integration, or secrets.
 
-Do not use Appraisal Web as the first proof of the monorepo shape.
+Do not implement provider routing or shared AIM model-router integration before each app has a cost and model-routing review.
+
+Do not use Appraisal Web as a public or consumer-facing valuation product.
 
 ## Next Recommended Task
 
-Create the Copywriting Web monorepo landing task for `apps/copywriting`, limited to source import, local run proof, and documentation of any monorepo-specific adjustments. That task should not add new platform integrations or shared package abstractions.
+Create the Photo Web source-mine and workstation-planning task. It should identify the source location, current working state, batch-production needs, before/after review model, output-integrity guardrails, provider benchmark candidates, and private-beta hardening path. It should not implement provider routing or import source without explicit approval.

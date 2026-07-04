@@ -12,14 +12,29 @@ Do not import every existing web app immediately. Do not build a large shared ro
 
 Each app should first be made understandable, runnable, protected, and frozen in its current source location. Only then should the team decide whether to import it into `aim-web-agents`.
 
-## Recommended Sequence
+## Current Orchestration Recommendation
 
-1. Copywriting Web, first import candidate into `apps/copywriting`.
-2. Appraisal Web, first new source-lift candidate after Copywriting.
-3. Photo Web, later AI upgrade and batch-production workstation.
-4. Website Agent Web, web-first by nature, likely from Vercel or v0 source.
+This is the current recommendation from `WEBAGENTS-SOURCE-LIFT-PLAN-001`. Earlier repo-local planning placed Appraisal Web before Photo Web. Do not erase that context, but use this order for the next source-lift lane unless `aim-docs` or a later task supersedes it.
+
+1. Copywriting Web, already operational as a standalone private-beta baseline and frozen until separately approved.
+2. Photo Web, likely next AI upgrade and batch-production workstation.
+3. Appraisal Web, private/internal evidence and report workstation after or alongside Photo Web, with strict appraisal guardrails.
+4. Website Web, web-first property site builder, likely from Vercel or v0 source.
 5. Video Web, later, using existing web source and old Vision Ken Burns logic as source mines.
-6. Measure Web, last, mostly editing, export, and report layer after mobile capture.
+6. Measure Web, likely last, mostly editing, cleanup, export, report, and Hub packaging after mobile capture.
+
+## Earlier Repo-Local Sequence
+
+Previous planning docs recommended:
+
+1. Copywriting Web.
+2. Appraisal Web.
+3. Photo Web.
+4. Website Agent Web.
+5. Video Web.
+6. Measure Web.
+
+That order is retained as historical context. The current orchestration recommendation moves Photo Web ahead of Appraisal Web because mobile Photo Agent should focus first on capture/import/adjust/export, while AI upgrades and batch production are more natural on web.
 
 ## Import Readiness Gate
 
@@ -38,17 +53,23 @@ Before import, confirm:
 - the standalone baseline has been tagged or otherwise frozen;
 - the import task is explicit and scoped.
 
-## Current Import Candidate
+## Copywriting Position
 
-Copywriting Web is the first real import candidate.
+Copywriting Web is already operational as a standalone private-beta baseline and remains frozen until a separate task explicitly approves import or maintenance.
 
-The first Copywriting import task should be a monorepo landing task only. It should not add Clerk, Hub integration, Stripe, Firebase, Cloudflare, OpenRouter, Vercel AI SDK, shared packages, production-domain work, auth, billing, provider routes, database integrations, environment files, or secrets.
+Future import target is likely `apps/copywriting`. The first Copywriting import or maintenance task should be a monorepo landing task only. It should not add Clerk, Hub integration, Stripe, Firebase, Cloudflare, OpenRouter, Vercel AI SDK, shared packages, production-domain work, auth, billing, provider routes, database integrations, environment files, or secrets.
 
-## First New Source-Lift Candidate
+The Gemini/direct grounded research path must remain valid until an OpenRouter or Vercel AI SDK replacement is proven.
 
-Appraisal Web is the first new source-lift candidate after Copywriting.
+## Photo Position
 
-Appraisal Web must remain standalone during source mining and hardening. It should be imported later only after risk guardrails are documented, valuation-adjacent framing is removed, source and attribution quality are clear, and a frozen baseline exists.
+Photo Web is the likely next source-lift candidate. It should become an AI upgrade and batch-production workstation that can eventually receive photos from upload, Hub, or future Photo Agent mobile capture.
+
+Photo provider benchmarking can include OpenRouter Image API, Reve, OpenAI image editing, Gemini/Nano Banana, FLUX, Adobe/Firefly, and Stability later. Do not implement provider routing yet.
+
+## Appraisal Position
+
+Appraisal Web remains a strong source-lift candidate and may run after or alongside Photo Web. It must remain private/internal during source mining and hardening. It should be imported later only after risk guardrails are documented, AVM and valuation-adjacent framing are blocked, source and attribution quality are clear, human review is mandatory, portal scraping is blocked, and a frozen baseline exists.
 
 ## Blocked Platform Moves
 

@@ -27,6 +27,13 @@ Blocked framing:
 - public valuation authority;
 - replacement for licensed professional judgement.
 
+Blocked data behavior:
+
+- portal scraping;
+- unapproved licensed Australian property-data dependencies;
+- hidden evidence sources;
+- consumer-facing automated valuation claims.
+
 ## Evidence And Attribution
 
 Appraisal outputs should make source quality visible.
@@ -46,6 +53,8 @@ Future hardening should record:
 Do not add licensed Australian property data dependencies inside `aim-web-agents` unless rights, contracts, and usage boundaries are explicit outside this repo.
 
 The first Appraisal source-lift should prefer user-supplied, public, or already-authorized internal evidence, with clear attribution and limitations.
+
+Human review is mandatory. Appraisal Web may prepare evidence notes and report drafts, but it must not publish or present outputs as final valuation advice without professional review.
 
 ## Private/Internal First
 

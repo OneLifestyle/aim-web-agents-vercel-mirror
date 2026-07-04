@@ -1,6 +1,6 @@
 # Copywriting Web Import Candidate
 
-Status: first likely import candidate.
+Status: standalone frozen private-beta baseline until separately approved.
 
 Target path:
 
@@ -10,7 +10,7 @@ apps/copywriting
 
 ## Frozen Standalone Baseline
 
-Copywriting Web is already complete as a frozen standalone private-beta baseline.
+Copywriting Web is already complete as a frozen standalone private-beta baseline. Do not import, expand, or replace it in this repo unless a later task explicitly approves that work.
 
 Record of current baseline:
 
@@ -21,13 +21,15 @@ Record of current baseline:
 - has private-beta token and cost display;
 - has been merged, tagged, and recorded;
 - is not public yet;
-- is not yet imported into `aim-web-agents`.
+- no new import, expansion, or maintenance is approved by this plan.
 
 ## Import Position
 
-Copywriting Web should become the first real import candidate for `aim-web-agents`.
+Copywriting Web may become the first real import candidate for `aim-web-agents`, but `WEBAGENTS-SOURCE-LIFT-PLAN-001` records it as frozen for now.
 
 The import should prove that a real working web agent can live in this monorepo without prematurely turning the repo into a platform rewrite.
+
+The Gemini/direct grounded research path must remain valid until an OpenRouter or Vercel AI SDK replacement is proven.
 
 ## Import Scope
 
@@ -61,3 +63,15 @@ Blocked scope:
 ## Runtime Proof
 
 After import, the next proof should be that Copywriting Web runs from `apps/copywriting` with the same private-beta baseline behavior. Any later integration work should be split into separate explicit tasks.
+
+## Future Hub Relationship
+
+Copywriting output may later become:
+
+- copy asset;
+- source/citation record;
+- job record;
+- timeline event;
+- possible Asset Inbox item.
+
+Hub integration is not approved by this document.

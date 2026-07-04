@@ -15,7 +15,7 @@ Current baseline:
 - has private-beta token and cost display;
 - has been merged, tagged, and recorded;
 - is not public yet;
-- is not yet imported into `aim-web-agents`.
+- no new import, expansion, or maintenance is approved by this plan.
 
 Copywriting Web is the first likely import candidate into:
 
@@ -25,7 +25,11 @@ apps/copywriting
 
 Do not import it into `aim-web-agents` without an explicit import task.
 
+Do not expand any repo-local Copywriting material without an explicit task.
+
 Do not move it into AIM Hub during this lane.
+
+Keep the Gemini/direct grounded research path valid until an OpenRouter or Vercel AI SDK replacement is proven.
 
 ## Workflow
 
@@ -56,3 +60,5 @@ The correct long-term pattern is:
 ```text
 tool output -> save to Hub property -> Hub records job/asset/ledger/timeline -> other tools retrieve from Hub
 ```
+
+Future Hub records may include copy assets, source/citation records, job records, timeline events, and possibly Asset Inbox items.

@@ -15,7 +15,9 @@ Use this pattern for each existing working web app before deciding whether to im
 7. Correct model and cost assumptions.
 8. Deploy to Vercel preview if safe.
 9. Tag or freeze the baseline.
-10. Only then decide whether to import into `aim-web-agents`.
+10. Document the private-beta hardening path.
+11. Complete cost and model-routing review before shared AIM model-router integration.
+12. Only then decide whether to import into `aim-web-agents`.
 
 ## Import Rule
 
@@ -40,3 +42,5 @@ Shared packages, auth, Hub integration, provider routing, billing, databases, an
 Do not commit provider keys, beta tokens, credentials, private configuration, session data, or environment files.
 
 Provider calls that require secrets should run server-side. Preview and beta gates should protect unfinished or private work.
+
+Provider benchmarking does not approve provider routing. Clerk, Stripe, OpenRouter, Hub integration, provider routing, shared AIM model-router integration, live API routes, environment files, and secrets require separate explicit tasks.

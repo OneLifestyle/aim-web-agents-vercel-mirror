@@ -2,7 +2,7 @@
 
 `aim-web-agents` is the future monorepo for Real Estate AIM web-based agent and tool surfaces.
 
-Status: scaffold only. No product code has been created in this repository yet.
+Status: source-lift planning and web-agent workstation lane. Product code, provider integrations, environment files, and shared platform abstractions should be added only through explicit scoped tasks.
 
 Current lane: `WEB AGENTS`
 
@@ -12,11 +12,17 @@ If anything in this repository conflicts with `aim-docs`, `aim-docs` wins.
 
 ## Purpose
 
-This repository is intended for web-first agent surfaces, prototype lanes, and reusable web agent packages. It is expected to hold future web tools such as Copywriting, Appraisal, Website Agent, Photo AI, Video, Measure, and related web-first interfaces.
+This repository is intended for web-first production workstations, prototype lanes, source-lift planning, and reusable web agent packages. It is expected to hold future web tools such as Copywriting, Photo, Appraisal, Website, Video, Measure, and related web-first interfaces.
 
-The first intended app lane is Copywriting.
+The operating model is:
 
-Copywriting Web is the first likely import candidate into `apps/copywriting`. Appraisal Web is the first likely new source-lift candidate after Copywriting, but it should not be the first proof of the monorepo structure.
+```text
+Mobile captures the field reality.
+Hub organises the asset memory.
+Web workstations turn that memory into campaign outputs.
+```
+
+Copywriting Web is already operational as a standalone private-beta baseline and remains frozen until a separate task approves import or maintenance. Photo Web is the current likely next source-lift candidate for AI upgrade and batch-production workstation planning. Appraisal Web remains a strong candidate, but should stay private/internal first with strict evidence and appraisal guardrails.
 
 ## Relationship To Hub
 
@@ -31,17 +37,16 @@ Web agents should generate, edit, and preview outputs. Durable records and cross
 This repository currently contains:
 
 - repository instructions;
-- placeholder app folders;
-- placeholder package folders;
 - architecture, workflow, and source-lift planning documentation.
 
-This repository currently does not contain:
+This planning lane does not approve:
 
-- product application code;
-- a Next.js app;
-- package dependencies;
 - provider integrations;
-- API routes;
+- live API routes;
+- Clerk;
+- Stripe;
+- OpenRouter;
+- Hub save/retrieve integration;
 - environment files;
 - secrets.
 
@@ -55,11 +60,15 @@ Start with:
 
 - `docs/architecture/web-agents-architecture.md`
 - `docs/architecture/hub-boundary.md`
+- `docs/architecture/web-agents-vs-hub-boundary.md`
+- `docs/architecture/web-agent-risk-guardrails.md`
 - `docs/workflow/web-agents-lane-status.md`
 - `docs/workflow/source-lift-and-import-sequence.md`
 - `docs/workflow/copywriting-first-lane.md`
 - `docs/workflow/backlog.md`
 - `docs/source-of-truth/source-of-truth-sync-note.md`
 - `docs/source-of-truth/web-agents-source-context.md`
+- `docs/source-lift/web-agents-source-lift-plan.md`
+- `docs/source-lift/app-source-inventory.md`
 - `docs/source-lift/source-lift-pattern.md`
 - `docs/source-lift/source-app-inventory.md`
