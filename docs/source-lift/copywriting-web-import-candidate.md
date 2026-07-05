@@ -1,16 +1,22 @@
-# Copywriting Web Import Candidate
+# Copywriting Web App-Scoped Lane
 
-Status: standalone frozen private-beta baseline until separately approved.
+Status: active app-scoped product lane; operational and Vercel-hosted.
 
-Target path:
+Folder:
 
 ```text
 apps/copywriting
 ```
 
-## Frozen Standalone Baseline
+Codex project/worktree:
 
-Copywriting Web is already complete as a frozen standalone private-beta baseline. Do not import, expand, or replace it in this repo unless a later task explicitly approves that work.
+```text
+aim-web-agents-copywriting
+```
+
+## Current Baseline
+
+Copywriting Web exists in `apps/copywriting` and is developed through the `aim-web-agents-copywriting` app-scoped project/worktree. Do not run Copywriting import/readiness work or app implementation work from the root lane unless a later task explicitly approves that work.
 
 Record of current baseline:
 
@@ -21,26 +27,25 @@ Record of current baseline:
 - has private-beta token and cost display;
 - has been merged, tagged, and recorded;
 - is not public yet;
-- no new import, expansion, or maintenance is approved by this plan.
+- no root-level import/readiness or app implementation work is approved by this plan.
 
-## Import Position
+## Root Position
 
-Copywriting Web may become the first real import candidate for `aim-web-agents`, but `WEBAGENTS-SOURCE-LIFT-PLAN-001` records it as frozen for now.
+Copywriting Web has moved out of pending root import-candidate status and into an active app-scoped product lane.
 
-The import should prove that a real working web agent can live in this monorepo without prematurely turning the repo into a platform rewrite.
+Root `aim-web-agents` owns boundary, shared architecture, and integration planning only unless an explicit task expands scope.
 
 The Gemini/direct grounded research path must remain valid until an OpenRouter or Vercel AI SDK replacement is proven.
 
-## Import Scope
+## Root Scope
 
-The first import task should be a monorepo landing task only.
+Allowed root scope:
 
-Allowed scope:
-
-- import the frozen standalone Copywriting Web source into `apps/copywriting`;
-- preserve baseline behavior;
-- prove it runs from the monorepo location;
-- document any path, package, or runtime adjustments required by the monorepo.
+- maintain app-lane registry entries;
+- document Hub boundaries;
+- document model-router boundaries;
+- plan shared architecture and shared package candidates;
+- maintain cross-app consistency guardrails.
 
 Blocked scope:
 
@@ -59,10 +64,6 @@ Blocked scope:
 - database integration;
 - environment files;
 - secrets.
-
-## Runtime Proof
-
-After import, the next proof should be that Copywriting Web runs from `apps/copywriting` with the same private-beta baseline behavior. Any later integration work should be split into separate explicit tasks.
 
 ## Future Hub Relationship
 

@@ -2,19 +2,21 @@
 
 Status: planning backlog only.
 
-## Next
+## Next Root-Level Work
 
-### Photo Web Source-Mine And Workstation Plan
+### Shared Boundaries And Lane Alignment
 
-Goal: define Photo Web as the likely next AI upgrade and batch-production workstation after the frozen Copywriting baseline.
+Goal: keep the root `aim-web-agents` lane focused on orchestration, shared boundaries, and integration strategy while Copywriting Web and Photo AI Web continue in their app-scoped worktrees.
 
 Scope:
 
-- identify source location and working state;
-- define upload, Hub asset, and future mobile Photo Agent capture inputs;
-- define batch-production, before/after review, and output-integrity needs;
-- list provider benchmark candidates without implementing provider routing;
-- define private-beta hardening path.
+- maintain the app worktree and lane registry;
+- define shared package candidates only when active app lanes prove the need;
+- keep Hub handoff expectations clear;
+- keep model-router boundaries clear;
+- record shared design and system conventions;
+- preserve app import and source-lift policy;
+- maintain cross-app consistency guardrails.
 
 Out of scope:
 
@@ -34,25 +36,37 @@ Out of scope:
 - environment files;
 - secrets.
 
-## Frozen Baseline
+## Active App-Scoped Lanes
 
 ### Copywriting Web
 
-Position: operational standalone private-beta baseline. Keep frozen until a separate task approves import or maintenance.
+Folder: `apps/copywriting`
 
-Future import target likely:
+Codex project/worktree: `aim-web-agents-copywriting`
 
-```text
-apps/copywriting
-```
+Position: active app-scoped product lane; operational and Vercel-hosted.
+
+Root responsibility: boundary, shared architecture, and integration planning only. Do not run Copywriting import/readiness work from the root lane unless explicitly requested.
 
 Keep Gemini/direct grounded research valid until any OpenRouter or Vercel AI SDK replacement is proven.
 
-## After Or Alongside Photo
+### Photo AI Web
+
+Folder: `apps/photo-ai`
+
+Codex project/worktree: `aim-web-agents-photo-ai`
+
+Position: active app-scoped product lane.
+
+Root responsibility: boundary, shared architecture, and integration planning only. Do not run Photo AI implementation work from the root lane unless explicitly requested.
+
+## Planned Next App Lane
 
 ### Appraisal Web Standalone Source-Mine Audit
 
-Goal: inspect Appraisal Web in its existing source location before any import.
+Position: planned future app-scoped lane after Copywriting and Photo AI unless orchestration changes the sequence.
+
+Goal: prepare Appraisal Web as a private/internal evidence and report workstation lane when explicitly requested.
 
 Scope:
 

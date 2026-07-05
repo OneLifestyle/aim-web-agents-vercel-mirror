@@ -26,11 +26,15 @@ Web Agents may generate, edit, review, preview, and prepare outputs. Hub stores 
 
 The Web Agents monorepo should source-lift one app at a time and avoid building a giant shared root stack before each app is independently understood.
 
-Copywriting Web is already completed and frozen as a standalone private-beta baseline. It remains standalone until a separate task explicitly approves import or maintenance.
+Current app-scoped product lanes are recorded in `docs/workflow/app-worktree-registry.md`.
 
-Photo Web is the current likely next source-lift candidate because mobile Photo Agent should focus first on capture/import/adjust/export, while AI upgrades and batch production are more natural on web.
+Copywriting Web exists in `apps/copywriting`, is developed through `aim-web-agents-copywriting`, and is operational and Vercel-hosted.
 
-Appraisal Web is a strong source-lift candidate after or alongside Photo Web because it appears technically liftable, but it requires more careful risk handling before import.
+Photo AI Web exists in `apps/photo-ai` and is developed through `aim-web-agents-photo-ai`.
+
+Root `aim-web-agents` should not run Copywriting import/readiness work or Photo AI implementation work unless explicitly requested. Root work should focus on shared packages, Hub boundary, model-router boundary, app-lane registry, source-lift sequencing, integration strategy, and cross-app consistency.
+
+Appraisal Web remains the next planned web-app lane after Copywriting and Photo AI unless orchestration changes the sequence. It requires careful risk handling before import or implementation.
 
 ## Avoided Mistake
 

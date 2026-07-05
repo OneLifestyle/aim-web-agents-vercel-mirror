@@ -1,8 +1,8 @@
 # AIM Web Agents
 
-`aim-web-agents` is the future monorepo for Real Estate AIM web-based agent and tool surfaces.
+`aim-web-agents` is the Web Agents orchestration monorepo for Real Estate AIM web-based agent and tool surfaces.
 
-Status: source-lift planning and web-agent workstation lane. Product code, provider integrations, environment files, and shared platform abstractions should be added only through explicit scoped tasks.
+Status: root-level architecture, workflow, source-lift sequencing, app-lane registry, and shared planning. Product code, provider integrations, environment files, and shared platform abstractions should be added only through explicit scoped tasks.
 
 Current lane: `WEB AGENTS`
 
@@ -12,7 +12,7 @@ If anything in this repository conflicts with `aim-docs`, `aim-docs` wins.
 
 ## Purpose
 
-This repository is intended for web-first production workstations, prototype lanes, source-lift planning, and reusable web agent packages. It is expected to hold future web tools such as Copywriting, Photo, Appraisal, Website, Video, Measure, and related web-first interfaces.
+This repository is intended for web-first production workstations, prototype lanes, source-lift planning, and reusable web agent packages. It is expected to hold web tools such as Copywriting, Photo AI, Appraisal, Website, Video, Measure, and related web-first interfaces.
 
 The operating model is:
 
@@ -22,7 +22,13 @@ Hub organises the asset memory.
 Web workstations turn that memory into campaign outputs.
 ```
 
-Copywriting Web is already operational as a standalone private-beta baseline and remains frozen until a separate task approves import or maintenance. Photo Web is the current likely next source-lift candidate for AI upgrade and batch-production workstation planning. Appraisal Web remains a strong candidate, but should stay private/internal first with strict evidence and appraisal guardrails.
+Current app-scoped product lanes are recorded in [App Worktree Registry](docs/workflow/app-worktree-registry.md):
+
+- Copywriting Web: `apps/copywriting`, developed through `aim-web-agents-copywriting`, active app-scoped product lane, operational and Vercel-hosted.
+- Photo AI Web: `apps/photo-ai`, developed through `aim-web-agents-photo-ai`, active app-scoped product lane.
+- Appraisal Web: `apps/appraisal`, future app-scoped lane, planned after Copywriting and Photo AI unless orchestration changes the sequence.
+
+Root-level tasks must not double up on app work already underway in app-scoped worktrees. The root project owns boundaries, shared architecture, sequencing, and integration planning unless app implementation work is explicitly requested.
 
 ## Relationship To Hub
 
@@ -34,10 +40,14 @@ Web agents should generate, edit, and preview outputs. Durable records and cross
 
 ## Current Scope
 
-This repository currently contains:
+This root lane owns:
 
 - repository instructions;
-- architecture, workflow, and source-lift planning documentation.
+- architecture, workflow, and source-lift planning documentation;
+- app worktree and lane registry;
+- Hub and model-router boundary planning;
+- shared package and design/system convention planning;
+- cross-app consistency guardrails.
 
 This planning lane does not approve:
 
@@ -63,6 +73,7 @@ Start with:
 - `docs/architecture/web-agents-vs-hub-boundary.md`
 - `docs/architecture/web-agent-risk-guardrails.md`
 - `docs/workflow/web-agents-lane-status.md`
+- `docs/workflow/app-worktree-registry.md`
 - `docs/workflow/source-lift-and-import-sequence.md`
 - `docs/workflow/copywriting-first-lane.md`
 - `docs/workflow/backlog.md`

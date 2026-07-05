@@ -1,21 +1,21 @@
 # Appraisal Web Source-Lift Candidate
 
-Status: strong source-lift candidate, but no longer the sole next recommendation.
+Status: planned future app-scoped lane after Copywriting and Photo AI unless orchestration changes the sequence.
 
-This document originally recorded Appraisal Web as the first new source-lift candidate after Copywriting. `WEBAGENTS-SOURCE-LIFT-PLAN-001` keeps that context but updates the current orchestration recommendation: Photo Web is likely next, and Appraisal Web should follow after or run alongside Photo Web as a private/internal evidence workstation.
+This document originally recorded Appraisal Web as the first new source-lift candidate after Copywriting. `WEBAGENTS-SOURCE-LIFT-PLAN-001` keeps that context but updates the current orchestration recommendation: Copywriting Web and Photo AI Web are active app-scoped lanes, and Appraisal Web should follow as a private/internal evidence workstation unless orchestration changes the sequence.
 
 ## Position
 
-Appraisal Web remains a strong source-lift candidate after Copywriting Web, but it should not be treated as the next public production lane.
+Appraisal Web remains the next planned web-app lane after Copywriting and Photo AI unless orchestration changes the sequence, but it should not be treated as the next public production lane.
 
 It should not be the first app imported into `aim-web-agents`.
 
 The safer working path is:
 
-1. Keep Copywriting Web frozen as the standalone private-beta baseline until separately approved.
-2. Source-mine Photo Web as the likely next AI upgrade and batch-production workstation.
-3. Source-mine Appraisal Web after or alongside Photo Web, private/internal first.
-4. Import Appraisal Web later only after risk guardrails, human-review rules, and a frozen baseline are in place.
+1. Keep Copywriting Web in the `aim-web-agents-copywriting` app-scoped lane.
+2. Keep Photo AI Web in the `aim-web-agents-photo-ai` app-scoped lane.
+3. Prepare Appraisal Web as a future app-scoped lane, private/internal first.
+4. Import or implement Appraisal Web later only after risk guardrails, human-review rules, and a frozen baseline are in place.
 
 ## Why It Comes After Copywriting
 
@@ -32,7 +32,7 @@ Appraisal Web carries more product and compliance risk than Copywriting Web beca
 
 ## Source-Mine Scope
 
-The Appraisal Web source-mine task should inspect and harden the existing source in place before import.
+The Appraisal Web source-mine task should inspect and harden the existing source in place before import or implementation.
 
 Minimum audit:
 

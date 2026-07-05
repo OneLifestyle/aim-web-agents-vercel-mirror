@@ -1,10 +1,12 @@
 # Copywriting First Lane
 
-Copywriting is the first intended app lane for `aim-web-agents`.
+Copywriting is the first active app-scoped product lane for `aim-web-agents`.
 
 ## Current Position
 
-The existing Copywriting web app remains in its current repository for now and is already complete as a frozen standalone private-beta baseline.
+Copywriting Web exists in `apps/copywriting` and is developed through the `aim-web-agents-copywriting` app-scoped project/worktree.
+
+Status: active app-scoped product lane; operational and Vercel-hosted.
 
 Current baseline:
 
@@ -15,17 +17,11 @@ Current baseline:
 - has private-beta token and cost display;
 - has been merged, tagged, and recorded;
 - is not public yet;
-- no new import, expansion, or maintenance is approved by this plan.
+- no root-level import/readiness or app implementation work is approved by this plan.
 
-Copywriting Web is the first likely import candidate into:
+Root `aim-web-agents` should not run Copywriting import/readiness work unless explicitly requested.
 
-```text
-apps/copywriting
-```
-
-Do not import it into `aim-web-agents` without an explicit import task.
-
-Do not expand any repo-local Copywriting material without an explicit task.
+Do not expand any repo-local Copywriting material from the root lane without an explicit task.
 
 Do not move it into AIM Hub during this lane.
 
@@ -33,12 +29,11 @@ Keep the Gemini/direct grounded research path valid until an OpenRouter or Verce
 
 ## Workflow
 
-1. Audit the existing Copywriting web app in its current repo.
-2. Identify gaps, dependencies, deployment state, provider usage, and Hub integration assumptions.
-3. Launch, freeze, and tag the existing app if appropriate.
-4. Create an explicit import task before copying or moving code.
-5. Import or copy into `apps/copywriting` only after that explicit task exists.
-6. Prove the imported app runs from the monorepo location before expanding scope.
+1. Keep Copywriting app UI, app logic, app-local docs, app-specific scripts, preview/deployment work, and provider/use-case testing in `aim-web-agents-copywriting`.
+2. Keep root `aim-web-agents` focused on boundary, shared architecture, and integration planning only.
+3. Preserve the Hub boundary and do not duplicate Hub-owned durable state.
+4. Keep model-router and provider-routing boundaries documented without implementing them from the root lane.
+5. Create an explicit root task before doing any Copywriting import/readiness or app implementation work from this lane.
 
 ## Product Direction
 
@@ -53,7 +48,7 @@ The web implementation should remain useful as a web-first tool surface and as a
 
 The Copywriting lane should not duplicate Hub responsibilities. Durable outputs should flow back to Hub when integration exists.
 
-The first import should be a monorepo landing task only. Do not use it to add Clerk, Hub integration, Stripe, Firebase, Cloudflare, OpenRouter, Vercel AI SDK, shared packages, production-domain work, auth, billing, provider routes, database integration, environment files, or secrets.
+Do not use Copywriting work to add Clerk, Hub integration, Stripe, Firebase, Cloudflare, OpenRouter, Vercel AI SDK, shared packages, production-domain work, auth, billing, provider routes, database integration, environment files, or secrets unless a later task explicitly approves that scope.
 
 The correct long-term pattern is:
 

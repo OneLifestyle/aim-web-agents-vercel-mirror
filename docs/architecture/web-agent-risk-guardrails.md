@@ -15,22 +15,28 @@ These guardrails apply before a web agent moves from source mining to production
 - Require private-beta hardening before public launch.
 - Require cost and model-routing review before shared AIM model-router integration.
 - Preserve Hub ownership of durable account, property, job, asset, ledger, timeline, storage, sharing, and workspace records.
+- Keep root-level tasks focused on architecture, sequencing, shared planning, boundary docs, and cross-app consistency.
+- Do not duplicate app UI, app logic, app-local docs, app-specific scripts, app-specific previews, or app-specific provider/use-case testing already owned by app-scoped worktrees.
 
 ## Copywriting Web
 
-Copywriting Web remains a standalone private-beta baseline until separately approved. Keep the Gemini/direct grounded research path valid until any OpenRouter or Vercel AI SDK replacement is proven.
+Copywriting Web exists in `apps/copywriting` and is developed through `aim-web-agents-copywriting`.
+
+It is an active app-scoped product lane and is operational and Vercel-hosted. Root `aim-web-agents` should not run Copywriting import/readiness work unless explicitly requested. Keep the Gemini/direct grounded research path valid until any OpenRouter or Vercel AI SDK replacement is proven.
 
 Future Hub records may include copy assets, source/citation records, job records, timeline events, and possibly Asset Inbox items, but Hub integration is not approved here.
 
 ## Photo Web
 
-Photo Web should focus on AI upgrade, batch production, and review workflows. Later guardrails should include before/after review, output-integrity checks, provenance of input images, and clear export handling.
+Photo AI Web exists in `apps/photo-ai` and is developed through `aim-web-agents-photo-ai`.
+
+It is an active app-scoped product lane. Root `aim-web-agents` should not run Photo AI implementation work unless explicitly requested. Photo AI Web should focus on AI upgrade, batch production, and review workflows. Later guardrails should include before/after review, output-integrity checks, provenance of input images, and clear export handling.
 
 OpenRouter Image API, Reve, OpenAI image editing, Gemini/Nano Banana, FLUX, Adobe/Firefly, and Stability may be benchmarked later. Do not implement provider routing in this planning task.
 
 ## Appraisal Web
 
-Appraisal Web must remain private/internal first.
+Appraisal Web remains the next planned web-app lane after Copywriting and Photo AI unless orchestration changes the sequence. It must remain private/internal first.
 
 Blocked framing and behavior:
 

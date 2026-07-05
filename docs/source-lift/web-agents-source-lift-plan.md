@@ -21,30 +21,34 @@ Web Agents are production workstations, not Hub. They may create, review, edit, 
 1. Web Agents are production workstations, not Hub.
 2. Hub owns account, profile, Asset Inbox, wallet, property records, job records, asset storage, ledger, timeline, sharing, and workspace state.
 3. Web Agents create, review, and prepare assets, then later save or route them through Hub-owned workflows.
-4. Copywriting Web remains standalone and frozen until an explicit import or maintenance task separately approves changes.
-5. Source-lift should happen one app at a time.
-6. Do not build a giant shared root stack before each app is independently understood.
-7. Do not add Clerk, Stripe, OpenRouter, Hub integration, provider routing, environment files, or shared AIM model-router integration in this repo until separately approved.
-8. Provider calls that require secrets must eventually be server-side only.
-9. Each web agent needs a private-beta hardening path before public launch.
-10. Each web agent needs a cost and model-routing review before integration with the shared AIM model router.
+4. Copywriting Web exists in `apps/copywriting`, is developed through `aim-web-agents-copywriting`, and is operational and Vercel-hosted in its app-scoped lane.
+5. Photo AI Web exists in `apps/photo-ai` and is developed through `aim-web-agents-photo-ai`.
+6. Root `aim-web-agents` should not run Copywriting import/readiness work or Photo AI implementation work unless explicitly requested.
+7. Source-lift should happen one app at a time.
+8. Do not build a giant shared root stack before each app is independently understood.
+9. Do not add Clerk, Stripe, OpenRouter, Hub integration, provider routing, environment files, or shared AIM model-router integration in this repo until separately approved.
+10. Provider calls that require secrets must eventually be server-side only.
+11. Each web agent needs a private-beta hardening path before public launch.
+12. Each web agent needs a cost and model-routing review before integration with the shared AIM model router.
 
 ## Current Source-Lift Sequence
 
-This is the current orchestration recommendation. Earlier repo-local planning placed Appraisal Web before Photo Web. Keep that earlier sequence as historical context, but use this order for the next planning lane unless `aim-docs` or a later task supersedes it.
+This is the current orchestration recommendation, updated for the app-scoped worktree structure. Earlier repo-local planning placed Appraisal Web before Photo Web. Keep that earlier sequence as historical context, but use this order for root-level planning unless `aim-docs` or a later task supersedes it.
 
-1. Copywriting Web: already operational as a standalone private-beta baseline and frozen for now.
-2. Photo Web: likely next source-lift candidate for AI upgrades and batch-production workstation workflows.
-3. Appraisal Web: private/internal evidence and report workstation after or alongside Photo Web, with strict appraisal guardrails.
+1. Copywriting Web: active app-scoped product lane in `apps/copywriting` through `aim-web-agents-copywriting`; operational and Vercel-hosted.
+2. Photo AI Web: active app-scoped product lane in `apps/photo-ai` through `aim-web-agents-photo-ai`.
+3. Appraisal Web: planned future app-scoped lane after Copywriting and Photo AI unless orchestration changes the sequence; private/internal first with strict appraisal guardrails.
 4. Website Web: web-first property site builder.
 5. Video Web: later workstation using existing web source and old Vision Ken Burns logic as source mines.
 6. Measure Web: mostly editing, cleanup, report, export, and Hub packaging after mobile capture.
 
 ## App-Scoped Worktree Convention
 
-Focused Codex projects or Git worktrees may be used for one app-specific source-lift lane at a time, targeting a single `apps/<agent>` folder. Final imported app code must land as ordinary files in the root `aim-web-agents` monorepo, not as permanent nested Git repositories inside `apps/*`.
+Focused Codex projects or Git worktrees may be used for one app-specific lane at a time, targeting a single `apps/<agent>` folder. Final app code must land as ordinary files in the root `aim-web-agents` monorepo, not as permanent nested Git repositories inside `apps/*`.
 
 See [App-Scoped Source-Lift Worktrees](../workflow/app-scoped-source-lift-worktrees.md) for the working convention.
+
+See [App Worktree Registry](../workflow/app-worktree-registry.md) for the current lane registry.
 
 ## Cross-App Gates
 
@@ -59,7 +63,8 @@ Every web agent should pass these gates before import, integration, or public la
 - no Hub-owned durable state duplicated in the web app;
 - no Clerk, Stripe, OpenRouter, Hub, or shared model-router integration unless separately approved;
 - cost, model-routing, and provider fallback assumptions reviewed;
-- explicit source-lift task created for that one app.
+- explicit source-lift task created for that one app;
+- root-level tasks avoid duplicating active app-scoped work.
 
 ## Non-Goals For This Plan
 

@@ -4,6 +4,12 @@ Status: architecture boundary for `WEBAGENTS-SOURCE-LIFT-PLAN-001`.
 
 `aim-web-agents` owns production workstation experiences. AIM Hub owns durable business and workspace state.
 
+Root `aim-web-agents` owns architecture, source-lift sequencing, shared package planning, shared design/system conventions, the app worktree and lane registry, root docs and guardrails, Hub boundary docs, model-router boundary docs, app import/source-lift policy, and cross-app consistency.
+
+App-scoped worktrees own app UI, app logic, app-local docs, app-specific scripts, app-specific deployment or preview work, and app-specific provider/use-case testing.
+
+Root-level tasks must not double up on work already underway in app-scoped worktrees.
+
 ## Hub Owns
 
 Hub owns:
@@ -59,3 +65,5 @@ The web app may provide the working surface. Hub must remain the durable system 
 ## Current Integration Boundary
 
 Do not add Clerk, Stripe, OpenRouter, Hub save/retrieve, provider integrations, shared AIM model-router integration, live API routes, or environment files until a later task explicitly approves them.
+
+Root documentation may define the Hub and model-router boundaries. It must not implement Hub integration, OpenRouter, provider routing, or production model-router code unless explicitly requested.
