@@ -10,7 +10,7 @@ This inventory records the current orchestration recommendation and app-scoped w
 | 2 | Photo AI Web | `apps/photo-ai` | `aim-web-agents-photo-ai` | Active app-scoped product lane. | AI upgrade and batch-production workstation receiving uploads, Hub assets, or future mobile Photo Agent captures. | Before/after review, output-integrity checks, private beta, provider benchmarking only, no provider routing yet. |
 | 3 | Appraisal Web | `apps/appraisal` | Future app-scoped lane. | Planned after Copywriting and Photo AI unless orchestration changes the sequence; higher risk. | Private/internal evidence review and appraisal-report preparation workstation. | No AVM framing, no licensed Australian property-data dependency, no portal scraping, human review mandatory. |
 | 4 | Website Web | `apps/website` | Future app-scoped lane. | Web-first candidate, likely sourced from Vercel or v0 work. | Property site and campaign page builder. | Use Hub property and campaign assets later; avoid durable state ownership in the web app. |
-| 5 | Video Web | `apps/video` | Future app-scoped lane. | Later source-lift candidate using existing web source and old Vision Ken Burns logic as source mines. | Heavier AI motion, voiceover, and branded video variants on web. | Keep free deterministic mobile video separate; benchmark providers later. |
+| 5 | Video Web | `apps/video` | `aim-web-agents-video` | Active app-scoped source-recovery and implementation lane. Not yet public-launch ready. | Deterministic complete-property-video workstation first; generative motion may be evaluated only after the production spine is proven. | Root owns shared architecture and integration planning only; keep Hub state and provider integrations out of this baseline. |
 | 6 | Measure Web | `apps/measure` | Future app-scoped lane. | Likely last; depends on mobile capture maturity. | Editing, cleanup, report/export, and Hub packaging after mobile LiDAR or room capture. | Mobile remains capture layer; web must not become the capture source of truth. |
 
 ## Copywriting Web
@@ -51,7 +51,9 @@ Website Web is web-first by nature and likely came from Vercel or v0 source. It 
 
 ## Video Web
 
-Video Web may combine existing web source and old Vision Ken Burns source as source mines. Free deterministic mobile video remains separate. Heavier AI motion, voiceover, and branded variants belong on web.
+Video Web now has a provider-free, buildable recovery baseline in `apps/video`, owned by the dedicated `aim-web-agents-video` lane. The frozen recovery decision combines selected Vision Web editor files with Vision Mobile and Photo AI as translation/pattern references. It does not yet export video and is not public-launch ready.
+
+The next Video goal is the deterministic complete-property production spine: one shared preview/export project model, local reopen, audio/overlays/end card, incremental shot replacement/retiming, and a verified 16:9 MP4. Generative video, provider routing and Hub integration remain deferred.
 
 ## Measure Web
 
