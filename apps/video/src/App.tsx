@@ -1,5 +1,5 @@
-import { VideoEditorPage } from './pages/VideoEditorPage';
+import { VideoWorkspacePage } from './pages/VideoWorkspacePage';
 
 export default function App() {
-  return <VideoEditorPage />;
+  return <VideoWorkspacePage />;
 }

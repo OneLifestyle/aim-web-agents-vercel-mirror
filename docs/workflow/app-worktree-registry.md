@@ -41,7 +41,7 @@ Root-level tasks must not double up on work already underway in app-scoped workt
 | Copywriting Web | `apps/copywriting` | `aim-web-agents-copywriting` | Active app-scoped product lane; operational and Vercel-hosted. | Boundary, shared architecture, and integration planning only. Root should not run Copywriting import or readiness work unless explicitly requested. |
 | Photo AI Web | `apps/photo-ai` | `aim-web-agents-photo-ai` | Active app-scoped product lane. | Boundary, shared architecture, and integration planning only. Root should not run Photo AI implementation work unless explicitly requested. |
 | Appraisal Web | `apps/appraisal` | Future app-scoped lane. | Planned next web-app lane after Copywriting and Photo AI unless orchestration changes the sequence. | Prepare guardrails and lane policy only. Keep private/internal first; no AVM, no portal scraping, and human review required. |
-| Video Web | apps/video | aim-web-agents-video | Active app-scoped source-recovery and implementation lane. Not yet public-launch ready. | Root owns shared architecture and integration planning only. Video implementation belongs to the dedicated Video worktree. |
+| Video Web | `apps/video` | `aim-web-agents-video` | Deterministic local client alpha built and internally verified; founder tap-through pending; not deployed or public-launch ready. | Root owns shared architecture and integration planning only. Video implementation belongs to the dedicated Video worktree. |
 
 ## Git Ownership
 

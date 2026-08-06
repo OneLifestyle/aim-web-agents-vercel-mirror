@@ -8,3 +8,5 @@ dist/
 *.mov
 *.webm
 *.log
+verification-output/
+playwright-report/

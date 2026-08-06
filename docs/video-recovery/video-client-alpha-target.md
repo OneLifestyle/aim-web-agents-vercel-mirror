@@ -1,73 +1,54 @@
-# AIM Video client-alpha target assessment
+# AIM Video client-alpha target result
 
-Task: `WEBVIDEO-IMPORT-001`
-Target next goal: `WEBVIDEO-CLIENT-ALPHA-001`
+Task: `WEBVIDEO-CLIENT-ALPHA-001`
+Evidence date: 2026-08-06
 
-## Feasibility
+## Result
 
-The deterministic client-alpha is feasible from the selected composite foundation, but the imported app is not yet close to an operator deliverable. The UI vocabulary exists; the production spine does not. The gating architecture is one renderer-neutral project/timeline contract shared by preview and export, plus an encoder that proves a real portal-safe 16:9 MP4.
+The deterministic complete-property-video spine is implemented and verified as
+an internal operator alpha. A local browser project can ingest 15–30 validated
+photographs, build a guided storyboard, preview the complete composition, mix
+local audio, render and download a real 16:9 MP4, save locally, reopen, replace
+or retime a shot, and rerender without reconfiguring unaffected shots.
 
-## Target-by-target assessment
+## Target assessment
 
-| Client-alpha target | Current assessment | Basis |
+| Target | Result | Evidence |
 | --- | --- | --- |
-| 15–30 photographs | Partially present | Multi-file input exists, but no 15–30 validation, decoded-media limits or batch UX proof |
-| Manual ordering | Major missing architecture | Imported cards are not reorderable; stable shot IDs/order must be part of project state |
-| Duration per shot | Partially present | Per-shot integer duration drives preview/timeline width, not a shared frame evaluator |
-| Still treatment | Straightforward next build | Add an explicit identity crop path to the new tested motion contract |
-| Zoom in | Partially present | UI exists but donor semantics are reversed and not exportable |
-| Zoom out | Partially present | Same issue |
-| Pan left | Partially present | UI exists but frame-edge protection and export parity are missing |
-| Pan right | Partially present | Same issue |
-| Full preview | Major missing architecture | Existing CSS/timer preview is neither frame-accurate nor shared with export |
-| Licensed background music | Major missing architecture | Upload card only; rights metadata, decode, trim/loop/fade and mix are missing |
-| Property title/address | Partially present | Address text overlay exists only in volatile DOM state |
-| End card | Partially present | Form and DOM preview exist; timing/composition are broken |
-| Optional watermark | Straightforward next build after renderer | Requires a safe-area overlay contract and renderer support |
-| Branded output | Major missing architecture | Needs deterministic overlay/end-card/theme variant composition |
-| Portal-safe output | Blocked by renderer decision | Needs output specs, safe areas, bitrate/profile/audio validation and real portal test |
-| Real downloadable 16:9 MP4 | Blocked by renderer decision | No encoder/compositor/download path exists |
-| Local project reopen | Major missing architecture | Needs versioned project schema, local asset references, validation and migrations |
-| Replace one shot | Major missing architecture | Stable shot IDs/assets and cache invalidation do not exist |
-| Retime one shot without rebuilding everything | Major missing architecture | Requires per-shot render artifacts or incremental composition strategy |
+| 15–30 photographs | Working and verified | Synthetic 15- and 30-shot browser projects; signature/count/size/dimension/decode validation |
+| Guided manual ordering | Working and verified | Drag path implemented; Move Down exercised; Move Up/Down and stable order contract tested |
+| Duration per shot | Working and verified | Validated 0.5–20 s contract; 15-shot retime retained stable ID and unaffected hashes |
+| Five deterministic treatments | Working and verified | Still, Zoom In, Zoom Out, Pan Left and Pan Right fixtures/tests and real exports |
+| Image Pair | Working and verified | Two real images, future-generation fields and deterministic dissolve proxy; no provider |
+| Complete preview | Working and verified | Play, pause, seek, current shot and end card in Chrome |
+| Preview/export parity | Working and verified | One canvas/evaluator path; canonical decoded MP4 comparisons cover all five presets, pair midpoint and end card, with representative 15/30-shot checks |
+| Music | Working and verified | Self-created local WAV fixture exported with AAC; volume/fades implemented |
+| Optional voiceover | Implemented but unverified | Local upload, independent volume/fades and exact duck-boundary mixing are implemented and unit-tested; no separate voice recording was included in an MP4 fixture |
+| Title/address/end card/watermark | Working and verified | Canonical and 15/30 branded fixtures rendered and frame-compared |
+| Unbranded 16:9 | Working and verified | Real 5,564,973-byte MP4; neutral closing frame and no product-brand metadata string |
+| Branded 16:9 | Working and verified | Canonical, edited 15-shot and 30-shot real MP4s |
+| Local save/reopen | Working and verified | Fresh-origin UI create/rename/save/close/reopen/delete; full shot signatures retained; Blob/envelope corruption and unsupported manifests handled |
+| Replace and retime | Working and verified | Stable affected-shot ID/primary settings; all unaffected hashes unchanged; rerender passed |
+| Progress/cancellation/failure | Working and verified | Frame progress; frame-12 cancellation; deliberate missing-asset failure |
 
-## Already working
+## Renderer and profile
 
-- isolated Video package installation, typecheck, lint, production build and local runtime;
-- provider-free local single-image intake;
-- visible 16:9 editor preview and shot card;
-- in-memory duration, overlay, end-card and start/end framing concepts;
-- no dependency on protected app lanes or Hub-owned durable state.
+Remotion core was technically suitable but not adopted because this repository
+could not prove that its commercial free-use headcount condition applied. The
+selected renderer is exact-pinned `mediabunny@1.52.3` under MPL-2.0, running
+locally with Canvas, WebCodecs and Web Audio. No global/system installation or
+paid product was used.
 
-## Straightforward next-build items
+`client-alpha-1080p-v1` defines MP4, 1920 × 1080, 30 fps, H.264/AVC, AAC-LC,
+YUV 4:2:0, safe areas and a 6 Mbps video target. Unbranded is a portal-safe
+candidate, not universal portal certification.
 
-- enforce a 15–30 image operator intake contract;
-- implement accessible drag/keyboard ordering;
-- add the still preset;
-- model watermark, brand and portal-safe variants as deterministic project options;
-- add structured errors, cancellation and progress states once the renderer contract exists.
+## Largest remaining limitation
 
-## Major missing architecture
+Each final MP4 is fully re-encoded in the browser. Stable hashes prove input
+invalidation and preserve unaffected setup, but shot-level encoded render cache
+reuse is not implemented. Performance and codec support therefore depend on the
+operator's current browser/hardware.
 
-- versioned project, asset, shot, track, overlay and output contracts;
-- one deterministic crop/frame evaluator used by preview and export;
-- real image/audio/text/logo composition;
-- MP4 encoder and verified download;
-- local project bundle/reopen and asset relinking;
-- shot-level cache/invalidation for replacement and retiming;
-- robust upload, rights and temporary-output handling.
-
-## Renderer decision
-
-The next task must make an evidence-based compositor choice. Remotion is not added by this recovery goal. The choice may be Remotion, WebCodecs, FFmpeg/WASM or a bounded local/server renderer, but it must be selected by proving:
-
-- deterministic 1920×1080 frame output;
-- preview/export parity from the same project evaluator;
-- licensed audio mix and overlay composition;
-- a real downloadable MP4 with recorded codec/container evidence;
-- acceptable operator-device performance for 15–30 photographs;
-- cancellation, progress, failure and temporary-file behavior.
-
-## Product conclusion
-
-The imported baseline is a useful editor seed, not a finished video maker. A focused deterministic build can reach the client-alpha without any generative-video provider. Generative motion should remain out of scope until the complete-property production spine is proven.
+The appropriate next task after founder acceptance is
+`WEBVIDEO-FOUNDER-TAP-THROUGH-001`. Generative motion remains deferred.

@@ -7,8 +7,8 @@ Frozen: 2026-08-02
 
 | Source | Repository | Local path | Branch/tag | Frozen SHA | Custody and licence position |
 | --- | --- | --- | --- | --- | --- |
-| OneLifestyle Video | `https://github.com/OneLifestyle/RE-AIM-Video-Agent-1-1-26.git` | `/Users/sgbcproperty/Developer/RealEstateAIM/source-mines/video-agent-recovery/RE-AIM-Video-Agent-1-1-26` | `main` | `0fa6ddbb0836965d6ab2d982680e64e6d9a081ad` | OneLifestyle custody; no licence or notice found; not copied into AIM |
-| Vision Web | `https://github.com/Singularealty/Real-Estate-AIM-Vision-Web.git` | `/Users/sgbcproperty/Developer/RealEstateAIM/source-mines/video-agent-recovery/Real-Estate-AIM-Vision-Web` | `main` | `e252df906a7b2ff62f8e99ff5ef99c9b7669b0e5` | Singularealty custody; no repository-wide licence found |
+| OneLifestyle Video | `https://github.com/OneLifestyle/RE-AIM-Video-Agent-1-1-26.git` | `/Users/sgbcproperty/Developer/RealEstateAIM/source-mines/video-agent-recovery/RE-AIM-Video-Agent-1-1-26` | `main` | `0fa6ddbb0836965d6ab2d982680e64e6d9a081ad` | Founder/company-controlled OneLifestyle custody; no licence or notice found; not copied into AIM |
+| Vision Web | `https://github.com/Singularealty/Real-Estate-AIM-Vision-Web.git` | `/Users/sgbcproperty/Developer/RealEstateAIM/source-mines/video-agent-recovery/Real-Estate-AIM-Vision-Web` | `main` | `e252df906a7b2ff62f8e99ff5ef99c9b7669b0e5` | Founder/company-controlled Singularealty custody; no repository-wide licence found |
 | Vision Mobile | `https://github.com/Singularealty/Real-Estate-AIM-Vision-Mobile.git` | `/Users/sgbcproperty/Developer/RealEstateAIM/vision-agent-mobile-source` | `reaim-v2-freeze-vision-mobile-2026-05-06` | `02e2925a0ecd2ffb8682db79f980447b913e845b` | Singularealty custody and canonical AIM freeze; no standalone licence found |
 | Legacy master | `https://github.com/Singularealty/Real_Estate_AIM_PROJECT.git` | `/Users/sgbcproperty/Developer/RealEstateAIM/source-mines/video-agent-recovery/Real_Estate_AIM_PROJECT` | `main` / `reaim-v2-freeze-timeline-crm-2026-05-06` | `dde8236a2c3211db3216df81f3b123f1811b6f98` | Singularealty custody; scoped AI Studio import has no upstream SHA or licence record |
 | Active Photo AI donor | `Singularealty/aim-web-agents` | `/Users/sgbcproperty/.codex/worktrees/609e/aim-web-agents/apps/photo-ai` | `codex/photo-ai-standalone-vercel-001` | `c08235e5` at inspection start | AIM-owned lane; inspected read-only while active work continued |
@@ -23,7 +23,9 @@ The OneLifestyle repository is explicitly descended from a Google AI Studio Phot
 - migrated AI Studio prompt history records the transformation into a Video shot generator;
 - the Video delta consists mainly of per-shot data, prompt options, start/end pairing and browser-side Veo calls.
 
-No licence, notice or transfer record was found. That source is retained only as an external source mine and provenance record. No OneLifestyle code, Git metadata, prompt-history attachment or sample media was imported into `apps/video`.
+No licence, notice or transfer record was found in the repository itself. The founder has clarified that OneLifestyle is a Singularealty-owned brand, that the OneLifestyle GitHub account is the founder's personal GitHub identity, and that the Singularealty organisation was created and is controlled through that identity. Source held under the two names is therefore treated as being under common founder/company control. The earlier identity mismatch is no longer a special public-redistribution gate. This clarification does not clear third-party packages, fonts, music, logos, media or other externally sourced material, which remain subject to their own licences or permissions.
+
+That source remains an external source mine and provenance record for this lift. No OneLifestyle code, Git metadata, prompt-history attachment or sample media was imported into `apps/video`.
 
 ## Vision Web lineage
 
@@ -34,11 +36,11 @@ Vision Web is in a Singularealty repository, but its relevant feature history ha
 - that feature history begins at orphan root `64aeb25`, authored using a OneLifestyle email address;
 - no repository-wide licence, notice or upstream source SHA is recorded.
 
-For this task, Singularealty repository custody plus the founder-authorised internal recovery task was treated as sufficient authority for a bounded internal lift of provider-free editor files. It is not treated as proof of an open-source licence or a right to redistribute the original repository externally. Source-authority confirmation remains a public-release gate.
+For this task, Singularealty repository custody plus the founder-authorised recovery task was treated as sufficient authority for the bounded lift of provider-free editor files. The orphan-root author identity is retained as provenance evidence, but common founder/company control means it is not a special external-redistribution gate. This does not represent the repositories as open source and does not clear any third-party package, font, music, logo, media or external-source licence.
 
 ## Vision Mobile and legacy lineage
 
-Canonical AIM freeze records identify the Vision Mobile and legacy SHAs above. Vision Mobile supplies design and algorithm evidence only; no Swift or React Native source was copied. The legacy AI Studio source arrived in a single squash-like import, so its exact upstream revision cannot be reconstructed. Its CRM routes and provider code were not imported.
+Canonical AIM freeze records identify the Vision Mobile and legacy SHAs above. The founder reports that Vision Mobile was developed first and Vision Web followed as a web-oriented continuation or adaptation. This is product-lineage context supplied by the founder, not a Git-ancestry claim unless source history independently proves that ancestry. Vision Mobile supplies design and algorithm evidence only; no Swift or React Native source was copied. The legacy AI Studio source arrived in a single squash-like import, so its exact upstream revision cannot be reconstructed. Its CRM routes and provider code were not imported.
 
 ## Imported-file provenance
 
@@ -60,6 +62,13 @@ Narrow compatibility and honesty changes were then applied:
 - the preview is labelled 16:9 rather than claiming a rendered resolution;
 - Vite was updated to the patched 7.3.6 development toolchain.
 
+The immutable import branch and commit retain that exact lift. On the later
+`WEBVIDEO-CLIENT-ALPHA-001` branch, the imported `VideoEditorPage`,
+`PositionRect`, theme files and legacy Ken Burns CSS were removed after their
+useful vocabulary had been translated into the validated storyboard and shared
+frame evaluator. This preserves source provenance without leaving a second,
+inactive preview implementation in the client alpha.
+
 ## Explicit exclusions
 
 The lift excludes:
@@ -75,4 +84,4 @@ The lift excludes:
 
 ## Authority conclusion
 
-The internal source-lift gate passes for this bounded Singularealty-to-Singularealty recovery. The unresolved repository-wide licence and orphan-history provenance must be resolved before treating the donor as externally redistributable or launching publicly. That release caveat does not authorise importing the OneLifestyle repository later without a separate authority decision.
+The source-lift gate passes under the founder's clarification that OneLifestyle and Singularealty source are under common founder/company control. The previous OneLifestyle/Singularealty identity mismatch is not a special public-redistribution gate. Public release still requires ordinary review of third-party packages, fonts, music, logos, media and external-source material, and no such rights are automatically cleared by common control. This provenance record is programme guidance, not legal advice.

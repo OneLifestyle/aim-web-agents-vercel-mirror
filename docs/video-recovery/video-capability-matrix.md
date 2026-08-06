@@ -1,148 +1,97 @@
 # AIM Video capability matrix
 
-Task: `WEBVIDEO-IMPORT-001`
-Evidence date: 2026-08-02
+Task: `WEBVIDEO-CLIENT-ALPHA-001`
+Evidence date: 2026-08-06
 
-## Classification rules
+Classification is based on commands and browser/MP4 evidence that actually ran.
+“Working and verified” does not mean public-launch or universal portal
+certification.
 
-- **Working and verified**: exercised locally on a credential-free path during this audit.
-- **Implemented but unverified**: substantive code exists, but its complete behavior was not exercised.
-- **UI only**: a control or lane exists without the underlying media behavior.
-- **Mock**: simulated values, progress, pricing or output.
-- **Planned**: described by documentation but not implemented.
-- **Missing**: no material implementation found.
-- **Broken**: implementation exists but static or runtime evidence shows it cannot meet its claim.
+## Project and intake
 
-Buttons and labels are not proof. No paid provider generation was run. No source or imported app produced a real MP4 during this task.
+| Capability | Status | Evidence |
+| --- | --- | --- |
+| Create/open/rename/delete local project | Working and verified | Fresh-origin Chrome flow created, renamed, saved, closed, reopened and deleted a project; both stores ended empty |
+| 15–30 bulk photographs | Working and verified | Actual file input accepted 15 wrong-MIME/signed synthetic PNGs; 15- and 30-shot render fixtures proved scale |
+| Actual signature validation | Working and verified | JPEG/PNG/WebP fixtures and unit tests; MIME labels not trusted |
+| Count/size/dimension/decode bounds | Working and verified | Negative intake tests; bounded header-dimension preflight before bitmap decode |
+| Duplicate/zero-byte/corrupt errors | Working and verified | Direct negative intake tests and operator errors |
+| Media-rights record | Working and verified | Source, actual owner, permission basis/reference, permitted use and separate confirmation timestamp are validated; generic placeholders fail preflight |
+| Customer-media upload | Missing by design | All media remains in local browser memory/IndexedDB |
+| Clear unused media | Working and verified | Replaced source was removed while referenced local blobs remained |
 
-## Project intake
+## Storyboard
 
-| Capability | OneLifestyle `0fa6ddb` | Imported `apps/video` | Evidence |
-| --- | --- | --- | --- |
-| Single-image upload | Working and verified | Working and verified | Synthetic local image rendered in both browser sessions |
-| Multiple-image upload | Implemented but unverified | Implemented but unverified | Both file inputs accept multiple files; multi-file batch not exercised |
-| Drag-and-drop | Implemented but unverified | Implemented but unverified | Drop handlers exist; chooser path was exercised instead |
-| Image ordering | Implemented but unverified | Missing | OneLifestyle has in-memory reorder controls; Vision-derived cards have no reorder handler |
-| Batch selection | Implemented but unverified | Missing | OneLifestyle selection state exists; imported baseline has one selected shot only |
-| Property/project state | Missing | Missing | Imported editor has volatile page-local arrays, not a property or project model |
-| Saved project state | Missing | Missing | No serialization or durable store |
-| Local reopen | Missing | Missing | No IndexedDB/localStorage/file project contract |
+| Capability | Status | Evidence |
+| --- | --- | --- |
+| Stable shot IDs/order | Working and verified | Strict contract, reorder/replace/retime evidence |
+| Drag reorder | Working and verified | Browser HTML drag/drop event path exercised with the transferred stable shot ID and order retained |
+| Move Up/Down | Working and verified | Both controls exercised in Chrome; shared reorder mutation tested |
+| Replace start/end | Working and verified | Synthetic replacement retained shot identity/primary settings and all unaffected hashes |
+| Remove/add shots | Working and verified | Actual 15-file chooser path and single-card removal exercised in Chrome |
+| Duration | Working and verified | Retime browser evidence and rerender |
+| Single Image / Image Pair | Working and verified | 15/30/canonical fixtures include both |
+| Pair dissolve proxy | Working and verified | Real two-image dissolve in MP4; disclosure visible |
+| Future generated Motion Pair fields | Implemented but unverified | Validated optional contract fields; no provider connected |
 
-## Storyboard and timeline
+## Motion and composition
 
-| Capability | OneLifestyle `0fa6ddb` | Imported `apps/video` | Evidence |
-| --- | --- | --- | --- |
-| Shot cards | Working and verified | Working and verified | A synthetic image produced a visible shot card |
-| Timeline | Missing | UI only | Imported duration-proportional image lane is not a renderer-neutral timeline engine |
-| Multiple tracks | Missing | UI only | Image, chyron and audio-shaped lanes exist; timing/composition is not shared |
-| Shot ordering | Implemented but unverified | Missing | Imported grab styling has no reorder behavior |
-| Shot duration | UI only | Implemented but unverified | OneLifestyle duration is not sent to Veo; imported duration drives CSS preview/timeline width |
-| Trimming | Missing | Missing | No clip-edge or source trimming |
-| Shot replacement | Missing | Missing | Delete/re-upload loses shot identity/settings |
-| Transitions | Missing | Missing | No transition model or renderer |
-| Complete-project timing | Missing | Broken | Imported total omits end-card time and uses synthetic interval timing |
+| Capability | Status | Evidence |
+| --- | --- | --- |
+| Source-aware 16:9 cover crop | Working and verified | Landscape/portrait/square fixtures and no-edge tests |
+| Still | Working and verified | Motion tests and real fixture export |
+| Zoom In | Working and verified | Corrected label semantics, endpoint/easing tests and export |
+| Zoom Out | Working and verified | Corrected label semantics, endpoint/easing tests and export |
+| Pan Left | Working and verified | Cover-safe crop travel tests and export |
+| Pan Right | Working and verified | Cover-safe crop travel tests and export |
+| Freeform crop editor | Deferred | Donor `PositionRect` surface was removed from the alpha; normalized crop fields remain in the contract for a future Advanced boundary |
+| Title/address | Working and verified | Shared canvas overlays and parity evidence |
+| Logo/watermark/end card | Working and verified | Branded canonical/15/30 outputs |
+| Unbranded neutral close | Working and verified | Unbranded real MP4 |
 
-## Deterministic motion
+## Preview, audio and export
 
-| Capability | OneLifestyle `0fa6ddb` | Imported `apps/video` | Evidence |
-| --- | --- | --- | --- |
-| Still treatment | Missing | Missing | `none` exists in a type/default map but has no exposed control |
-| Zoom in | Missing | Broken | Imported preset uses 100→95 CSS scale, visibly reversing the label |
-| Zoom out | Missing | Broken | Imported preset uses 95→100 CSS scale, visibly reversing the label |
-| Pan left | Missing | Broken | Imported 100% scale plus translation can reveal empty frame edges |
-| Pan right | Missing | Broken | Same edge-exposure issue |
-| Ken Burns interpolation | Missing | Broken | CSS-only interpolation is not shared with export and has incorrect crop/scale semantics |
-| Start framing | Missing | Implemented but unverified | Imported start scale/offset state and rectangle exist |
-| End framing | Missing | Implemented but unverified | Imported end scale/offset state and rectangle exist |
-| Draggable start/end rectangles | Missing | Broken | Mouse drag exists; resize sign is derived from corner rather than drag direction |
-| Movement preview | Missing | Implemented but unverified | Imported CSS animation exists but cannot seek/pause with frame accuracy |
+| Capability | Status | Evidence |
+| --- | --- | --- |
+| Complete play/pause/seek preview | Working and verified | Chrome browser test advanced playhead |
+| Current time/current shot/end card | Working and verified | Timeline UI and canvas preview |
+| Shared preview/export evaluator | Working and verified | `drawProjectFrame` single path plus decoded MP4 frame comparisons |
+| Music upload/volume/fades | Working and verified | Self-created WAV fixture, AAC output and timing tests |
+| Voiceover/independent volume | Implemented but unverified | Local track UI/decoder/mixer implemented; no separate voice file in export fixture |
+| Music reduction under voice | Working and verified | Shared gain evaluator unit tests; production control |
+| Export progress | Working and verified | Frame-based progress used by fixture harness/UI |
+| Cancellation | Working and verified | 30-shot frame-12 and canonical finalization-stage cancellation; no output returned |
+| Controlled failure | Working and verified | Missing local photo returned visible deterministic error |
+| Real MP4 download | Working and verified | Four real MP4 files generated and inspected |
+| H.264/AAC/1080p/30 fps | Working and verified | Track inspection plus macOS `file`/`afinfo` corroboration |
+| Branded 16:9 | Working and verified | Canonical, edited 15-shot and 30-shot MP4s |
+| Unbranded 16:9 | Working and verified | 15-shot unbranded MP4 |
+| 9:16/square | Deferred by scope | Not implemented |
 
-## Production elements
+## Persistence and rebuild
 
-| Capability | OneLifestyle `0fa6ddb` | Imported `apps/video` | Evidence |
-| --- | --- | --- | --- |
-| Music upload | Missing | Implemented but unverified | Imported file chooser/object URL exists |
-| Included music | Missing | Missing | No licensed music pack or rights metadata |
-| Audio track | Missing | UI only | Imported records/cards exist without playback, timing or mixing |
-| Voiceover upload | Missing | UI only | UI says voiceover, but every imported audio file is typed `music` |
-| Narration generation | Missing | Missing | Generative audio is out of scope |
-| Captions | Missing | Missing | No caption model or renderer |
-| Title overlay | Missing | Missing | A `custom` type exists, but no reachable title/custom-overlay control exists |
-| Address overlay | Missing | Implemented but unverified | Form and DOM preview exist |
-| Price overlay | Missing | Implemented but unverified | Form and DOM preview exist |
-| Logo | Missing | Implemented but unverified | Imported end-card logo object URL and DOM preview exist |
-| Watermark | Missing | Missing | No project-level watermark |
-| End card | Missing | Broken | Form/DOM preview exists; timing is omitted from total and timeout handling is unsafe |
-| Branded variant | Missing | Missing | No variant contract or render path |
-| Portal-safe variant | Missing | Missing | No safe-area/output-policy contract |
+| Capability | Status | Evidence |
+| --- | --- | --- |
+| Versioned validated manifest | Working and verified | Zod `1.0.0`, strict cross-field tests |
+| Local blob persistence | Working and verified | 15-shot save/reopen with zero missing assets |
+| Missing/corrupt/unsupported handling | Working and verified | Missing-on-save rejection, MIME/size/SHA-256 corrupt-blob detection, safe corrupt/unsupported list entries and controlled render failure |
+| Stable content/settings hashes | Working and verified | Mutation/unit/browser evidence |
+| Preserve unaffected shot configuration | Working and verified | All unaffected shot hashes unchanged after replace/retime |
+| Shot-level encoded render cache | Deferred | Final MP4 is fully re-encoded; no cache promise |
 
-## Preview and export
+## Platform boundaries
 
-| Capability | OneLifestyle `0fa6ddb` | Imported `apps/video` | Evidence |
-| --- | --- | --- | --- |
-| Full-project preview | Missing | Broken | Imported sequence is interval/CSS based and excludes real audio/render parity |
-| Frame-accurate preview | Missing | Missing | No frame-rate or shared frame evaluator |
-| MP4 export | Missing | Missing | Imported control is intentionally disabled; donor control had no handler |
-| Export codec | Missing | Missing | No encoder or codec contract |
-| Output resolution | UI only | Missing | OneLifestyle labels 720p/1080p; imported preview makes no output claim |
-| 16:9 output | Implemented but unverified | Missing | OneLifestyle requests 16:9 from Veo; no project file was produced |
-| Vertical output | Missing | Missing | No vertical project/output contract |
-| Download | Implemented but unverified | Missing | OneLifestyle links a provider response without validating container/codec |
-| Export progress | Mock | Missing | OneLifestyle shimmer/status is generation progress, not compositor progress |
-| Failed export handling | Missing | Missing | No export job exists |
+| Concern | Status |
+| --- | --- |
+| Generative-video provider | Absent by design |
+| Paid API/provider call | None |
+| Secret/environment dependency | None |
+| Auth/wallet/credits/Hub | Absent by design |
+| Server/production database, R2 and server storage | Absent by design; browser-local IndexedDB only |
+| Vercel/deployment | Not created or changed |
+| Customer media in tests | None |
+| Protected app changes | None |
 
-## AI video
-
-| Capability | OneLifestyle `0fa6ddb` | Imported `apps/video` | Evidence |
-| --- | --- | --- | --- |
-| Single-image animation | Implemented but unverified | Missing | Browser-side Veo call exists; paid call not run |
-| Image-to-video model calls | Implemented but unverified | Missing | `@google/genai` browser code was excluded |
-| Start/end-frame generation | Implemented but unverified | Missing | Optional last-frame payload exists; not exercised |
-| Two-image motion | Implemented but unverified | Missing | In-memory pairing plus provider last frame; no deterministic composition |
-| Prompt templates | Implemented but unverified | Missing | Movement/atmosphere prompt strings exist only in source mine |
-| Model selection | Missing | Missing | OneLifestyle active path is fixed to its configured Google model |
-| Provider routes | Missing | Missing | OneLifestyle calls provider from browser; imported app has no API routes |
-| Retry handling | Missing | Missing | No bounded retry, cancellation or idempotency |
-| Failed generation handling | Implemented but unverified | Missing | OneLifestyle has rudimentary thrown/status failure only |
-| Generation costs | Mock | Missing | OneLifestyle uses hard-coded estimates, not actual reconciled usage |
-| Displayed credits or pricing | Mock | Missing | Displayed pricing is not a wallet/ledger or provider invoice |
-
-## Platform concerns
-
-| Capability or concern | OneLifestyle `0fa6ddb` | Imported `apps/video` | Evidence |
-| --- | --- | --- | --- |
-| API routes | Missing | Missing | Neither folder has a server route |
-| Server-side provider calls | Missing | Missing | No server/provider boundary in either app |
-| Client-side provider calls | Implemented but unverified | Missing | OneLifestyle constructs Google client with browser-injected key; excluded |
-| Vercel configuration | Missing | Missing | No deployment configuration imported or created |
-| Environment-variable names | Implemented but unverified | Missing | OneLifestyle references `API_KEY`; imported app has no environment dependency |
-| Authentication | Missing | Missing | Explicitly out of scope |
-| Hub integration | Missing | Missing | Explicitly out of scope; Hub remains durable-state owner |
-| Storage | Missing | Missing | Imported editor uses only page memory/object URLs |
-| Downloads | Implemented but unverified | Missing | OneLifestyle remote response link only; no AIM output contract |
-| Unsafe HTML | Missing | Missing | No `dangerouslySetInnerHTML` found; React text interpolation escapes overlays |
-| Upload hardening | Broken | Broken | Both trust browser MIME and lack count/size/dimension/decode limits |
-
-## Additional AIM donor capability
-
-### Vision Web at `e252df9`
-
-Vision Web is the direct source of the imported editor surface. It has the same editor classifications above before the narrow import fixes, except its handlerless MP4 control was **UI only** rather than intentionally disabled. The full source repository is not buildable without unrelated repairs and carries obsolete or unused auth/provider dependencies.
-
-### Vision Mobile at `02e2925`
-
-Static classification:
-
-- multiple-photo intake, ordering, duration, four motion presets, per-shot preview, sequential preview and native MOV export: **Implemented but unverified**;
-- normalized crop/timeline contract and frame interpolation: **Implemented but unverified**;
-- real MP4, audio, overlays, end card, watermark, persistence, replacement and partial rerender: **Missing**;
-- 4:3 dimensions, preview/export parity and ignored easing/transitions: **Broken**;
-- physical-device export proof: **Missing**.
-
-### Legacy AI Studio at `dde8236`
-
-Static/runtime classification is close to OneLifestyle: upload and one synthetic shot card were **Working and verified**; selection, ordering, pairing, provider controls and per-clip playback were **Implemented but unverified**; generation cost/progress was **Mock**; deterministic timeline, full preview, audio/overlay composition, project persistence and project MP4 were **Missing**.
-
-## Capability conclusion
-
-The imported surface honestly proves a local editor can be installed, built, rendered and fed local media. It does not prove the core product outcome. Timeline semantics, deterministic crop math, audio, persistence and real MP4 export remain the client-alpha production spine.
+The recovery-era donor classifications remain documented in the import commit
+and source-lineage records. This matrix describes the current client-alpha
+branch, not the frozen import checkpoint.

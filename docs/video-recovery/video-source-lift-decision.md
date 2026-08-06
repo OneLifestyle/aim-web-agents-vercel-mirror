@@ -14,7 +14,7 @@ The best starting point is therefore a small, provider-free AIM Video app that l
 | Option | Result | Reason |
 | --- | --- | --- |
 | A. Convert Photo AI directly | Rejected | Strong intake/review patterns, but no timeline, audio, compositor or project-video model; would disrupt an active protected lane |
-| B. Continue OneLifestyle directly | Rejected | Per-shot paid generation, browser-exposed key design, stale Photo code, no lock/scripts/licence and no complete-property renderer |
+| B. Continue OneLifestyle directly | Rejected | Per-shot paid generation, browser-exposed key design, stale Photo code, no lock/scripts and no complete-property renderer |
 | C. Continue Vision Web directly | Rejected | Relevant editor exists, but whole repo mixes mobile/backend/auth/credits/IAP/provider/database code, has large dependency/security debt and fails build/lint |
 | D. Composite selected donor lift | Selected | Preserves the closest provider-free editor surface while isolating dependencies and retaining stronger mobile/photo patterns as explicit translation references |
 | E. Rebuild cleanly from patterns only | Deferred | Likely destination after refactoring, but unnecessary for establishing a reproducible recovery baseline in this task |
@@ -24,7 +24,7 @@ The best starting point is therefore a small, provider-free AIM Video app that l
 | Gate | Result | Evidence |
 | --- | --- | --- |
 | Video worktree clean immediately before import | Passed | Dedicated branch/root/base were rechecked; only placeholder existed |
-| Source authority sufficiently clear | Passed for bounded internal lift | Copied files came only from a Singularealty repository under a founder-authorised recovery goal; public redistribution remains gated |
+| Source authority sufficiently clear | Passed | The founder confirms that OneLifestyle and Singularealty source are under common founder/company control; the prior account-identity mismatch is not a special public-redistribution gate |
 | No live secret copied | Passed | No credential value found; all env/provider files excluded |
 | Separation from Copywriting and Photo AI | Passed | Standalone `apps/video`; protected worktrees untouched |
 | No nested Git repository | Passed | Only ordinary source files copied; donor `.git` stayed in source mine |
@@ -47,6 +47,21 @@ Created locally:
 - pinned package manifest and npm lockfile;
 - source-provenance and limitation README;
 - output/environment/media exclusions.
+
+## Founder ownership and lineage clarification
+
+The founder has clarified the programme authority used for this decision:
+
+- OneLifestyle is a brand owned by Singularealty;
+- the OneLifestyle GitHub account is the founder's personal GitHub identity;
+- the founder created and controls the Singularealty GitHub organisation through that identity; and
+- Real Estate AIM source held under OneLifestyle and Singularealty is under common founder/company control.
+
+Accordingly, the previous OneLifestyle/Singularealty identity mismatch is no longer a special public-redistribution gate. That conclusion does not automatically clear third-party packages, fonts, music, logos, media or any other external-source material; each still requires its applicable licence or permission review.
+
+The founder also reports that Vision Mobile was developed first and Vision Web followed as a web-oriented continuation or adaptation. This is founder-reported product lineage, not a Git-ancestry claim unless repository history independently proves that ancestry.
+
+This source-authority record is programme guidance, not legal advice.
 
 ## Modules and patterns to translate next
 
@@ -78,7 +93,7 @@ The main code-quality debt is the donor's monolithic editor component and DOM/CS
 
 ## Unresolved questions
 
-- confirm repository-wide reuse/distribution authority for the orphan-history Vision Web source before public launch;
+- verify third-party package, font, music, logo, media and external-source rights before public launch;
 - choose and prove the web compositor/encoder path using a real 16:9 MP4 fixture;
 - define licensed music/font/logo rights metadata and portal-safe output rules;
 - define a local project/asset bundle that can reopen without taking over Hub-owned durable state;
@@ -87,3 +102,19 @@ The main code-quality debt is the donor's monolithic editor component and DOM/CS
 ## Final decision
 
 `apps/video` is created as a buildable internal recovery baseline. It is not public-launch ready and is not represented as a video exporter. The next authorised goal is `WEBVIDEO-CLIENT-ALPHA-001`.
+
+## Client-alpha follow-through
+
+`WEBVIDEO-CLIENT-ALPHA-001` subsequently translated the approved concepts into
+a strict renderer-neutral contract, source-aware motion evaluator, guided
+storyboard, IndexedDB persistence and locally rendered/inspected MP4 output.
+The imported monolithic editor, `PositionRect`, donor theme and independent CSS
+Ken Burns path were then removed from the alpha branch; the immutable import
+branch remains the source-lift checkpoint.
+
+The renderer question was resolved with exact-pinned `mediabunny@1.52.3`
+(MPL-2.0) after Remotion's no-paid-licence position could not be established
+from repository headcount evidence. Media rights metadata, local reopen,
+replacement/retiming and full-file re-encode behavior are now documented and
+verified. Shot-level encoded caching remains deferred. The current next task is
+founder tap-through, not generative-video implementation.
