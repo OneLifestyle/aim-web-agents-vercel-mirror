@@ -1,4 +1,5 @@
 import { VideoProjectSchema, type VideoProject } from '../project/schemas';
+import { normalizeProjectTiming } from '../project/normalize';
 import { sha256Blob } from '../media/intake';
 
 const DATABASE_NAME = 'aim-video-local-projects';
@@ -245,7 +246,11 @@ export class LocalProjectRepository {
   }
 
   async save(projectInput: VideoProject, blobs: ReadonlyMap<string, Blob>) {
-    const project = VideoProjectSchema.parse(projectInput);
+    const parsedProject = VideoProjectSchema.parse(projectInput);
+    const project = normalizeProjectTiming(parsedProject, {
+      updatedAt: parsedProject.updatedAt,
+      renderStatus: parsedProject.renderStatus,
+    });
     const database = await this.database();
     const readTransaction = database.transaction(ASSET_STORE, 'readonly');
     const readDone = transactionDone(readTransaction);
@@ -347,6 +352,10 @@ export class LocalProjectRepository {
         'The stored project identity does not match its validated manifest.',
       );
     }
+    const project = normalizeProjectTiming(parsed.data, {
+      updatedAt: parsed.data.updatedAt,
+      renderStatus: parsed.data.renderStatus,
+    });
 
     const recordsByLocalKey = new Map<string, StoredAssetRecord[]>();
     for (const assetRecord of assetRecords) {
@@ -356,7 +365,7 @@ export class LocalProjectRepository {
     const blobs = new Map<string, Blob>();
     const missingAssetIds: string[] = [];
     const corruptAssetIds: string[] = [];
-    for (const asset of parsed.data.mediaAssets) {
+    for (const asset of project.mediaAssets) {
       const storedRecords = recordsByLocalKey.get(asset.localBlobKey) ?? [];
       const stored = storedRecords.length === 1 ? storedRecords[0] : undefined;
       if (storedRecords.length === 0) {
@@ -367,7 +376,7 @@ export class LocalProjectRepository {
         blobs.set(asset.id, stored.blob);
       }
     }
-    return { project: parsed.data, blobs, missingAssetIds, corruptAssetIds };
+    return { project, blobs, missingAssetIds, corruptAssetIds };
   }
 
   async delete(projectId: IDBValidKey) {

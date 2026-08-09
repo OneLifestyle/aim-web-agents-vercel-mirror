@@ -2,6 +2,7 @@
 
 Base task: `WEBVIDEO-CLIENT-ALPHA-001`
 Repair task: `WEBVIDEO-VOICEOVER-EXPORT-REPAIR-001`
+Second repair: `WEBVIDEO-AUDIO-REPAIR-002`
 Review date: 2026-08-09
 
 ## Current alpha posture
@@ -45,17 +46,19 @@ cloud sync, archival storage or a multi-user permission system.
 ## Local voice-activity boundary
 
 Voiceover speech activity is derived entirely in the browser from decoded PCM
-energy. The `energy-rms-v1` analyser does not recognize words, identify
+energy. The `energy-rms-v2` analyser does not recognize words, identify
 speakers, call a model or send bytes to a provider. Only a small source-ID/hash,
 threshold and active-time envelope may be stored in the local project. Raw PCM
 is not persisted and the envelope is safe to discard/recalculate. Replacing or
 removing voiceover invalidates the old envelope; unrelated music edits reuse it.
 
 This lightweight detector is an alpha heuristic, not a biometric or
-studio-grade speech detector. A deterministic low-level background-noise
-fixture is handled by a track-adaptive floor and hysteresis, but unusual,
-changing noise or music embedded in voiceover can still affect classification.
-The founder retest remains a release gate.
+studio-grade speech detector. Deterministic low-level background noise,
+isolated spikes, short gaps, long silence and materially quieter resumed speech
+are handled by a track-adaptive floor, capped dynamic thresholds, hysteresis and
+duration/gap post-processing. Unusual changing noise or music embedded in
+voiceover can still affect classification. Founder retest remains a release
+gate.
 
 ## Media-rights controls
 
@@ -91,6 +94,11 @@ persisted envelope avoids reanalysis during preview and export. The 30-minute
 input maximum remains an upper-bound risk and was not stress-tested on every
 target device.
 
+The final 68-second founder-equivalent verification render took 21.766 seconds,
+produced a 20,829,969-byte MP4 and peaked at 126,058,518 bytes of measured JS heap. The
+compact timeline memoizes placement/activity/gain data by project; playhead-only
+updates do not repeat PCM analysis or rebuild the derived envelope.
+
 The final file is re-encoded in full. No partial output survives a controlled
 cancellation. H.264/AAC capability varies by browser/platform, so unsupported
 encoders fail visibly before rendering.
@@ -106,8 +114,9 @@ implementation authority.
 
 ## Remaining release gates
 
-- `WEBVIDEO-FOUNDER-VOICEOVER-RETEST-001`, repeating founder tap-through
-  Sections 8 and 12 with authorised representative media;
+- `WEBVIDEO-FOUNDER-AUDIO-RETEST-002`, focused on project extension/music
+  endpoint, compact timeline, quieter resumed speech, silence recovery and the
+  branded downloaded MP4;
 - destination-specific portal review for unbranded output;
 - current browser/hardware acceptance;
 - complete third-party package/font/music/logo/media licence review;

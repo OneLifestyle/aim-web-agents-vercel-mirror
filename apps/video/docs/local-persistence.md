@@ -27,6 +27,13 @@ held by the runtime. The header distinguishes **Saved** from **Unsaved changes**
 closing a dirty project requires confirmation, and browser navigation receives
 the browser's unsaved-work warning.
 
+Save and open canonicalize current-alpha audio placement without changing the
+saved project timestamp: music used duration/fade follow the current complete
+project, while voiceover is re-derived from its decoded source and current
+project bound. This repairs a valid-but-stale persisted music `durationSec`
+without requiring re-upload. A cached older voice-activity analysis version is
+safe to open and is recalculated locally from the retained voiceover blob.
+
 Unsupported versions are rejected as `UNSUPPORTED_VERSION`; malformed records
 are sanitized into safe, deletable corrupt list entries and cannot be opened;
 stored envelope/manifest identity mismatches are rejected; absent blobs are returned as

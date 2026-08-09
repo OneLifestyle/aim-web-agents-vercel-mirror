@@ -36,7 +36,9 @@ The export renderer invokes it once per explicit 30-fps frame. Audio preview and
 offline export use the same gain/fade/duck timing evaluator. Offline export
 schedules exact fade knots and one-sample discontinuities at voiceover ducking
 boundaries; preview forces audio position on play and seek, with a small drift
-tolerance only during continuous playback.
+tolerance only during continuous playback. Preview, compact operator timeline
+and offline mix first resolve the same automatic current-alpha placement: music
+covers the complete current project and voiceover remains source-bounded.
 
 Only visual assets that can affect the selected variant are decoded. Unused
 media and branded-only visuals in an unbranded render are not preload failures

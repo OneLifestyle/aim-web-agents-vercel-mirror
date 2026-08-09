@@ -15,7 +15,10 @@ profiles, invalid timing and unsupported project versions are rejected.
   SHA-256 content hash, supplied source/owner/permission/permitted-use fields
   and an optional separate operator-confirmation timestamp.
 - `VideoShot` is a stable-ID union of Single Image and Image Pair.
-- `AudioTrack`, `Overlay` and `EndCard` hold explicit timeline placement.
+- `AudioTrack` retains schema-compatible placement fields; current-alpha music
+  used duration is canonically derived from complete project duration and
+  voiceover used duration from its decoded source/project bound. `Overlay` and
+  `EndCard` hold explicit timeline placement.
 - `OutputProfile` freezes the technical encoder target.
 - `RenderJob`, `RenderStatus` and `RenderError` make progress, cancellation and
   controlled failure persistent project state.
@@ -23,8 +26,9 @@ profiles, invalid timing and unsupported project versions are rejected.
 `orderedShotIds` must contain every shot exactly once. Each referenced asset
 must exist and have the correct media kind. Canvas and frame rate must match the
 selected output profile. Audio and overlays must remain inside the complete
-shot-plus-end-card duration; the shared mutation normalizer trims dependent
-timing after removal or retiming.
+shot-plus-end-card duration. The shared placement resolver and
+mutation/persistence normalizer move music and its fade with project extension
+or shortening, and re-derive source-bounded voiceover without reanalysing it.
 
 ## Shot sources
 

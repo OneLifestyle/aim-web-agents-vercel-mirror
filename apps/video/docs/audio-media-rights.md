@@ -20,20 +20,26 @@ synthesised music WAV and deterministic speech/silence WAV fixtures. Their right
 limits use to internal deterministic renderer verification. No customer media
 or commercial music is bundled or used in tests.
 
-The audio production path supports one looping music track, one optional
-voiceover, independent volume, fade in/out and a 28% music gain while speech is
-detected when reduction is enabled. The local detector analyses 30 ms PCM RMS
-windows, estimates thresholds from the track, uses hysteresis, rejects brief
-spikes and holds across pauses shorter than 0.8 s. Music ducks over 0.18 s and
-recovers over 0.65 s. These are alpha assumptions for relatively clean spoken
-voiceover, not studio-grade VAD.
+The audio production path supports one project-following music track, one
+source-bounded optional voiceover, independent volume, fade in/out and a 28%
+music gain while speech is detected when reduction is enabled. Music starts at
+project start, its used duration and final fade follow the current complete
+project endpoint, and a source shorter than the project uses the existing loop
+behaviour without stretching. Voiceover does not extend beyond its decoded
+source. The local detector analyses 30 ms PCM RMS windows, estimates a noise
+floor and capped dynamic entry/continue thresholds from the track, uses
+hysteresis, rejects brief spikes and holds across pauses shorter than 0.8 s.
+Music ducks over 0.18 s and recovers over 0.65 s. These are alpha assumptions
+for relatively clean spoken voiceover, not studio-grade VAD.
 
-The derived `energy-rms-v1` envelope contains only the source asset ID/hash,
+The derived `energy-rms-v2` envelope contains only the source asset ID/hash,
 analysis parameters and active time ranges. It is safe to recalculate, does not
 retain raw PCM, does not recognize words or speakers and never sends audio to a
 provider. Replacing or removing voiceover invalidates it; music replacement,
-volume and ducking toggles do not. Preview and export share the same envelope
-and gain calculation; export schedules the same attack/activity/release knots.
+volume, music replacement and project retiming do not. An older envelope is a
+disposable cache and is recalculated locally. Preview, the compact operator
+timeline and export share the same placement, envelope and gain calculation;
+export schedules the same fade/attack/activity/release knots.
 
 Common founder/company control of OneLifestyle and Singularealty does not clear
 third-party packages, fonts, music, logos, photographs or other external media.

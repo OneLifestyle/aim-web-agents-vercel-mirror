@@ -2,6 +2,7 @@
 
 Client-alpha evidence date: 2026-08-06
 Speech-aware ducking repair evidence date: 2026-08-09
+Audio timeline/resumed-speech repair evidence date: 2026-08-09
 
 Browser: Google Chrome 151.0.7922.108 for the repair evidence
 Media: locally generated synthetic PNGs and self-created WAV music/voice only
@@ -16,10 +17,11 @@ npm run test:e2e
 npm run build
 npm run test:render
 npm run verify:voiceover
+npm run verify:audio-repair
 npm run verify:fixtures
 ```
 
-Repair unit suite: 91 tests passed across 12 files covering project validation, hashes/migrations,
+Repair unit suite: 96 tests passed across 13 files covering project validation, hashes/migrations,
 motion/crops/easing/pair dissolve, media signatures/object-URL lifecycle,
 bounded encoded-dimension parsing, negative intake, media-rights records, audio
 timing/envelopes, adaptive voice activity, controlled render errors and synthetic fixture construction. Browser workflow verification
@@ -125,10 +127,73 @@ intake path reuses the already decoded buffer, and a matching source envelope
 avoids reanalysis during preview and export. The 30-minute allowed input bound
 was not stress-tested on every target device.
 
-`WEBVIDEO-FAT-001` is technically repaired. Founder acceptance remains open
-until `WEBVIDEO-FOUNDER-VOICEOVER-RETEST-001` repeats tap-through Sections 8
-and 12 with authorised real-world media. FAT-002 through FAT-011 remain open and
-were not repaired here.
+That checkpoint passed its synthetic evidence, but the subsequent founder test
+failed: music faded near the prior approximately 63-second project endpoint
+after extension to approximately 68 seconds, and quieter speech resumed near
+the end of a 60-second voiceover without re-ducking music. It is retained as
+historical first-repair evidence, not founder acceptance.
+
+## WEBVIDEO-AUDIO-REPAIR-002 evidence
+
+The repair reproduced both defects before implementation. A valid 68-second
+project carrying a stale 63-second persisted music duration returned zero music
+gain at 64 seconds despite a 90-second source. A deterministic 60-second
+voiceover fixture with normal speech, short internal gaps, long silence,
+low background noise, an isolated spike and materially quieter speech from
+54.99–59.52 seconds produced only the first active segment with the v1
+whole-track threshold.
+
+Current-alpha placement is now resolved canonically before preview, operator
+display, persistence normalization and offline export. Music begins at project
+start and covers the complete project; its final fade is relative to the current
+endpoint. Short sources loop without stretching. Voiceover remains bounded by
+its decoded source/project intersection. The disposable local analysis cache is
+`energy-rms-v2`; narrower percentile-relative dynamic entry/continue thresholds detect the quieter
+resumption while existing hysteresis, 0.15-second active minimum, 0.8-second
+gap rule, 0.18-second attack and 0.65-second release remain unchanged.
+
+The browser regression began with a 63-second project, 75-second music source
+and 60-second voiceover. Music used duration/end were 63 seconds and fade-out
+began at 61.5 seconds. Retiming one shot extended the project to 68 seconds;
+music used duration/end became 68 seconds and fade-out began at 66.5 seconds,
+while voiceover stayed at 60 seconds. Save/reopen retained those values. A
+post-reopen shortening moved project/music end to 66 seconds and fade start to
+64.5 seconds; restoring the shot moved them back to 68/66.5 without voiceover
+reanalysis.
+
+The compact non-editing timeline displayed:
+
+- Music source `1:15`, used `1:08`, full-project placement and both fades;
+- Voiceover source/used `1:00`, speech regions `0.99–20.01` and
+  `54.99–59.52`, with the meaningful silence visible between them;
+- one music gain curve for duck, recovery, quieter resumed-speech re-duck,
+  post-voiceover recovery and final fade;
+- the preview playhead on the same 68-second axis; and
+- no buttons, inputs, keyframes, dragging or other edit controls.
+
+The combined real branded MP4 encoded 2,040 frames in 21.766 seconds and is
+20,829,969 bytes. Inspection found MP4 (`isom`/`mp41`), 1920 × 1080 H.264/AVC,
+exactly 30 fps, stereo 48 kHz AAC, 68.000-second video and 68.075-second
+container/audio duration including AAC padding. Decoded right-channel RMS over
+0.4-second windows measured:
+
+- initial speech: `0.00902696`;
+- meaningful voice silence: `0.03220115` (3.57× the first speech region);
+- quieter resumed speech: `0.00902823` (3.57× below silence);
+- after the 60-second voiceover endpoint: `0.03219514`; and
+- near the relocated final fade: `0.01198112`.
+
+The actual preview element gains at representative times were `0.0896`, `0.32`,
+`0.0896`, `0.32` and `0.1066667`; they exactly matched the gain intent used by
+the export schedule. Three decoded video-frame parity samples remained between
+0.36 and 0.41 mean absolute channel error, below the tolerance of 12. Peak
+measured JS heap during this long render was 126,058,518 bytes. Chrome reported
+no console warnings/errors in the combined regression or in-app visual pass.
+
+`WEBVIDEO-FAT-001` remains open until focused founder retest succeeds. Automated
+evidence does not claim founder acceptance. FAT-002 through FAT-011 remain open
+and unchanged. The exact next recommendation is
+`WEBVIDEO-FOUNDER-AUDIO-RETEST-002`.
 
 Generated evidence is intentionally gitignored under `verification-output/`.
 The JSON evidence files record exact inspection, parity and memory readings.

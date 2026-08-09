@@ -1,28 +1,33 @@
 # AIM Video next build plan
 
-## Completed technical repair
+## Completed automated technical repair
 
-`WEBVIDEO-VOICEOVER-EXPORT-REPAIR-001 — Add speech-aware music ducking and prove preview/export parity`
+`WEBVIDEO-AUDIO-REPAIR-002 — Repair project-following music, quieter resumed speech and add the operator audio timeline`
 
-`WEBVIDEO-FAT-001` is technically repaired. Local energy analysis now creates a
-reusable source-hash-bound voice-activity envelope; preview and export share its
-smoothed 28% ducking gain. A real branded synthetic MP4 proves first-speech
-duck, five-second-silence recovery and resumed-speech duck. Founder acceptance
-is not complete.
+Automated evidence now proves 63→68-second music/fade endpoint movement,
+60-second source-bounded voiceover, materially quieter speech after long
+silence, compact timeline/playhead accuracy, save/reopen, post-reopen retiming
+and a measured real 68-second branded MP4. `WEBVIDEO-FAT-001` nevertheless
+remains open because founder acceptance is not complete.
 
 ## Exact next goal
 
-**`WEBVIDEO-FOUNDER-VOICEOVER-RETEST-001 — Founder voiceover silence-recovery retest.`**
+**`WEBVIDEO-FOUNDER-AUDIO-RETEST-002 — Focused founder audio timeline retest.`**
 
-Repeat only founder tap-through Sections 8 and 12 on the intended operator Mac
-and current Chrome:
+Repeat only the clarified audio checks on the intended operator Mac and current
+Chrome:
 
 1. use authorised representative photographs, music, voiceover and branding;
-2. listen through a meaningful silent passage inside the voiceover in preview;
-3. render and download the branded MP4;
-4. confirm music recovers smoothly in that silence and ducks again on resumed
-   speech in the downloaded file;
-5. record pass/fail for Sections 8 and 12 only.
+2. extend the project after music is added and confirm music/timeline/final fade
+   move to the new endpoint;
+3. confirm the compact timeline shows the source/used relationship and shared
+   playhead;
+4. listen through meaningful voice silence and materially quieter resumed
+   speech in preview;
+5. render and download the branded MP4 with voiceover;
+6. confirm music recovers in silence, re-ducks on resumed quieter speech,
+   returns after voiceover and continues to the relocated final fade; and
+7. record focused pass/fail without reopening unrelated FAT findings.
 
 ## Acceptance focus
 
@@ -30,14 +35,17 @@ and current Chrome:
 - meaningful silence inside the file restores music smoothly;
 - resumed speech lowers music smoothly;
 - preview and downloaded MP4 behave consistently;
+- music follows project extension and continues/fades after voiceover ends;
+- the timeline explains the current automatic placement without edit controls;
 - no provider, Hub, deployment or unrelated refinement is inferred.
 
 ## Repair threshold
 
 Do not merge on technical evidence alone. Merge is not recommended until the
-founder confirms downloaded branded-MP4 silence recovery. If the bounded retest
-still fails, open a new narrow blocker with the exact authorised-media behavior;
-do not roll FAT-002 through FAT-011 into it.
+founder passes `WEBVIDEO-FOUNDER-AUDIO-RETEST-002`, including the downloaded
+branded-MP4 checks. If the bounded retest still fails, open a new narrow blocker
+with the exact authorised-media behaviour; do not roll FAT-002 through FAT-011
+into it.
 
 FAT-002 through FAT-011 remain open for a later accepted-alpha refinement goal:
 pan labels, production-text spaces, preview workflow separation, Image Pair

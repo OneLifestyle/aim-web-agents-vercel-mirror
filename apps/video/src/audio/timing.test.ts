@@ -20,7 +20,7 @@ const makeTrack = (overrides: Partial<AudioTrack> = {}): AudioTrack => ({
 });
 
 const voiceEnvelope: VoiceActivityEnvelope = {
-  analysisVersion: 'energy-rms-v1',
+  analysisVersion: 'energy-rms-v2',
   sourceAssetId: 'voice-asset',
   sourceContentHash: 'b'.repeat(64),
   sourceDurationSec: 10,
@@ -92,5 +92,27 @@ describe('audio timing', () => {
     const points = createGainEnvelopePoints(track, makeProject([track]), 10);
     expect(points.at(-2)?.gain).toBeCloseTo(0.8);
     expect(points.at(-1)).toMatchObject({ timeSec: 10, gain: 0, discontinuity: true });
+  });
+
+  it('does not trust a stale persisted music endpoint after the project extends', () => {
+    const music = makeTrack({
+      durationSec: 63,
+      fadeInSec: 1.5,
+      fadeOutSec: 1.5,
+    });
+    const project = {
+      ...makeProject([music]),
+      mediaAssets: [{
+        id: music.assetId,
+        kind: 'audio',
+        contentHash: 'c'.repeat(64),
+        decodedDurationSec: 90,
+      }],
+      shots: [{ id: 'shot-1', durationSec: 68 }],
+    } as VideoProject;
+
+    expect(audioGainAtTime(music, project, 64)).toBeCloseTo(0.8);
+    expect(audioGainAtTime(music, project, 67.25)).toBeCloseTo(0.4);
+    expect(audioGainAtTime(music, project, 68)).toBe(0);
   });
 });

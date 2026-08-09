@@ -1,6 +1,7 @@
 import { Pause, Play, RotateCcw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { audioGainAtTime, isAudioTrackActive } from '../audio/timing';
+import { resolveProjectAudioTracks } from '../audio/placement';
 import { ProjectAssetRuntime } from '../media/projectAssetRuntime';
 import type { VideoProject } from '../project/schemas';
 import {
@@ -9,6 +10,7 @@ import {
   getShotSegments,
 } from '../render/canvasComposition';
 import { getReferencedVisualAssetIds } from '../render/referencedAssets';
+import { AudioTimeline } from './AudioTimeline';
 
 interface ProjectPreviewProps {
   project: VideoProject;
@@ -44,6 +46,7 @@ export function ProjectPreview({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const duration = getProjectDuration(project);
+  const audioTracks = useMemo(() => resolveProjectAudioTracks(project), [project]);
   const segments = useMemo(() => getShotSegments(project), [project]);
   const activeSegment = segments.find((segment) => (
     currentTime >= segment.startTimeSec && currentTime < segment.endTimeSec
@@ -68,7 +71,7 @@ export function ProjectPreview({
 
   useEffect(() => {
     const next = new Map<string, HTMLAudioElement>();
-    for (const track of project.audioTracks) {
+    for (const track of audioTracks) {
       const url = runtime.getUrl(track.assetId);
       if (!url) continue;
       const audio = new Audio(url);
@@ -85,7 +88,7 @@ export function ProjectPreview({
       for (const audio of previous.values()) audio.pause();
       for (const audio of next.values()) audio.pause();
     };
-  }, [project.audioTracks, runtime]);
+  }, [audioTracks, runtime]);
 
   const draw = useCallback((timeSec: number) => {
     const canvas = canvasRef.current;
@@ -105,7 +108,7 @@ export function ProjectPreview({
   useEffect(() => draw(currentTime), [currentTime, draw]);
 
   const syncAudio = useCallback((timeSec: number, play: boolean, forcePosition = false) => {
-    for (const track of project.audioTracks) {
+    for (const track of audioTracks) {
       const audio = audioElementsRef.current.get(track.id);
       if (!audio) continue;
       const active = isAudioTrackActive(track, timeSec);
@@ -126,7 +129,7 @@ export function ProjectPreview({
           setAudioError(`The ${track.kind} preview could not start. Use Play again or check the local audio file.`);
         });
     }
-  }, [project]);
+  }, [audioTracks, project]);
 
   const seek = useCallback((timeSec: number) => {
     const next = Math.max(0, Math.min(timeSec, duration));
@@ -235,6 +238,7 @@ export function ProjectPreview({
             onChange={(event) => seek(Number(event.target.value))}
           />
         </div>
+        <AudioTimeline project={project} currentTimeSec={currentTime} />
         {audioError ? <div className="issue issue--warning" role="status">{audioError}</div> : null}
       </div>
     </section>

@@ -1,5 +1,6 @@
 import { VideoProjectSchema, type VideoProject } from './schemas';
 import { getProjectDurationSec, getShotsDurationSec } from './timeline';
+import { resolveAudioPlacement } from '../audio/placement';
 
 export interface NormalizeProjectOptions {
   updatedAt?: string;
@@ -16,7 +17,6 @@ export const normalizeProjectTiming = (
 ): VideoProject => {
   const totalDurationSec = getProjectDurationSec(project);
   const shotsDurationSec = getShotsDurationSec(project);
-  const assetById = new Map(project.mediaAssets.map((asset) => [asset.id, asset]));
   const overlays = totalDurationSec <= 0
     ? []
     : project.overlays
@@ -40,26 +40,8 @@ export const normalizeProjectTiming = (
     ? []
     : project.audioTracks
       .filter((track) => track.startTimeSec < totalDurationSec)
-      .map((track) => {
-        const asset = assetById.get(track.assetId);
-        const availableSource = track.loop
-          ? totalDurationSec
-          : Math.max(0.001, (asset?.decodedDurationSec ?? track.durationSec) - track.trimStartSec);
-        const durationSec = Math.max(
-          0.001,
-          Math.min(
-            track.loop ? totalDurationSec - track.startTimeSec : track.durationSec,
-            totalDurationSec - track.startTimeSec,
-            availableSource,
-          ),
-        );
-        return {
-          ...track,
-          durationSec,
-          fadeInSec: Math.min(track.fadeInSec, durationSec / 2),
-          fadeOutSec: Math.min(track.fadeOutSec, durationSec / 2),
-        };
-      });
+      .map((track) => resolveAudioPlacement(project, track).track)
+      .filter((track) => track.durationSec > 0);
 
   return VideoProjectSchema.parse({
     ...project,

@@ -16,12 +16,17 @@
    optional logo/watermark and closing details under **Production settings**.
    **Reduce music while speech is detected** lowers music during likely spoken
    regions, holds through short pauses and recovers smoothly during meaningful
-   silence inside the voiceover file. Analysis happens locally when voiceover
-   is added and is reused after save/reopen.
+   silence inside the voiceover file, including materially quieter resumed
+   speech. Analysis happens locally when voiceover is added and is reused after
+   save/reopen. Music automatically follows project retiming; voiceover remains
+   bounded by its decoded source duration.
 8. Choose **Unbranded 16:9** or **Branded 16:9**. Unbranded is a portal-safe
    candidate, not a universal compliance certification.
 9. Use the complete preview to play, pause and seek through shots, overlays,
-   audio and the end card.
+   audio and the end card. The compact **Audio timeline** directly beneath it
+   shares the same project axis and playhead. It shows Music and Voiceover
+   source/used durations, placement, music fades, detected speech, voice silence
+   and the resulting duck/recovery curve. It is explanatory, not editable.
 10. Choose **Render MP4**. Keep the tab open while local encoding runs. The
     editing controls lock to the exact project snapshot while the control
     reports progress and may be cancelled. A successful render is
@@ -36,8 +41,8 @@ export. A visible capability error is shown when the browser cannot provide it.
 An undecodable voiceover also returns a visible local-analysis error; no audio
 is uploaded or transcribed.
 
-`WEBVIDEO-FAT-001` is technically repaired by synthetic preview/export evidence,
-but founder acceptance is not complete. The next founder check is
-`WEBVIDEO-FOUNDER-VOICEOVER-RETEST-001`, repeating only tap-through Sections 8
-and 12 with authorised real-world media. Findings FAT-002 through FAT-011 remain
-open for a later accepted-alpha refinement goal.
+`WEBVIDEO-FAT-001` remains open until founder retest succeeds. Automated
+evidence now covers the project-relative endpoint defect, quieter resumed
+speech and the compact operator timeline, but does not claim founder
+acceptance. The next focused check is `WEBVIDEO-FOUNDER-AUDIO-RETEST-002`.
+Findings FAT-002 through FAT-011 remain open and unchanged.

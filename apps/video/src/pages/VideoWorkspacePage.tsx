@@ -5,8 +5,11 @@ import {
   analyseVoiceActivityBlob,
   ensureProjectVoiceActivityEnvelope,
   getCurrentVoiceActivityEnvelope,
+  getProjectVoiceActivitySegments,
 } from '../audio/voiceActivity';
 import { audioGainAtTime } from '../audio/timing';
+import { createGainEnvelopePoints } from '../audio/mixAudio';
+import { resolveAudioPlacement } from '../audio/placement';
 import { MediaIntakePanel } from '../components/MediaIntakePanel';
 import { ProductionSettings } from '../components/ProductionSettings';
 import { ProjectHome } from '../components/ProjectHome';
@@ -15,6 +18,7 @@ import { Storyboard } from '../components/Storyboard';
 import {
   buildCanonicalRendererFixture,
   buildFifteenShotFixture,
+  buildFounderAudioRepairFixture,
   buildThirtyShotFixture,
   buildVoiceoverDuckingRendererFixture,
   createSelfCreatedVoiceoverFile,
@@ -48,6 +52,7 @@ import {
   createSingleImageShot,
   finalizeWorkspaceProject,
   getProjectFrameCount,
+  getProjectDurationSec,
   getShotsDurationSec,
   removeWorkspaceShot,
   reorderWorkspaceShots,
@@ -114,6 +119,12 @@ interface BrowserVerificationApi {
     analysisElapsedMs: number;
     approximateAnalysisHeapDeltaBytes: number | null;
   }>;
+  loadAudioRepairFixture: () => Promise<{
+    projectId: string;
+    shots: number;
+    assets: number;
+    audio: AudioRuntimeState;
+  }>;
   setMediaValidationDelay: (delayMs: number) => void;
   setProjectOpenDelay: (delayMs: number) => void;
   measureVoiceAnalysisPerformance: () => Array<{
@@ -147,6 +158,7 @@ interface BrowserVerificationApi {
       settingsHash: string;
     }>;
     firstShot?: { id: string; contentHash: string; settingsHash: string; durationSec: number };
+    audio?: AudioRuntimeState;
   };
   saveAndReopen: () => Promise<{
     projectId: string;
@@ -155,13 +167,19 @@ interface BrowserVerificationApi {
     shots: number;
     voiceActivitySegments: number;
     voiceActivitySourceHash?: string;
+    audio?: AudioRuntimeState;
   }>;
   reopenWithoutSave: () => Promise<{
     missingAssetIds: string[];
     corruptAssetIds: string[];
   }>;
   replaceFirstShot: () => Promise<{ stableShotId: boolean; settingsRetained: boolean; otherShotsUnchanged: boolean }>;
-  retimeFirstShot: (durationSec: number) => { stableShotId: boolean; otherShotsUnchanged: boolean; durationSec: number };
+  retimeFirstShot: (durationSec: number) => {
+    stableShotId: boolean;
+    otherShotsUnchanged: boolean;
+    durationSec: number;
+    audio: AudioRuntimeState;
+  };
   reorderFirstToLast: () => { firstShotId: string; lastShotId: string };
   removeFirstRuntimeAsset: () => string | null;
   replaceVoiceoverFixture: () => Promise<{ sourceChanged: boolean; activeSegments: number }>;
@@ -180,13 +198,37 @@ interface BrowserVerificationApi {
       speechOneRms: number;
       longSilenceRms: number;
       speechTwoRms: number;
+      postVoiceoverRms?: number;
+      finalFadeRms?: number;
       intendedMusicGains: {
         speechOne: number;
         longSilence: number;
         speechTwo: number;
+        postVoiceover?: number;
+        finalFade?: number;
       };
     };
   }>;
+}
+
+interface AudioRuntimeState {
+  projectDurationSec: number;
+  musicSourceDurationSec: number | null;
+  musicUsedDurationSec: number | null;
+  musicEndTimeSec: number | null;
+  musicFadeOutStartSec: number | null;
+  voiceoverSourceDurationSec: number | null;
+  voiceoverUsedDurationSec: number | null;
+  voiceoverEndTimeSec: number | null;
+  speechSegments: Array<{ startTimeSec: number; endTimeSec: number }>;
+  musicGainSchedule: Array<{ timeSec: number; gain: number; discontinuity: boolean }>;
+  representativeMusicGains: {
+    firstSpeech: number | null;
+    meaningfulSilence: number | null;
+    quieterResumedSpeech: number | null;
+    postVoiceover: number | null;
+    finalFade: number | null;
+  };
 }
 
 declare global {
@@ -241,6 +283,35 @@ const measureAudioBufferRms = (
   return end > start ? Math.sqrt(sumSquares / (end - start)) : 0;
 };
 
+const getAudioRuntimeState = (project: VideoProject): AudioRuntimeState => {
+  const music = project.audioTracks.find((track) => track.kind === 'music');
+  const voiceover = project.audioTracks.find((track) => track.kind === 'voiceover');
+  const musicPlacement = music ? resolveAudioPlacement(project, music) : undefined;
+  const voiceoverPlacement = voiceover ? resolveAudioPlacement(project, voiceover) : undefined;
+  const gainAt = (timeSec: number) => music ? audioGainAtTime(music, project, timeSec) : null;
+  return {
+    projectDurationSec: getProjectDurationSec(project),
+    musicSourceDurationSec: musicPlacement?.sourceDurationSec ?? null,
+    musicUsedDurationSec: musicPlacement?.usedDurationSec ?? null,
+    musicEndTimeSec: musicPlacement?.endTimeSec ?? null,
+    musicFadeOutStartSec: musicPlacement
+      ? musicPlacement.endTimeSec - musicPlacement.track.fadeOutSec
+      : null,
+    voiceoverSourceDurationSec: voiceoverPlacement?.sourceDurationSec ?? null,
+    voiceoverUsedDurationSec: voiceoverPlacement?.usedDurationSec ?? null,
+    voiceoverEndTimeSec: voiceoverPlacement?.endTimeSec ?? null,
+    speechSegments: getProjectVoiceActivitySegments(project),
+    musicGainSchedule: music ? createGainEnvelopePoints(music, project) : [],
+    representativeMusicGains: {
+      firstSpeech: gainAt(10),
+      meaningfulSilence: gainAt(40),
+      quieterResumedSpeech: gainAt(57),
+      postVoiceover: gainAt(62),
+      finalFade: gainAt(67.5),
+    },
+  };
+};
+
 const collectRenderedAudioEvidence = async (project: VideoProject, blob: Blob) => {
   if (!getCurrentVoiceActivityEnvelope(project)) return undefined;
   const AudioContextConstructor = window.AudioContext
@@ -250,9 +321,12 @@ const collectRenderedAudioEvidence = async (project: VideoProject, blob: Blob) =
   try {
     const decoded = await context.decodeAudioData(await blob.arrayBuffer());
     const sampleWindowSec = 0.4;
-    const speechOneTimeSec = 1.5;
-    const longSilenceTimeSec = 5;
-    const speechTwoTimeSec = 8.25;
+    const founderEquivalent = getProjectDurationSec(project) >= 60;
+    const speechOneTimeSec = founderEquivalent ? 10 : 1.5;
+    const longSilenceTimeSec = founderEquivalent ? 40 : 5;
+    const speechTwoTimeSec = founderEquivalent ? 57 : 8.25;
+    const postVoiceoverTimeSec = founderEquivalent ? 62 : undefined;
+    const finalFadeTimeSec = founderEquivalent ? 67.5 : undefined;
     const music = project.audioTracks.find((track) => track.kind === 'music');
     if (!music) throw new Error('Rendered audio evidence requires fixture music.');
     return {
@@ -261,10 +335,22 @@ const collectRenderedAudioEvidence = async (project: VideoProject, blob: Blob) =
       speechOneRms: measureAudioBufferRms(decoded, 1, speechOneTimeSec, sampleWindowSec),
       longSilenceRms: measureAudioBufferRms(decoded, 1, longSilenceTimeSec, sampleWindowSec),
       speechTwoRms: measureAudioBufferRms(decoded, 1, speechTwoTimeSec, sampleWindowSec),
+      ...(postVoiceoverTimeSec === undefined ? {} : {
+        postVoiceoverRms: measureAudioBufferRms(decoded, 1, postVoiceoverTimeSec, sampleWindowSec),
+      }),
+      ...(finalFadeTimeSec === undefined ? {} : {
+        finalFadeRms: measureAudioBufferRms(decoded, 1, finalFadeTimeSec, sampleWindowSec),
+      }),
       intendedMusicGains: {
         speechOne: audioGainAtTime(music, project, speechOneTimeSec),
         longSilence: audioGainAtTime(music, project, longSilenceTimeSec),
         speechTwo: audioGainAtTime(music, project, speechTwoTimeSec),
+        ...(postVoiceoverTimeSec === undefined ? {} : {
+          postVoiceover: audioGainAtTime(music, project, postVoiceoverTimeSec),
+        }),
+        ...(finalFadeTimeSec === undefined ? {} : {
+          finalFade: audioGainAtTime(music, project, finalFadeTimeSec),
+        }),
       },
     };
   } finally {
@@ -1015,6 +1101,31 @@ export function VideoWorkspacePage() {
             : Math.max(0, heapAfter - heapBefore),
         };
       },
+      loadAudioRepairFixture: async () => {
+        invalidateMediaOperations();
+        const bundle = await buildFounderAudioRepairFixture();
+        const initialProject = syncPresentationOverlays(retimeWorkspaceShot(
+          bundle.project,
+          bundle.project.orderedShotIds[0]!,
+          5,
+        ));
+        runtime.setAll(bundle.blobs);
+        setProjectNameDraft(initialProject.name);
+        setPropertyAddressDraft(initialProject.propertyAddress ?? '');
+        setProject(initialProject);
+        setMediaIssues(bundle.intakeIssues);
+        setRenderedVideo(null);
+        setRenderedSourceFingerprint(null);
+        setRenderError(null);
+        setRenderProgress(null);
+        setSavedProjectFingerprint(null);
+        return {
+          projectId: initialProject.id,
+          shots: initialProject.shots.length,
+          assets: initialProject.mediaAssets.length,
+          audio: getAudioRuntimeState(initialProject),
+        };
+      },
       recalculateMissingEnvelopeAndReopen: async () => {
         if (!project) throw new Error('No fixture project is open.');
         const withoutEnvelope = VideoProjectSchema.parse({
@@ -1082,6 +1193,7 @@ export function VideoWorkspacePage() {
           settingsHash: project.shots[0].settingsHash,
           durationSec: project.shots[0].durationSec,
         } : undefined,
+        audio: project ? getAudioRuntimeState(project) : undefined,
       }),
       saveAndReopen: async () => {
         if (!project) throw new Error('No fixture project is open.');
@@ -1099,6 +1211,7 @@ export function VideoWorkspacePage() {
           shots: loaded.project.shots.length,
           voiceActivitySegments: getCurrentVoiceActivityEnvelope(loaded.project)?.activeSegments.length ?? 0,
           voiceActivitySourceHash: getCurrentVoiceActivityEnvelope(loaded.project)?.sourceContentHash,
+          audio: getAudioRuntimeState(loaded.project),
         };
       },
       reopenWithoutSave: async () => {
@@ -1167,6 +1280,7 @@ export function VideoWorkspacePage() {
           stableShotId: nextShot.id === originalShot.id,
           otherShotsUnchanged: next.shots.slice(1).every((shot) => otherHashes.get(shot.id) === `${shot.contentHash}:${shot.settingsHash}`),
           durationSec: nextShot.durationSec,
+          audio: getAudioRuntimeState(next),
         };
       },
       reorderFirstToLast: () => {

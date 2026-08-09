@@ -130,6 +130,16 @@ try {
     return loaded;
   };
 
+  const loadAudioRepairFixture = async () => {
+    const loaded = await page.evaluate(async () => {
+      if (!window.__AIM_VIDEO_TEST__) throw new Error('Browser verification API is unavailable.');
+      return window.__AIM_VIDEO_TEST__.loadAudioRepairFixture();
+    });
+    await page.waitForFunction((shots) => document.querySelectorAll('[data-shot-id]').length === shots, loaded.shots);
+    await page.getByTestId('operator-audio-timeline').waitFor();
+    return loaded;
+  };
+
   const memorySnapshot = () => page.evaluate(() => {
     const memory = performance.memory;
     return memory ? {
@@ -494,6 +504,114 @@ try {
     assert(canonical.parity.length >= 7, 'Canonical parity did not sample every shot and the end card.');
     assert(canonical.parity.every((sample) => sample.withinLossyTolerance), 'Canonical exported frames exceed parity tolerance.');
     evidence.canonical = canonical;
+  } else if (mode === 'audio-repair') {
+    const initial = await loadAudioRepairFixture();
+    assert(initial.audio.projectDurationSec === 63, 'Founder-equivalent fixture did not begin at 63 seconds.');
+    assert(initial.audio.musicSourceDurationSec === 75, 'Initial music source duration is not 75 seconds.');
+    assert(initial.audio.musicUsedDurationSec === 63 && initial.audio.musicEndTimeSec === 63, 'Initial music placement does not end at 63 seconds.');
+    assert(initial.audio.musicFadeOutStartSec === 61.5, 'Initial music fade is not relative to the 63-second endpoint.');
+    assert(initial.audio.voiceoverSourceDurationSec === 60 && initial.audio.voiceoverEndTimeSec === 60, 'Initial voiceover does not retain its 60-second source endpoint.');
+
+    const initialTimeline = page.getByTestId('operator-audio-timeline');
+    assert(Number(await initialTimeline.getAttribute('data-project-duration')) === 63, 'Operator timeline did not render the initial 63-second axis.');
+    assert(Number(await initialTimeline.getAttribute('data-music-end')) === 63, 'Operator timeline did not render the initial music endpoint.');
+
+    const extended = await page.evaluate(() => window.__AIM_VIDEO_TEST__.retimeFirstShot(10));
+    await page.waitForFunction(() => Number(document.querySelector('[data-testid="operator-audio-timeline"]')?.getAttribute('data-project-duration')) === 68);
+    assert(extended.audio.projectDurationSec === 68, 'Shot retiming did not extend the project to 68 seconds.');
+    assert(extended.audio.musicUsedDurationSec === 68 && extended.audio.musicEndTimeSec === 68, 'Music did not follow the 68-second project endpoint.');
+    assert(extended.audio.musicFadeOutStartSec === 66.5, 'Music fade did not move to the 68-second project endpoint.');
+    assert(extended.audio.voiceoverSourceDurationSec === 60 && extended.audio.voiceoverUsedDurationSec === 60 && extended.audio.voiceoverEndTimeSec === 60, 'Voiceover was incorrectly extended with the project.');
+    assert(extended.audio.speechSegments.length === 2, 'Quieter resumed speech was not retained in the canonical envelope.');
+    assert(extended.audio.speechSegments[0].startTimeSec <= 1.05 && extended.audio.speechSegments[0].endTimeSec >= 19.95, 'Initial speech interval is incorrect.');
+    assert(extended.audio.speechSegments[1].startTimeSec <= 55.05 && extended.audio.speechSegments[1].endTimeSec >= 59.45, 'Quieter resumed-speech interval is incorrect.');
+    assert(extended.audio.speechSegments[1].startTimeSec - extended.audio.speechSegments[0].endTimeSec > 34.8, 'Meaningful silence was not preserved.');
+    assert(extended.audio.representativeMusicGains.firstSpeech < extended.audio.representativeMusicGains.meaningfulSilence * 0.35, 'Initial speech did not duck music.');
+    assert(extended.audio.representativeMusicGains.quieterResumedSpeech < extended.audio.representativeMusicGains.meaningfulSilence * 0.35, 'Quieter resumed speech did not re-duck music.');
+    assert(Math.abs(extended.audio.representativeMusicGains.postVoiceover - extended.audio.representativeMusicGains.meaningfulSilence) < 0.000001, 'Music did not return to normal after voiceover.');
+    assert(extended.audio.representativeMusicGains.finalFade < extended.audio.representativeMusicGains.postVoiceover * 0.5, 'Final music fade is not near the 68-second endpoint.');
+    assert(extended.audio.musicGainSchedule.at(-1).timeSec === 68 && extended.audio.musicGainSchedule.at(-1).gain === 0, 'Export gain schedule does not end at 68 seconds.');
+
+    const timeline = page.getByTestId('operator-audio-timeline');
+    assert(Number(await timeline.getAttribute('data-music-source-duration')) === 75, 'Timeline music source duration is incorrect.');
+    assert(Number(await timeline.getAttribute('data-music-used-duration')) === 68, 'Timeline music used duration is incorrect.');
+    assert(Number(await timeline.getAttribute('data-music-fade-out-start')) === 66.5, 'Timeline final fade region is incorrect.');
+    assert(Number(await timeline.getAttribute('data-voice-source-duration')) === 60, 'Timeline voice source duration is incorrect.');
+    assert(Number(await timeline.getAttribute('data-voice-used-duration')) === 60, 'Timeline voice used duration is incorrect.');
+    assert(await timeline.locator('.audio-timeline__speech').count() === 2, 'Timeline does not display both speech-active regions.');
+    assert(await timeline.locator('button, input, select').count() === 0, 'Operator timeline unexpectedly exposes editing controls.');
+
+    const previewSection = page.locator('section[aria-labelledby="preview-heading"]');
+    const previewSeek = page.getByLabel('Seek complete video');
+    const seekPreview = async (timeSec) => {
+      await previewSeek.evaluate((element, value) => {
+        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        if (!valueSetter) throw new Error('The browser did not expose the range value setter.');
+        valueSetter.call(element, String(value));
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+      }, timeSec);
+      return Number(await previewSection.getAttribute('data-preview-music-gain'));
+    };
+    const previewAppliedGains = {
+      firstSpeech: await seekPreview(10),
+      meaningfulSilence: await seekPreview(40),
+      quieterResumedSpeech: await seekPreview(57),
+      postVoiceover: await seekPreview(62),
+      finalFade: await seekPreview(67.5),
+    };
+    for (const [label, applied] of Object.entries(previewAppliedGains)) {
+      const intended = extended.audio.representativeMusicGains[label];
+      assert(Math.abs(applied - intended) < 0.000001, `Preview ${label} gain ${applied} differs from canonical ${intended}.`);
+    }
+    const playheadLeft = Number((await timeline.locator('.audio-timeline__playhead').first().getAttribute('style'))?.match(/left:\s*([\d.]+)/)?.[1]);
+    assert(Math.abs(playheadLeft - 67.5 / 68 * 100) < 0.01, 'Audio timeline playhead did not follow preview seek.');
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.waitForTimeout(350);
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    const playedPlayheadLeft = Number((await timeline.locator('.audio-timeline__playhead').first().getAttribute('style'))?.match(/left:\s*([\d.]+)/)?.[1]);
+    assert(playedPlayheadLeft > 0, 'Audio timeline playhead did not advance during preview playback.');
+    await timeline.screenshot({ path: path.join(outputRoot, 'audio-repair-timeline.png') });
+
+    const reopened = await page.evaluate(() => window.__AIM_VIDEO_TEST__.saveAndReopen());
+    await page.waitForFunction(() => window.__AIM_VIDEO_TEST__?.state().audio?.projectDurationSec === 68);
+    assert(reopened.missingAssetIds.length === 0 && reopened.corruptAssetIds.length === 0, 'Audio repair fixture save/reopen lost local media.');
+    assert(reopened.audio.projectDurationSec === 68 && reopened.audio.musicEndTimeSec === 68, 'Save/reopen did not retain canonical music placement.');
+    assert(reopened.audio.voiceoverEndTimeSec === 60 && reopened.voiceActivitySegments === 2, 'Save/reopen did not retain the voice source or activity envelope.');
+
+    const shortened = await page.evaluate(() => window.__AIM_VIDEO_TEST__.retimeFirstShot(8));
+    await page.waitForFunction(() => window.__AIM_VIDEO_TEST__?.state().audio?.projectDurationSec === 66);
+    assert(shortened.audio.projectDurationSec === 66 && shortened.audio.musicEndTimeSec === 66 && shortened.audio.musicFadeOutStartSec === 64.5, 'Post-reopen shortening did not move music and fade to 66 seconds.');
+    const restored = await page.evaluate(() => window.__AIM_VIDEO_TEST__.retimeFirstShot(10));
+    await page.waitForFunction(() => window.__AIM_VIDEO_TEST__?.state().audio?.projectDurationSec === 68);
+    assert(restored.audio.musicEndTimeSec === 68 && restored.audio.voiceoverEndTimeSec === 60, 'Post-reopen extension did not restore the canonical endpoints.');
+
+    const rendered = await renderFixture('founder-audio-repair-68s-branded');
+    assertAlphaProfile(rendered, 'Founder-equivalent audio repair output');
+    assert(Math.abs(rendered.inspection.videoDurationSec - 68) < 0.001, 'Founder-equivalent MP4 video track is not 68 seconds.');
+    assert(rendered.parity.every((sample) => sample.withinLossyTolerance), 'Founder-equivalent frame parity exceeded tolerance.');
+    const audio = rendered.audioEvidence;
+    assert(audio, 'Founder-equivalent exported audio evidence was not collected.');
+    assert(audio.longSilenceRms > audio.speechOneRms * 2.4, 'Exported music did not recover in meaningful silence.');
+    assert(audio.longSilenceRms > audio.speechTwoRms * 2.4, 'Exported music did not re-duck for quieter resumed speech.');
+    assert(audio.postVoiceoverRms > audio.speechTwoRms * 2.4, 'Exported music did not return to normal after voiceover ended.');
+    assert(audio.finalFadeRms < audio.postVoiceoverRms * 0.5, 'Exported music did not fade at the new 68-second endpoint.');
+    assert(Math.abs(audio.intendedMusicGains.speechOne - previewAppliedGains.firstSpeech) < 0.000001, 'Preview/export first-speech gain intent differs.');
+    assert(Math.abs(audio.intendedMusicGains.longSilence - previewAppliedGains.meaningfulSilence) < 0.000001, 'Preview/export silence gain intent differs.');
+    assert(Math.abs(audio.intendedMusicGains.speechTwo - previewAppliedGains.quieterResumedSpeech) < 0.000001, 'Preview/export quieter-resumption gain intent differs.');
+    assert(Math.abs(audio.intendedMusicGains.postVoiceover - previewAppliedGains.postVoiceover) < 0.000001, 'Preview/export post-voiceover gain intent differs.');
+    assert(Math.abs(audio.intendedMusicGains.finalFade - previewAppliedGains.finalFade) < 0.000001, 'Preview/export final-fade gain intent differs.');
+
+    evidence.audioRepair = {
+      initial,
+      extended: extended.audio,
+      previewAppliedGains,
+      reopened,
+      shortened: shortened.audio,
+      restored: restored.audio,
+      render: rendered,
+      timelineScreenshot: path.join(outputRoot, 'audio-repair-timeline.png'),
+    };
   } else if (mode === 'voiceover') {
     const beforeAnalysisMemory = await memorySnapshot();
     const loaded = await loadVoiceoverFixture();

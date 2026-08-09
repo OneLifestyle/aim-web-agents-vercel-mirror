@@ -1,4 +1,5 @@
 import type { AudioTrack, VideoProject } from '../project/schemas';
+import { resolveAudioPlacement } from './placement';
 import { musicDuckGainAtTime } from './voiceActivity';
 
 export const isAudioTrackActive = (track: AudioTrack, timeSec: number) => (
@@ -26,9 +27,10 @@ export const audioGainAtTime = (
   project: VideoProject,
   timeSec: number,
 ) => {
-  if (!isAudioTrackActive(track, timeSec)) return 0;
-  const duck = track.kind === 'music' && track.duckUnderVoice
+  const resolvedTrack = resolveAudioPlacement(project, track).track;
+  if (!isAudioTrackActive(resolvedTrack, timeSec)) return 0;
+  const duck = resolvedTrack.kind === 'music' && resolvedTrack.duckUnderVoice
     ? musicDuckGainAtTime(project, timeSec)
     : 1;
-  return Math.max(0, Math.min(1, audioTrackGainAtTime(track, timeSec) * duck));
+  return Math.max(0, Math.min(1, audioTrackGainAtTime(resolvedTrack, timeSec) * duck));
 };

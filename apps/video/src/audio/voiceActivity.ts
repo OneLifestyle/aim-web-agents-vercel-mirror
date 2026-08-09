@@ -7,6 +7,7 @@ import {
   type VoiceActivityEnvelope,
   type VoiceActivitySegment,
 } from '../project/schemas';
+import { resolveAudioPlacement } from './placement';
 
 export const VOICE_ACTIVITY_DEFAULTS = Object.freeze({
   analysisWindowDurationSec: 0.03,
@@ -139,11 +140,11 @@ export const estimateAdaptiveThresholds = (
   } else {
     speechStartThresholdRms = Math.max(
       MINIMUM_ANALYSIS_RMS,
-      noiseFloorRms + dynamicRange * 0.32,
+      noiseFloorRms + dynamicRange * 0.12,
     );
     speechContinueThresholdRms = Math.max(
       MINIMUM_ANALYSIS_RMS / 2,
-      noiseFloorRms + dynamicRange * 0.18,
+      noiseFloorRms + dynamicRange * 0.07,
     );
   }
 
@@ -330,9 +331,10 @@ export const getProjectVoiceActivitySegments = (
   project: VideoProject,
 ): VoiceActivitySegment[] => {
   if (!voiceActivityEnvelopeMatchesProject(project)) return [];
-  const voiceover = project.audioTracks.find((track) => track.kind === 'voiceover' && track.enabled);
+  const persistedVoiceover = project.audioTracks.find((track) => track.kind === 'voiceover' && track.enabled);
   const envelope = getCurrentVoiceActivityEnvelope(project);
-  if (!voiceover || !envelope) return [];
+  if (!persistedVoiceover || !envelope) return [];
+  const voiceover = resolveAudioPlacement(project, persistedVoiceover).track;
   const sourceStart = voiceover.trimStartSec;
   const sourceEnd = sourceStart + voiceover.durationSec;
   return envelope.activeSegments.flatMap((segment) => {

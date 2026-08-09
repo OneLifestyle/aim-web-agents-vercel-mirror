@@ -16,9 +16,12 @@ server upload, account, Hub, or server/cloud database and storage.
   cross-dissolve proxy; AI Motion Pair generation is not connected;
 - complete play/pause/seek preview from the same project/frame evaluator used by
   MP4 export;
-- authorised music, optional voiceover, independent volume/fades and music
-  reduction while local speech activity is detected, with smooth recovery in
-  meaningful voiceover pauses;
+- authorised project-following music, source-bounded optional voiceover,
+  independent volume/fades and music reduction while local speech activity is
+  detected, with smooth recovery in meaningful voiceover pauses;
+- a compact, non-editing audio timeline beneath the complete preview showing
+  source/used durations, placement, fades, speech/silence, music gain and the
+  shared preview playhead;
 - import-session source, rights owner, permission basis/reference, permitted use
   and confirmation time recorded for local media;
 - title/address, optional logo/watermark and neutral or branded end card;
@@ -43,6 +46,7 @@ npm run build
 npm run dev
 npm run test:render
 npm run verify:voiceover
+npm run verify:audio-repair
 npm run verify:fixtures
 ```
 
@@ -53,8 +57,10 @@ directory. No customer media or commercial music is used.
 
 Voice activity uses deterministic local PCM energy analysis, not speech
 recognition. A small versioned envelope of time ranges is reusable after save;
-raw decoded PCM is not persisted. Preview and export consume that same envelope
-and gain evaluator.
+raw decoded PCM is not persisted. The current `energy-rms-v2` analysis uses
+narrower percentile-relative dynamic entry/continue thresholds so materially quieter speech can
+resume after silence without converting speech to text. Preview, the operator
+timeline and export consume the same placement, envelope and gain evaluator.
 
 ## Architecture and evidence
 

@@ -73,7 +73,8 @@ export type SyntheticVoiceActivityFixture =
   | 'long-silence'
   | 'edge-silence'
   | 'noise-floor'
-  | 'isolated-spike';
+  | 'isolated-spike'
+  | 'quiet-resumption';
 
 export const SYNTHETIC_VOICE_ACTIVITY_DURATIONS: Readonly<Record<SyntheticVoiceActivityFixture, number>> = Object.freeze({
   'short-pause': 4,
@@ -81,6 +82,7 @@ export const SYNTHETIC_VOICE_ACTIVITY_DURATIONS: Readonly<Record<SyntheticVoiceA
   'edge-silence': 5,
   'noise-floor': 5,
   'isolated-spike': 5,
+  'quiet-resumption': 60,
 });
 
 const voiceAmplitudeAt = (fixture: SyntheticVoiceActivityFixture, timeSec: number) => {
@@ -95,6 +97,20 @@ const voiceAmplitudeAt = (fixture: SyntheticVoiceActivityFixture, timeSec: numbe
       return timeSec >= 1.25 && timeSec < 3.75 ? 0.18 : 0;
     case 'isolated-spike':
       return timeSec >= 2 && timeSec < 2.03 ? 0.22 : 0;
+    case 'quiet-resumption':
+      if (timeSec >= 35 && timeSec < 35.03) return 0.24;
+      if (
+        (timeSec >= 25 && timeSec < 25.12)
+        || (timeSec >= 31 && timeSec < 31.15)
+        || (timeSec >= 47 && timeSec < 47.1)
+      ) return 0.012;
+      if (
+        timeSec >= 1
+        && timeSec < 20
+        && !(timeSec >= 7 && timeSec < 7.28)
+        && !(timeSec >= 13 && timeSec < 13.34)
+      ) return 0.18;
+      return timeSec >= 55 && timeSec < 59.5 ? 0.04 : 0;
   }
 };
 
@@ -118,7 +134,9 @@ export const createSyntheticVoiceActivitySampleSource = (
     noiseState = (Math.imul(noiseState, 1_664_525) + 1_013_904_223) >>> 0;
     const background = fixture === 'noise-floor'
       ? ((noiseState / 0xffff_ffff) * 2 - 1) * 0.004
-      : 0;
+      : fixture === 'quiet-resumption'
+        ? ((noiseState / 0xffff_ffff) * 2 - 1) * 0.003
+        : 0;
     left[frame] = background + amplitude * syllableModulation * (
       0.78 * Math.sin(2 * Math.PI * 205 * timeSec)
       + 0.22 * Math.sin(2 * Math.PI * 410 * timeSec)

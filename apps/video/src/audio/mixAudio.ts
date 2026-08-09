@@ -2,6 +2,7 @@ import type { AudioTrack, VideoProject } from '../project/schemas';
 import { ProjectAssetRuntime } from '../media/projectAssetRuntime';
 import { getProjectDuration } from '../render/canvasComposition';
 import { audioGainAtTime, audioTrackGainAtTime } from './timing';
+import { resolveAudioPlacement, resolveProjectAudioTracks } from './placement';
 import { getCurrentVoiceActivityEnvelope, getProjectVoiceActivitySegments, musicDuckGainAtTime } from './voiceActivity';
 
 const AUDIO_SAMPLE_RATE = 48_000;
@@ -62,9 +63,10 @@ export const createDuckEnvelopePoints = (
   project: VideoProject,
   totalDurationSec = getProjectDuration(project),
 ): GainEnvelopePoint[] => {
-  const { start, end, discontinuities, knots } = trackBoundaryState(track, totalDurationSec);
+  const resolvedTrack = resolveAudioPlacement(project, track).track;
+  const { start, end, discontinuities, knots } = trackBoundaryState(resolvedTrack, totalDurationSec);
 
-  if (track.kind === 'music' && track.duckUnderVoice) {
+  if (resolvedTrack.kind === 'music' && resolvedTrack.duckUnderVoice) {
     const envelope = getCurrentVoiceActivityEnvelope(project);
     if (envelope) {
       const activitySegments = getProjectVoiceActivitySegments(project);
@@ -106,7 +108,7 @@ export const createDuckEnvelopePoints = (
     .sort((left, right) => left - right)
     .map((timeSec) => ({
       timeSec,
-      gain: track.kind === 'music' && track.duckUnderVoice
+      gain: resolvedTrack.kind === 'music' && resolvedTrack.duckUnderVoice
         ? musicDuckGainAtTime(project, timeSec)
         : 1,
       discontinuity: discontinuities.has(timeSec),
@@ -119,15 +121,16 @@ export const createGainEnvelopePoints = (
   project: VideoProject,
   totalDurationSec = getProjectDuration(project),
 ): GainEnvelopePoint[] => {
+  const resolvedTrack = resolveAudioPlacement(project, track).track;
   const times = new Set([
-    ...createTrackGainEnvelopePoints(track, totalDurationSec).map((point) => point.timeSec),
-    ...createDuckEnvelopePoints(track, project, totalDurationSec).map((point) => point.timeSec),
+    ...createTrackGainEnvelopePoints(resolvedTrack, totalDurationSec).map((point) => point.timeSec),
+    ...createDuckEnvelopePoints(resolvedTrack, project, totalDurationSec).map((point) => point.timeSec),
   ]);
   return [...times].sort((left, right) => left - right).map((timeSec) => ({
     timeSec,
-    gain: audioGainAtTime(track, project, timeSec),
-    discontinuity: timeSec === Math.max(0, track.startTimeSec)
-      || timeSec === Math.min(totalDurationSec, track.startTimeSec + track.durationSec),
+    gain: audioGainAtTime(resolvedTrack, project, timeSec),
+    discontinuity: timeSec === Math.max(0, resolvedTrack.startTimeSec)
+      || timeSec === Math.min(totalDurationSec, resolvedTrack.startTimeSec + resolvedTrack.durationSec),
   }));
 };
 
@@ -154,7 +157,7 @@ export const mixProjectAudio = async (
   const totalDurationSec = getProjectDuration(project);
   const frameCount = Math.max(1, Math.ceil(totalDurationSec * AUDIO_SAMPLE_RATE));
   const context = new OfflineAudioContext(AUDIO_CHANNELS, frameCount, AUDIO_SAMPLE_RATE);
-  const enabledTracks = project.audioTracks.filter((track) => track.enabled);
+  const enabledTracks = resolveProjectAudioTracks(project).filter((track) => track.enabled);
 
   for (const track of enabledTracks) {
     assertNotCancelled(signal);

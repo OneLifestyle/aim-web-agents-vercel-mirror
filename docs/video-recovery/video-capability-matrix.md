@@ -2,6 +2,7 @@
 
 Base task: `WEBVIDEO-CLIENT-ALPHA-001`
 Repair task: `WEBVIDEO-VOICEOVER-EXPORT-REPAIR-001`
+Second repair: `WEBVIDEO-AUDIO-REPAIR-002`
 Latest evidence date: 2026-08-09
 
 Classification is based on commands and browser/MP4 evidence that actually ran.
@@ -58,9 +59,11 @@ certification.
 | Current time/current shot/end card | Working and verified | Timeline UI and canvas preview |
 | Shared preview/export evaluator | Working and verified | `drawProjectFrame` single path plus decoded MP4 frame comparisons |
 | Music upload/volume/fades | Working and verified | Self-created WAV fixture, AAC output and timing tests |
+| Project-following music endpoint | Working and verified | Actual 63→68→66→68 runtime/persistence regression; music and final fade followed each endpoint with a 75-second source |
 | Voiceover/independent volume | Working and verified | Separate synthetic voiceover in a real H.264/AAC MP4; save/reopen, replacement, removal and cancellation evidence |
-| Speech-aware music reduction | Working and verified | Shared `energy-rms-v1` envelope; short-pause hold, long-silence recovery, resumed-speech duck and exported right-channel RMS proof |
+| Speech-aware music reduction | Working and verified | Shared `energy-rms-v2` envelope; short-pause hold, long-silence recovery, materially quieter resumed-speech duck and exported right-channel RMS proof |
 | Preview/export audio parity | Working and verified | Preview samples and export schedule use one activity envelope/gain evaluator; rendered audio measured speech/silence/speech |
+| Compact operator audio timeline | Working and verified | Music/Voiceover source-used placement, fades, speech/silence, gain curve and shared preview playhead verified on the 68-second fixture; no edit controls |
 | Export progress | Working and verified | Frame-based progress used by fixture harness/UI |
 | Cancellation | Working and verified | 30-shot frame-12 and canonical finalization-stage cancellation; no output returned |
 | Controlled failure | Working and verified | Missing local photo returned visible deterministic error |
@@ -100,8 +103,10 @@ branch, not the frozen import checkpoint.
 
 ## Founder finding status
 
-`WEBVIDEO-FAT-001` is technically repaired, pending founder tap-through
-Sections 8 and 12. These out-of-scope findings remain open and unchanged:
+`WEBVIDEO-FAT-001` remains open pending
+`WEBVIDEO-FOUNDER-AUDIO-RETEST-002`. Automated evidence repairs the clarified
+music-endpoint and quieter-resumption defects but is not founder acceptance.
+These out-of-scope findings remain open and unchanged:
 
 - FAT-002 — Pan Left/Right labels reversed;
 - FAT-003 — trailing spaces removed during production-text entry;

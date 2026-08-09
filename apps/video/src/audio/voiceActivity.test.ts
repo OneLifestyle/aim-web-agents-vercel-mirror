@@ -172,6 +172,21 @@ describe('voice activity sample analysis', () => {
     expect(analyseFixture('isolated-spike').activeSegments).toEqual([]);
   });
 
+  it('detects materially quieter speech resumed after meaningful silence', () => {
+    const envelope = analyseFixture('quiet-resumption');
+    expect(envelope.activeSegments).toHaveLength(2);
+    expect(envelope.activeSegments[0]).toMatchObject({
+      startTimeSec: expect.any(Number),
+      endTimeSec: expect.any(Number),
+    });
+    expect(envelope.activeSegments[0]!.startTimeSec).toBeLessThanOrEqual(1.05);
+    expect(envelope.activeSegments[0]!.endTimeSec).toBeGreaterThanOrEqual(19.95);
+    expect(envelope.activeSegments[1]!.startTimeSec).toBeLessThanOrEqual(55.05);
+    expect(envelope.activeSegments[1]!.endTimeSec).toBeGreaterThanOrEqual(59.45);
+    expect(envelope.activeSegments[1]!.startTimeSec - envelope.activeSegments[0]!.endTimeSec)
+      .toBeGreaterThan(34.8);
+  });
+
   it('detects a clean voice envelope after strong global attenuation', () => {
     const source = createSyntheticVoiceActivitySampleSource('short-pause', 4_000);
     const samples = source.getChannelData(0);
@@ -343,13 +358,13 @@ describe('voice activity lifecycle', () => {
     });
   });
 
-  it('recalculates an envelope from an older derived-analysis version', async () => {
+  it('recalculates an envelope from the prior v1 derived-analysis cache', async () => {
     const currentEnvelope = analyseFixture('edge-silence');
     const current = createProjectWithAudio(audioAsset('voice-1', 'b'), currentEnvelope);
     const legacy = VideoProjectSchema.parse({
       ...current,
       voiceActivityEnvelope: {
-        analysisVersion: 'energy-rms-v0',
+        analysisVersion: 'energy-rms-v1',
         obsoleteSegments: [[1, 4]],
       },
     });
@@ -362,7 +377,7 @@ describe('voice activity lifecycle', () => {
     );
     expect(result.analysisPerformed).toBe(true);
     expect(analyser).toHaveBeenCalledOnce();
-    expect(getCurrentVoiceActivityEnvelope(result.project)?.analysisVersion).toBe('energy-rms-v1');
+    expect(getCurrentVoiceActivityEnvelope(result.project)?.analysisVersion).toBe('energy-rms-v2');
   });
 
   it('reuses voice analysis when music source, volume, or ducking setting changes', async () => {

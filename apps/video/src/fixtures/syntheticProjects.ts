@@ -5,6 +5,7 @@ import {
   createImagePairShot,
   createSingleImageShot,
   getProjectDurationSec,
+  retimeShot,
   VideoProjectSchema,
   type MediaAsset,
   type MotionPreset,
@@ -72,6 +73,7 @@ export interface BuildSyntheticFixtureProjectOptions {
   endCardDurationSec?: number;
   imageFiles?: readonly File[];
   musicFile?: File;
+  musicDurationSec?: number;
   logoFile?: File;
   watermarkFile?: File;
   decodeImageDimensions?: (blob: Blob) => Promise<DecodedImageDimensions>;
@@ -366,7 +368,7 @@ export const buildSyntheticVerificationProject = async (
     );
   }
 
-  const musicDurationSec = DEFAULT_MUSIC_DURATION_SEC;
+  const musicDurationSec = options.musicDurationSec ?? DEFAULT_MUSIC_DURATION_SEC;
   const musicFile = options.musicFile
     ?? createSelfCreatedMusicFile(musicDurationSec);
   const musicIntake = await validateAudioFile(musicFile, {
@@ -528,6 +530,87 @@ export const buildVoiceoverDuckingRendererFixture = async (
       },
     ],
   });
+  return {
+    project,
+    blobs: bundle.blobs,
+    intakeIssues: [...bundle.intakeIssues, ...intake.issues],
+  };
+};
+
+/** 68-second founder-equivalent fixture with a 60-second quieter resumption. */
+export const buildFounderAudioRepairFixture = async (): Promise<SyntheticFixtureProjectBundle> => {
+  const musicDurationSec = 75;
+  const bundle = await buildSyntheticVerificationProject(15, {
+    outputVariant: 'branded',
+    shotDurationSec: 4.4,
+    endCardDurationSec: 2,
+    musicDurationSec,
+    musicFile: createSelfCreatedMusicFile(musicDurationSec),
+  });
+  let retimedProject = bundle.project;
+  for (const [index, shotId] of retimedProject.orderedShotIds.entries()) {
+    retimedProject = retimeShot(
+      retimedProject,
+      shotId,
+      index === 0 ? 10 : 4,
+      { updatedAt: FIXTURE_TIMESTAMP },
+    );
+  }
+  const voiceoverFile = createSelfCreatedVoiceoverFile('quiet-resumption');
+  const voiceoverDurationSec = SYNTHETIC_VOICE_ACTIVITY_DURATIONS['quiet-resumption'];
+  const intake = await validateAudioFile(voiceoverFile, {
+    decodeDuration: async () => voiceoverDurationSec,
+  });
+  assertNoBlockingIssues('Self-created quiet-resumption voiceover', intake.issues);
+  if (!intake.accepted) {
+    throw new SyntheticFixtureBuildError(
+      'Self-created quiet-resumption voiceover was not accepted.',
+      intake.issues,
+    );
+  }
+  const voiceoverAssetId = 'founder-audio-repair-voiceover';
+  const voiceoverAsset = withFixtureTimestamp(createAudioMediaAsset(
+    intake.accepted,
+    SELF_CREATED_FIXTURE_RIGHTS,
+    voiceoverAssetId,
+  ));
+  const projectWithAsset = addAssetAndBlob(
+    retimedProject,
+    voiceoverAsset,
+    voiceoverFile,
+    bundle.blobs,
+  );
+  const envelope = analyseVoiceActivity(
+    createSyntheticVoiceActivitySampleSource('quiet-resumption'),
+    voiceoverAsset.id,
+    voiceoverAsset.contentHash,
+  );
+  const project = VideoProjectSchema.parse({
+    ...projectWithAsset,
+    id: 'founder-audio-repair-project',
+    name: 'Founder-equivalent audio repair fixture',
+    voiceActivityEnvelope: envelope,
+    audioTracks: [
+      ...projectWithAsset.audioTracks,
+      {
+        id: 'founder-audio-repair-voiceover-track',
+        assetId: voiceoverAsset.id,
+        kind: 'voiceover',
+        startTimeSec: 0,
+        durationSec: voiceoverDurationSec,
+        trimStartSec: 0,
+        volume: 0.9,
+        fadeInSec: 0,
+        fadeOutSec: 0,
+        loop: false,
+        duckUnderVoice: false,
+        enabled: true,
+      },
+    ],
+  });
+  if (getProjectDurationSec(project) !== 68) {
+    throw new Error('Founder-equivalent audio fixture must be exactly 68 seconds.');
+  }
   return {
     project,
     blobs: bundle.blobs,

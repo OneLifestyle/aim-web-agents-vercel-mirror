@@ -11,7 +11,7 @@ export const MAX_PROJECT_SHOTS = 30;
 export const MIN_SHOT_DURATION_SEC = 0.5;
 export const MAX_SHOT_DURATION_SEC = 20;
 export const MAX_END_CARD_DURATION_SEC = 10;
-export const VOICE_ACTIVITY_ANALYSIS_VERSION = 'energy-rms-v1' as const;
+export const VOICE_ACTIVITY_ANALYSIS_VERSION = 'energy-rms-v2' as const;
 
 const MAX_TIMELINE_DURATION_SEC = 60 * 60;
 const MAX_MEDIA_DURATION_SEC = 24 * 60 * 60;
