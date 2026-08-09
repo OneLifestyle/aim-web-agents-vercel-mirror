@@ -103,10 +103,10 @@ branch, not the frozen import checkpoint.
 
 ## Founder finding status
 
-`WEBVIDEO-FAT-001` remains open pending
-`WEBVIDEO-FOUNDER-AUDIO-RETEST-002`. Automated evidence repairs the clarified
-music-endpoint and quieter-resumption defects but is not founder acceptance.
-These out-of-scope findings remain open and unchanged:
+The founder completed `WEBVIDEO-FOUNDER-AUDIO-RETEST-002` on 2026-08-09,
+reported being extremely happy with the result and described it as
+“Perfection.” `WEBVIDEO-FAT-001` is closed with both automated evidence and
+founder acceptance. These out-of-scope findings remain open and unchanged:
 
 - FAT-002 — Pan Left/Right labels reversed;
 - FAT-003 — trailing spaces removed during production-text entry;

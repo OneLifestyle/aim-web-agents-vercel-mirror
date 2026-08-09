@@ -190,10 +190,14 @@ the export schedule. Three decoded video-frame parity samples remained between
 measured JS heap during this long render was 126,058,518 bytes. Chrome reported
 no console warnings/errors in the combined regression or in-app visual pass.
 
-`WEBVIDEO-FAT-001` remains open until focused founder retest succeeds. Automated
-evidence does not claim founder acceptance. FAT-002 through FAT-011 remain open
-and unchanged. The exact next recommendation is
-`WEBVIDEO-FOUNDER-AUDIO-RETEST-002`.
+## Founder acceptance
+
+On 2026-08-09, the founder completed `WEBVIDEO-FOUNDER-AUDIO-RETEST-002` against
+the local repair build and reported being extremely happy with the result,
+describing it as “Perfection.” This founder-reported acceptance complements,
+but does not replace, the automated measurements above. `WEBVIDEO-FAT-001` is
+closed. FAT-002 through FAT-011 remain open and unchanged. No merge, deployment
+or pull request is implied by this acceptance record.
 
 Generated evidence is intentionally gitignored under `verification-output/`.
 The JSON evidence files record exact inspection, parity and memory readings.

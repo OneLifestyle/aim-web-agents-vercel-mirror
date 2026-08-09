@@ -4,18 +4,18 @@
 
 `WEBVIDEO-AUDIO-REPAIR-002 — Repair project-following music, quieter resumed speech and add the operator audio timeline`
 
-Automated evidence now proves 63→68-second music/fade endpoint movement,
+Automated evidence proves 63→68-second music/fade endpoint movement,
 60-second source-bounded voiceover, materially quieter speech after long
 silence, compact timeline/playhead accuracy, save/reopen, post-reopen retiming
-and a measured real 68-second branded MP4. `WEBVIDEO-FAT-001` nevertheless
-remains open because founder acceptance is not complete.
+and a measured real 68-second branded MP4.
 
-## Exact next goal
+## Founder audio retest completed
 
-**`WEBVIDEO-FOUNDER-AUDIO-RETEST-002 — Focused founder audio timeline retest.`**
+`WEBVIDEO-FOUNDER-AUDIO-RETEST-002 — Focused founder audio timeline retest`
+was completed on 2026-08-09. The founder reported being extremely happy with
+the result and described it as “Perfection.” `WEBVIDEO-FAT-001` is closed.
 
-Repeat only the clarified audio checks on the intended operator Mac and current
-Chrome:
+The accepted focus was:
 
 1. use authorised representative photographs, music, voiceover and branding;
 2. extend the project after music is added and confirm music/timeline/final fade
@@ -39,13 +39,12 @@ Chrome:
 - the timeline explains the current automatic placement without edit controls;
 - no provider, Hub, deployment or unrelated refinement is inferred.
 
-## Repair threshold
+## Post-acceptance boundary
 
-Do not merge on technical evidence alone. Merge is not recommended until the
-founder passes `WEBVIDEO-FOUNDER-AUDIO-RETEST-002`, including the downloaded
-branded-MP4 checks. If the bounded retest still fails, open a new narrow blocker
-with the exact authorised-media behaviour; do not roll FAT-002 through FAT-011
-into it.
+The focused technical and founder audio acceptance gates are complete. Merge,
+pull request and deployment remain separate actions requiring explicit
+authority; none is implied by this acceptance update. Do not roll FAT-002
+through FAT-011 into the completed audio repair.
 
 FAT-002 through FAT-011 remain open for a later accepted-alpha refinement goal:
 pan labels, production-text spaces, preview workflow separation, Image Pair

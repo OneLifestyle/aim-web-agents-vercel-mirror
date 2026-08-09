@@ -41,8 +41,10 @@ export. A visible capability error is shown when the browser cannot provide it.
 An undecodable voiceover also returns a visible local-analysis error; no audio
 is uploaded or transcribed.
 
-`WEBVIDEO-FAT-001` remains open until founder retest succeeds. Automated
-evidence now covers the project-relative endpoint defect, quieter resumed
-speech and the compact operator timeline, but does not claim founder
-acceptance. The next focused check is `WEBVIDEO-FOUNDER-AUDIO-RETEST-002`.
-Findings FAT-002 through FAT-011 remain open and unchanged.
+`WEBVIDEO-FOUNDER-AUDIO-RETEST-002` was completed by the founder on 2026-08-09.
+The founder reported being extremely happy with the result and described it as
+“Perfection.” `WEBVIDEO-FAT-001` is therefore closed: project-relative music,
+quieter resumed-speech ducking, silence recovery, the compact audio timeline
+and the complete local operator result are accepted. Findings FAT-002 through
+FAT-011 remain open and unchanged. Merge and deployment remain separate,
+explicitly authorised actions.

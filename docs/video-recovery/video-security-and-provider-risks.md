@@ -114,9 +114,9 @@ implementation authority.
 
 ## Remaining release gates
 
-- `WEBVIDEO-FOUNDER-AUDIO-RETEST-002`, focused on project extension/music
-  endpoint, compact timeline, quieter resumed speech, silence recovery and the
-  branded downloaded MP4;
+`WEBVIDEO-FOUNDER-AUDIO-RETEST-002` passed on 2026-08-09 and
+`WEBVIDEO-FAT-001` is closed. Remaining gates are:
+
 - destination-specific portal review for unbranded output;
 - current browser/hardware acceptance;
 - complete third-party package/font/music/logo/media licence review;

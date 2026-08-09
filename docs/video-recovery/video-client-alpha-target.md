@@ -58,15 +58,14 @@ operator's current browser/hardware.
 ## Repair and acceptance status
 
 The clarified `WEBVIDEO-FAT-001` technical defects are repaired in automated
-evidence, but FAT-001 remains open pending founder retest. The detector is deterministic,
-local and content-agnostic: 30 ms RMS windows, track-adaptive thresholds,
-hysteresis, 0.8 s minimum silence for recovery, 0.18 s attack, 0.65 s release
-and 28% active music gain. Preview and export consume the same source-hash-bound
-envelope; no transcription, speaker identification, provider or raw-PCM
-persistence was added.
+evidence. The detector is deterministic, local and content-agnostic: 30 ms RMS
+windows, track-adaptive thresholds, hysteresis, 0.8 s minimum silence for
+recovery, 0.18 s attack, 0.65 s release and 28% active music gain. Preview and
+export consume the same source-hash-bound envelope; no transcription, speaker
+identification, provider or raw-PCM persistence was added.
 
-Founder acceptance is not complete. FAT-002 through FAT-011 remain open and
-unchanged. The exact next task is `WEBVIDEO-FOUNDER-AUDIO-RETEST-002`, focused
-only on project extension/music endpoint, compact audio timeline, quieter
-resumed speech, silence recovery and the branded downloaded MP4. Do not
-recommend merge until that retest passes. Generative motion remains deferred.
+The founder completed `WEBVIDEO-FOUNDER-AUDIO-RETEST-002` on 2026-08-09,
+reported being extremely happy with the result and described it as
+“Perfection.” `WEBVIDEO-FAT-001` is closed. FAT-002 through FAT-011 remain open
+and unchanged. This clears the focused audio acceptance gate but does not itself
+authorise merge or deployment. Generative motion remains deferred.
