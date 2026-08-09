@@ -9,6 +9,7 @@ import {
   canEncodeVideo,
 } from 'mediabunny';
 import { mixProjectAudio } from '../audio/mixAudio';
+import { ensureProjectVoiceActivityEnvelope } from '../audio/voiceActivity';
 import { ProjectAssetRuntime } from '../media/projectAssetRuntime';
 import { createOutputFileName } from '../project/outputProfile';
 import { VideoProjectSchema, type VideoProject } from '../project/schemas';
@@ -106,7 +107,11 @@ export const renderProjectToMp4 = async (
   options: RenderProjectOptions = {},
 ): Promise<RenderedVideo> => {
   const startedAt = performance.now();
-  const project = VideoProjectSchema.parse(projectInput);
+  const validatedProject = VideoProjectSchema.parse(projectInput);
+  assertNotCancelled(options.signal);
+  const activity = await ensureProjectVoiceActivityEnvelope(validatedProject, runtime);
+  assertNotCancelled(options.signal);
+  const project = activity.project;
   const durationSec = getProjectDuration(project);
   if (project.orderedShotIds.length === 0 || durationSec <= 0) {
     throw new Error('Add photographs before exporting the video.');

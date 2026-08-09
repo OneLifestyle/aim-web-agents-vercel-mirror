@@ -236,7 +236,7 @@ export function ProductionSettings(props: ProductionSettingsProps) {
             <AudioControls project={project} kind="voiceover" rightsConfirmed={rightsReady} rightsDetails={rightsDetails} onAudioFile={onAudioFile} onAudioChange={onAudioChange} />
             {music && voiceover ? (
               <label className="switch-row" style={{ marginTop: 12 }}>
-                <span>Reduce music while voiceover plays</span>
+                <span>Reduce music while speech is detected</span>
                 <input
                   type="checkbox"
                   checked={music.duckUnderVoice}

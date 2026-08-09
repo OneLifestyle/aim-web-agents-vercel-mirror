@@ -1,5 +1,12 @@
 import { Check, Download, FolderOpen, Play, Save, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  analyseVoiceActivity,
+  analyseVoiceActivityBlob,
+  ensureProjectVoiceActivityEnvelope,
+  getCurrentVoiceActivityEnvelope,
+} from '../audio/voiceActivity';
+import { audioGainAtTime } from '../audio/timing';
 import { MediaIntakePanel } from '../components/MediaIntakePanel';
 import { ProductionSettings } from '../components/ProductionSettings';
 import { ProjectHome } from '../components/ProjectHome';
@@ -9,6 +16,9 @@ import {
   buildCanonicalRendererFixture,
   buildFifteenShotFixture,
   buildThirtyShotFixture,
+  buildVoiceoverDuckingRendererFixture,
+  createSelfCreatedVoiceoverFile,
+  createRepresentativeVoiceActivitySampleSource,
   createSyntheticPropertyImage,
 } from '../fixtures';
 import {
@@ -96,12 +106,37 @@ interface ToastMessage {
 
 interface BrowserVerificationApi {
   loadFixture: (count: 6 | 15 | 30, variant?: OutputVariant) => Promise<{ projectId: string; shots: number; assets: number }>;
+  loadVoiceoverFixture: () => Promise<{
+    projectId: string;
+    shots: number;
+    assets: number;
+    activeSegments: number;
+    analysisElapsedMs: number;
+    approximateAnalysisHeapDeltaBytes: number | null;
+  }>;
   setMediaValidationDelay: (delayMs: number) => void;
   setProjectOpenDelay: (delayMs: number) => void;
+  measureVoiceAnalysisPerformance: () => Array<{
+    durationSec: number;
+    elapsedMs: number;
+    activeSegments: number;
+    approximateHeapDeltaBytes: number | null;
+  }>;
+  recalculateMissingEnvelopeAndReopen: () => Promise<{
+    analysisPerformed: boolean;
+    persistedSegments: number;
+    missingEnvelopeReopenElapsedMs: number;
+    cachedEnvelopeReopenElapsedMs: number;
+  }>;
+  prepareMissingEnvelopeDamagedReopen: () => Promise<{
+    projectId: string;
+    imageAssetId: string;
+  }>;
   state: () => {
     projectId: string | null;
     shots: number;
     assets: number;
+    voiceActivitySegments: number;
     orderedShotIds: string[];
     shotSignatures: Array<{
       id: string;
@@ -118,6 +153,8 @@ interface BrowserVerificationApi {
     missingAssetIds: string[];
     corruptAssetIds: string[];
     shots: number;
+    voiceActivitySegments: number;
+    voiceActivitySourceHash?: string;
   }>;
   reopenWithoutSave: () => Promise<{
     missingAssetIds: string[];
@@ -127,6 +164,9 @@ interface BrowserVerificationApi {
   retimeFirstShot: (durationSec: number) => { stableShotId: boolean; otherShotsUnchanged: boolean; durationSec: number };
   reorderFirstToLast: () => { firstShotId: string; lastShotId: string };
   removeFirstRuntimeAsset: () => string | null;
+  replaceVoiceoverFixture: () => Promise<{ sourceChanged: boolean; activeSegments: number }>;
+  removeVoiceoverFixture: () => { removed: boolean; envelopeRemoved: boolean };
+  setDuckingEnabled: (enabled: boolean) => { enabled: boolean; speechGain: number; silenceGain: number };
   renderDirect: (options?: { download?: boolean; cancelAtFrame?: number; cancelAtStage?: RenderProgress['stage'] }) => Promise<{
     cancelled?: boolean;
     error?: string;
@@ -134,6 +174,18 @@ interface BrowserVerificationApi {
     sizeBytes?: number;
     inspection?: RenderedVideo['inspection'];
     parity?: FrameParitySample[];
+    audioEvidence?: {
+      channel: number;
+      sampleWindowSec: number;
+      speechOneRms: number;
+      longSilenceRms: number;
+      speechTwoRms: number;
+      intendedMusicGains: {
+        speechOne: number;
+        longSilence: number;
+        speechTwo: number;
+      };
+    };
   }>;
 }
 
@@ -170,6 +222,55 @@ const renderSourceFingerprint = (project: VideoProject): string => stableHash({
   renderJobs: [],
   lastRenderJobId: undefined,
 });
+
+const measureAudioBufferRms = (
+  buffer: AudioBuffer,
+  channel: number,
+  centerTimeSec: number,
+  windowDurationSec: number,
+) => {
+  const samples = buffer.getChannelData(Math.min(channel, buffer.numberOfChannels - 1));
+  const halfWindow = windowDurationSec / 2;
+  const start = Math.max(0, Math.floor((centerTimeSec - halfWindow) * buffer.sampleRate));
+  const end = Math.min(samples.length, Math.ceil((centerTimeSec + halfWindow) * buffer.sampleRate));
+  let sumSquares = 0;
+  for (let index = start; index < end; index += 1) {
+    const sample = samples[index] ?? 0;
+    sumSquares += sample * sample;
+  }
+  return end > start ? Math.sqrt(sumSquares / (end - start)) : 0;
+};
+
+const collectRenderedAudioEvidence = async (project: VideoProject, blob: Blob) => {
+  if (!getCurrentVoiceActivityEnvelope(project)) return undefined;
+  const AudioContextConstructor = window.AudioContext
+    ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextConstructor) throw new Error('Rendered audio evidence cannot be decoded in this browser.');
+  const context = new AudioContextConstructor();
+  try {
+    const decoded = await context.decodeAudioData(await blob.arrayBuffer());
+    const sampleWindowSec = 0.4;
+    const speechOneTimeSec = 1.5;
+    const longSilenceTimeSec = 5;
+    const speechTwoTimeSec = 8.25;
+    const music = project.audioTracks.find((track) => track.kind === 'music');
+    if (!music) throw new Error('Rendered audio evidence requires fixture music.');
+    return {
+      channel: Math.min(1, decoded.numberOfChannels - 1),
+      sampleWindowSec,
+      speechOneRms: measureAudioBufferRms(decoded, 1, speechOneTimeSec, sampleWindowSec),
+      longSilenceRms: measureAudioBufferRms(decoded, 1, longSilenceTimeSec, sampleWindowSec),
+      speechTwoRms: measureAudioBufferRms(decoded, 1, speechTwoTimeSec, sampleWindowSec),
+      intendedMusicGains: {
+        speechOne: audioGainAtTime(music, project, speechOneTimeSec),
+        longSilence: audioGainAtTime(music, project, longSilenceTimeSec),
+        speechTwo: audioGainAtTime(music, project, speechTwoTimeSec),
+      },
+    };
+  } finally {
+    await context.close();
+  }
+};
 
 export function VideoWorkspacePage() {
   const repository = useMemo(() => new LocalProjectRepository(), []);
@@ -325,9 +426,23 @@ export function VideoWorkspacePage() {
       setPhotoRightsConfirmed(false);
       setPhotoRightsDetails(EMPTY_OPERATOR_RIGHTS);
       runtime.setAll(loaded.blobs);
-      setProjectNameDraft(loaded.project.name);
-      setPropertyAddressDraft(loaded.project.propertyAddress ?? '');
-      setProject(loaded.project);
+      const activity = await ensureProjectVoiceActivityEnvelope(loaded.project, runtime);
+      if (mediaOperationEpochRef.current !== openEpoch) return;
+      const openedProject = activity.project;
+      if (activity.analysisPerformed) {
+        try {
+          await repository.save(openedProject, runtime.snapshot());
+        } catch (error) {
+          notify(
+            `Speech activity was recalculated for this session but could not be cached: ${error instanceof Error ? error.message : 'the local project could not be updated.'}`,
+            true,
+          );
+        }
+        if (mediaOperationEpochRef.current !== openEpoch) return;
+      }
+      setProjectNameDraft(openedProject.name);
+      setPropertyAddressDraft(openedProject.propertyAddress ?? '');
+      setProject(openedProject);
       setMediaIssues([
         ...loaded.missingAssetIds.map((assetId) => ({
           code: 'CORRUPT_FILE' as const,
@@ -345,7 +460,7 @@ export function VideoWorkspacePage() {
       setRenderedVideo(null);
       setRenderedSourceFingerprint(null);
       setRenderError(null);
-      setSavedProjectFingerprint(stableHash(loaded.project));
+      setSavedProjectFingerprint(stableHash(openedProject));
     } catch (error) {
       if (mediaOperationEpochRef.current === openEpoch) {
         setHomeError(error instanceof Error ? error.message : 'The local project could not be opened.');
@@ -557,6 +672,9 @@ export function VideoWorkspacePage() {
         ...project,
         audioTracks: project.audioTracks.filter((track) => track.kind !== kind),
         mediaAssets: project.mediaAssets.filter((asset) => asset.id !== existingAssetId),
+        voiceActivityEnvelope: kind === 'voiceover'
+          ? undefined
+          : project.voiceActivityEnvelope,
       }));
       return;
     }
@@ -597,10 +715,17 @@ export function VideoWorkspacePage() {
         duckUnderVoice: kind === 'music',
         enabled: true,
       };
+      const voiceActivityEnvelope = kind === 'voiceover'
+        ? result.accepted.decodedAudioBuffer
+          ? analyseVoiceActivity(result.accepted.decodedAudioBuffer, asset.id, asset.contentHash)
+          : await analyseVoiceActivityBlob(file, asset.id, asset.contentHash)
+        : project.voiceActivityEnvelope;
+      if (!mediaOperationIsCurrent(operationEpoch)) return;
       const nextProject = finalizeWorkspaceProject({
         ...project,
         mediaAssets: [...project.mediaAssets.filter((item) => item.id !== existingAssetId), asset],
         audioTracks: [...project.audioTracks.filter((item) => item.kind !== kind), track],
+        voiceActivityEnvelope,
       });
       runtime.set(asset.id, file);
       if (existingAssetId) runtime.delete(existingAssetId);
@@ -808,6 +933,29 @@ export function VideoWorkspacePage() {
       setProjectOpenDelay: (delayMs) => {
         projectOpenDelayMsRef.current = Math.max(0, Math.min(delayMs, 2_000));
       },
+      measureVoiceAnalysisPerformance: () => [30, 120].map((durationSec, index) => {
+        const source = createRepresentativeVoiceActivitySampleSource(durationSec);
+        const memory = (performance as Performance & {
+          memory?: { usedJSHeapSize: number };
+        }).memory;
+        const heapBefore = memory?.usedJSHeapSize;
+        const startedAt = performance.now();
+        const envelope = analyseVoiceActivity(
+          source,
+          `performance-voice-${index + 1}`,
+          String(index + 1).repeat(64),
+        );
+        const elapsedMs = performance.now() - startedAt;
+        const heapAfter = memory?.usedJSHeapSize;
+        return {
+          durationSec,
+          elapsedMs,
+          activeSegments: envelope.activeSegments.length,
+          approximateHeapDeltaBytes: heapBefore === undefined || heapAfter === undefined
+            ? null
+            : Math.max(0, heapAfter - heapBefore),
+        };
+      }),
       loadFixture: async (count, variant = 'branded') => {
         invalidateMediaOperations();
         const builder = count === 6
@@ -832,10 +980,90 @@ export function VideoWorkspacePage() {
           assets: bundle.project.mediaAssets.length,
         };
       },
+      loadVoiceoverFixture: async () => {
+        invalidateMediaOperations();
+        const bundle = await buildVoiceoverDuckingRendererFixture();
+        const voiceover = bundle.project.audioTracks.find((track) => track.kind === 'voiceover')!;
+        const voiceoverAsset = bundle.project.mediaAssets.find((asset) => asset.id === voiceover.assetId)!;
+        const voiceoverBlob = bundle.blobs.get(voiceover.assetId)!;
+        const memory = (performance as Performance & {
+          memory?: { usedJSHeapSize: number };
+        }).memory;
+        const heapBefore = memory?.usedJSHeapSize;
+        const startedAt = performance.now();
+        await analyseVoiceActivityBlob(voiceoverBlob, voiceoverAsset.id, voiceoverAsset.contentHash);
+        const analysisElapsedMs = performance.now() - startedAt;
+        const heapAfter = memory?.usedJSHeapSize;
+        runtime.setAll(bundle.blobs);
+        setProjectNameDraft(bundle.project.name);
+        setPropertyAddressDraft(bundle.project.propertyAddress ?? '');
+        setProject(bundle.project);
+        setMediaIssues(bundle.intakeIssues);
+        setRenderedVideo(null);
+        setRenderedSourceFingerprint(null);
+        setRenderError(null);
+        setRenderProgress(null);
+        setSavedProjectFingerprint(null);
+        return {
+          projectId: bundle.project.id,
+          shots: bundle.project.shots.length,
+          assets: bundle.project.mediaAssets.length,
+          activeSegments: getCurrentVoiceActivityEnvelope(bundle.project)?.activeSegments.length ?? 0,
+          analysisElapsedMs,
+          approximateAnalysisHeapDeltaBytes: heapBefore === undefined || heapAfter === undefined
+            ? null
+            : Math.max(0, heapAfter - heapBefore),
+        };
+      },
+      recalculateMissingEnvelopeAndReopen: async () => {
+        if (!project) throw new Error('No fixture project is open.');
+        const withoutEnvelope = VideoProjectSchema.parse({
+          ...project,
+          voiceActivityEnvelope: undefined,
+        });
+        await repository.save(withoutEnvelope, runtime.snapshot());
+        const missingStartedAt = performance.now();
+        const loadedWithoutEnvelope = await repository.load(project.id);
+        runtime.setAll(loadedWithoutEnvelope.blobs);
+        const recalculated = await ensureProjectVoiceActivityEnvelope(loadedWithoutEnvelope.project, runtime);
+        await repository.save(recalculated.project, runtime.snapshot());
+        const missingEnvelopeReopenElapsedMs = performance.now() - missingStartedAt;
+        const cachedStartedAt = performance.now();
+        const persisted = await repository.load(project.id);
+        runtime.setAll(persisted.blobs);
+        const cached = await ensureProjectVoiceActivityEnvelope(persisted.project, runtime);
+        const cachedEnvelopeReopenElapsedMs = performance.now() - cachedStartedAt;
+        setProjectNameDraft(cached.project.name);
+        setPropertyAddressDraft(cached.project.propertyAddress ?? '');
+        setProject(cached.project);
+        setSavedProjectFingerprint(stableHash(cached.project));
+        return {
+          analysisPerformed: recalculated.analysisPerformed,
+          persistedSegments: getCurrentVoiceActivityEnvelope(persisted.project)?.activeSegments.length ?? 0,
+          missingEnvelopeReopenElapsedMs,
+          cachedEnvelopeReopenElapsedMs,
+        };
+      },
+      prepareMissingEnvelopeDamagedReopen: async () => {
+        if (!project) throw new Error('No fixture project is open.');
+        const imageAsset = project.mediaAssets.find((asset) => asset.kind === 'image');
+        if (!imageAsset) throw new Error('No fixture photograph is available to corrupt.');
+        const withoutEnvelope = VideoProjectSchema.parse({
+          ...project,
+          voiceActivityEnvelope: undefined,
+        });
+        await repository.save(withoutEnvelope, runtime.snapshot());
+        setProject(withoutEnvelope);
+        setSavedProjectFingerprint(stableHash(withoutEnvelope));
+        return { projectId: project.id, imageAssetId: imageAsset.id };
+      },
       state: () => ({
         projectId: project?.id ?? null,
         shots: project?.shots.length ?? 0,
         assets: project?.mediaAssets.length ?? 0,
+        voiceActivitySegments: project
+          ? getCurrentVoiceActivityEnvelope(project)?.activeSegments.length ?? 0
+          : 0,
         orderedShotIds: project ? [...project.orderedShotIds] : [],
         shotSignatures: project ? project.orderedShotIds.map((shotId) => {
           const shot = project.shots.find((candidate) => candidate.id === shotId)!;
@@ -869,6 +1097,8 @@ export function VideoWorkspacePage() {
           missingAssetIds: loaded.missingAssetIds,
           corruptAssetIds: loaded.corruptAssetIds,
           shots: loaded.project.shots.length,
+          voiceActivitySegments: getCurrentVoiceActivityEnvelope(loaded.project)?.activeSegments.length ?? 0,
+          voiceActivitySourceHash: getCurrentVoiceActivityEnvelope(loaded.project)?.sourceContentHash,
         };
       },
       reopenWithoutSave: async () => {
@@ -953,6 +1183,65 @@ export function VideoWorkspacePage() {
         runtime.delete(assetId);
         return assetId;
       },
+      replaceVoiceoverFixture: async () => {
+        if (!project) throw new Error('No fixture project is open.');
+        const existingTrack = project.audioTracks.find((track) => track.kind === 'voiceover');
+        if (!existingTrack) throw new Error('No fixture voiceover is available to replace.');
+        const oldAsset = project.mediaAssets.find((asset) => asset.id === existingTrack.assetId)!;
+        const file = createSelfCreatedVoiceoverFile('edge-silence');
+        const intake = await validateAudioFile(file);
+        if (!intake.accepted) throw new Error(intake.issues[0]?.message ?? 'Synthetic replacement voiceover failed intake.');
+        const asset = createAudioMediaAsset(intake.accepted, oldAsset.rights);
+        const envelope = intake.accepted.decodedAudioBuffer
+          ? analyseVoiceActivity(intake.accepted.decodedAudioBuffer, asset.id, asset.contentHash)
+          : await analyseVoiceActivityBlob(file, asset.id, asset.contentHash);
+        runtime.set(asset.id, file);
+        runtime.delete(oldAsset.id);
+        const next = finalizeWorkspaceProject({
+          ...project,
+          mediaAssets: [...project.mediaAssets.filter((candidate) => candidate.id !== oldAsset.id), asset],
+          audioTracks: project.audioTracks.map((track) => track.kind === 'voiceover' ? {
+            ...track,
+            assetId: asset.id,
+            durationSec: Math.min(track.durationSec, intake.accepted!.durationSec),
+          } : track),
+          voiceActivityEnvelope: envelope,
+        });
+        setProject(next);
+        return {
+          sourceChanged: envelope.sourceContentHash !== oldAsset.contentHash,
+          activeSegments: envelope.activeSegments.length,
+        };
+      },
+      removeVoiceoverFixture: () => {
+        if (!project) throw new Error('No fixture project is open.');
+        const voiceover = project.audioTracks.find((track) => track.kind === 'voiceover');
+        if (voiceover) runtime.delete(voiceover.assetId);
+        const next = finalizeWorkspaceProject({
+          ...project,
+          mediaAssets: project.mediaAssets.filter((asset) => asset.id !== voiceover?.assetId),
+          audioTracks: project.audioTracks.filter((track) => track.kind !== 'voiceover'),
+          voiceActivityEnvelope: undefined,
+        });
+        setProject(next);
+        return { removed: Boolean(voiceover), envelopeRemoved: next.voiceActivityEnvelope === undefined };
+      },
+      setDuckingEnabled: (enabled) => {
+        if (!project) throw new Error('No fixture project is open.');
+        const next = finalizeWorkspaceProject({
+          ...project,
+          audioTracks: project.audioTracks.map((track) => track.kind === 'music'
+            ? { ...track, duckUnderVoice: enabled }
+            : track),
+        });
+        setProject(next);
+        const music = next.audioTracks.find((track) => track.kind === 'music')!;
+        return {
+          enabled: music.duckUnderVoice,
+          speechGain: audioGainAtTime(music, next, 1.5),
+          silenceGain: audioGainAtTime(music, next, 5),
+        };
+      },
       renderDirect: async (options = {}) => {
         if (!project) throw new Error('No fixture project is open.');
         const controller = new AbortController();
@@ -971,12 +1260,14 @@ export function VideoWorkspacePage() {
           setRenderedVideo(result);
           setRenderedSourceFingerprint(renderSourceFingerprint(project));
           const parity = await compareExportedFrames(project, runtime, result.blob);
+          const audioEvidence = await collectRenderedAudioEvidence(project, result.blob);
           if (options.download !== false) downloadRenderedVideo(result);
           return {
             elapsedMs: result.elapsedMs,
             sizeBytes: result.blob.size,
             inspection: result.inspection,
             parity,
+            audioEvidence,
           };
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Direct verification render failed.';

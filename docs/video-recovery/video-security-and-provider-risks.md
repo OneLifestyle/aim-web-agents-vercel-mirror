@@ -1,7 +1,8 @@
 # AIM Video security and provider risks
 
-Task: `WEBVIDEO-CLIENT-ALPHA-001`
-Review date: 2026-08-06
+Base task: `WEBVIDEO-CLIENT-ALPHA-001`
+Repair task: `WEBVIDEO-VOICEOVER-EXPORT-REPAIR-001`
+Review date: 2026-08-09
 
 ## Current alpha posture
 
@@ -13,6 +14,7 @@ Review date: 2026-08-06
 - Deployment/Vercel project change: **No**
 - Customer media used in tests: **No**
 - System/global binary installation: **No**
+- Audio uploaded or transcribed: **No**
 
 The client performs deterministic production inside the current browser. Media
 is not sent to a server. The selected compositor is exact-pinned
@@ -40,12 +42,28 @@ equivalent to Hub. A user with access to the browser profile can access local
 project media; browser/storage clearing can remove it. Do not represent this as
 cloud sync, archival storage or a multi-user permission system.
 
+## Local voice-activity boundary
+
+Voiceover speech activity is derived entirely in the browser from decoded PCM
+energy. The `energy-rms-v1` analyser does not recognize words, identify
+speakers, call a model or send bytes to a provider. Only a small source-ID/hash,
+threshold and active-time envelope may be stored in the local project. Raw PCM
+is not persisted and the envelope is safe to discard/recalculate. Replacing or
+removing voiceover invalidates the old envelope; unrelated music edits reuse it.
+
+This lightweight detector is an alpha heuristic, not a biometric or
+studio-grade speech detector. A deterministic low-level background-noise
+fixture is handled by a track-adaptive floor and hysteresis, but unusual,
+changing noise or music embedded in voiceover can still affect classification.
+The founder retest remains a release gate.
+
 ## Media-rights controls
 
 Every media asset requires source, owner, licence/permission and permitted-use
 metadata. Photograph and production-media import are separately gated by an
 operator permission confirmation. Automated fixtures are locally drawn images
-and a locally synthesised WAV only. No commercial music is bundled.
+and locally synthesised music and voiceover WAV fixtures only. No commercial
+music is bundled.
 
 Common founder/company control of OneLifestyle and Singularealty resolves the
 previous source-account identity mismatch, but it does not clear third-party
@@ -54,12 +72,24 @@ normal licence/permission requirements remain. This is not legal advice.
 
 ## Renderer and memory risks
 
-The browser holds decoded images, a 1920 × 1080 canvas, offline audio and an
+The browser holds decoded images, decoded voiceover during one-time analysis, a 1920 × 1080 canvas, offline audio and an
 in-memory MP4 buffer during export. The final synthetic 30-shot proof took
-17.237 s and peaked at 122,179,006 bytes of measured JS heap on the verification workstation.
+11.974 s and peaked at 115,630,727 bytes of measured JS heap on the verification workstation.
 Real high-detail photographs and different hardware can increase time and
 memory. Input bounds, progress, cancellation and controlled failure limit this
 risk, but the alpha should remain an attended operator workflow.
+
+On the repair workstation, decode plus analysis of the 10.5 s WAV took 343.9
+ms; isolated sample analysis took 10.4 ms for 30 s and 49.6 ms for 120 s. A
+complete local reopen with deliberately missing derived analysis took 123 ms to
+load, recalculate and persist it, while a complete reopen with a matching cached
+envelope took 33 ms. The complete fixture load increased measured JS heap by
+about 16.7 MB,
+although decoded audio may also occupy native memory outside the JS heap
+counter. The normal intake path reuses its decoded buffer and a matching
+persisted envelope avoids reanalysis during preview and export. The 30-minute
+input maximum remains an upper-bound risk and was not stress-tested on every
+target device.
 
 The final file is re-encoded in full. No partial output survives a controlled
 cancellation. H.264/AAC capability varies by browser/platform, so unsupported
@@ -76,7 +106,8 @@ implementation authority.
 
 ## Remaining release gates
 
-- founder tap-through with authorised representative media;
+- `WEBVIDEO-FOUNDER-VOICEOVER-RETEST-001`, repeating founder tap-through
+  Sections 8 and 12 with authorised representative media;
 - destination-specific portal review for unbranded output;
 - current browser/hardware acceptance;
 - complete third-party package/font/music/logo/media licence review;

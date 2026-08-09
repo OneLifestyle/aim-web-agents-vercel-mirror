@@ -11,6 +11,7 @@ export const MAX_PROJECT_SHOTS = 30;
 export const MIN_SHOT_DURATION_SEC = 0.5;
 export const MAX_SHOT_DURATION_SEC = 20;
 export const MAX_END_CARD_DURATION_SEC = 10;
+export const VOICE_ACTIVITY_ANALYSIS_VERSION = 'energy-rms-v1' as const;
 
 const MAX_TIMELINE_DURATION_SEC = 60 * 60;
 const MAX_MEDIA_DURATION_SEC = 24 * 60 * 60;
@@ -293,6 +294,78 @@ export const AudioTrackSchema = z
     }
   });
 export type AudioTrack = z.infer<typeof AudioTrackSchema>;
+
+export const VoiceActivitySegmentSchema = z
+  .strictObject({
+    startTimeSec: z.number().nonnegative().max(MAX_MEDIA_DURATION_SEC),
+    endTimeSec: z.number().positive().max(MAX_MEDIA_DURATION_SEC),
+  })
+  .refine((segment) => segment.endTimeSec > segment.startTimeSec, {
+    message: 'Voice activity segment end must follow its start.',
+    path: ['endTimeSec'],
+  });
+export type VoiceActivitySegment = z.infer<typeof VoiceActivitySegmentSchema>;
+
+/**
+ * Recalculable, renderer-neutral speech activity derived from one local
+ * voiceover asset. It deliberately stores no PCM samples or speech content.
+ */
+export const VoiceActivityEnvelopeSchema = z
+  .strictObject({
+    analysisVersion: z.literal(VOICE_ACTIVITY_ANALYSIS_VERSION),
+    sourceAssetId: StableIdSchema,
+    sourceContentHash: Sha256Schema,
+    sourceDurationSec: z.number().positive().max(MAX_MEDIA_DURATION_SEC),
+    analysisWindowDurationSec: z.number().min(0.01).max(0.1),
+    noiseFloorRms: z.number().nonnegative().max(1),
+    speechStartThresholdRms: z.number().positive().max(1),
+    speechContinueThresholdRms: z.number().positive().max(1),
+    attackDurationSec: z.number().nonnegative().max(5),
+    releaseDurationSec: z.number().nonnegative().max(5),
+    minimumActiveHoldSec: z.number().nonnegative().max(5),
+    minimumSilenceForRecoverySec: z.number().nonnegative().max(10),
+    activeMusicGain: z.number().min(0).max(1),
+    activeSegments: z.array(VoiceActivitySegmentSchema).max(20_000),
+  })
+  .superRefine((envelope, context) => {
+    if (envelope.speechContinueThresholdRms > envelope.speechStartThresholdRms) {
+      context.addIssue({
+        code: 'custom',
+        path: ['speechContinueThresholdRms'],
+        message: 'Voice activity hysteresis requires the continue threshold not to exceed the start threshold.',
+      });
+    }
+    let previousEnd = 0;
+    for (const [index, segment] of envelope.activeSegments.entries()) {
+      if (segment.endTimeSec > envelope.sourceDurationSec + TIMING_EPSILON) {
+        context.addIssue({
+          code: 'custom',
+          path: ['activeSegments', index, 'endTimeSec'],
+          message: 'Voice activity segment exceeds the decoded source duration.',
+        });
+      }
+      if (index > 0 && segment.startTimeSec < previousEnd - TIMING_EPSILON) {
+        context.addIssue({
+          code: 'custom',
+          path: ['activeSegments', index, 'startTimeSec'],
+          message: 'Voice activity segments must be ordered and non-overlapping.',
+        });
+      }
+      previousEnd = segment.endTimeSec;
+    }
+  });
+export type VoiceActivityEnvelope = z.infer<typeof VoiceActivityEnvelopeSchema>;
+
+/**
+ * Persisted analysis is a disposable cache. Older/unknown analysis versions
+ * remain loadable so the current analyser can replace them from local audio.
+ */
+export const VoiceActivityEnvelopeCacheSchema = z.union([
+  VoiceActivityEnvelopeSchema,
+  z.object({
+    analysisVersion: z.string().min(1).max(64),
+  }).catchall(z.unknown()),
+]);
 
 export const OverlayTimingSchema = z.strictObject({
   startTimeSec: z.number().nonnegative().max(MAX_TIMELINE_DURATION_SEC),
@@ -590,6 +663,7 @@ export const VideoProjectSchema = z
     fps: z.number().int().positive().max(120),
     overlays: z.array(OverlaySchema).max(100),
     audioTracks: z.array(AudioTrackSchema).max(2),
+    voiceActivityEnvelope: VoiceActivityEnvelopeCacheSchema.optional(),
     endCard: EndCardSchema,
     outputVariant: OutputVariantSchema,
     outputProfile: OutputProfileSchema,

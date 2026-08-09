@@ -14,6 +14,10 @@
    seek the complete preview to that shot.
 7. Add the title/address, authorised music or optional voiceover, volume/fades,
    optional logo/watermark and closing details under **Production settings**.
+   **Reduce music while speech is detected** lowers music during likely spoken
+   regions, holds through short pauses and recovers smoothly during meaningful
+   silence inside the voiceover file. Analysis happens locally when voiceover
+   is added and is reused after save/reopen.
 8. Choose **Unbranded 16:9** or **Branded 16:9**. Unbranded is a portal-safe
    candidate, not a universal compliance certification.
 9. Use the complete preview to play, pause and seek through shots, overlays,
@@ -29,3 +33,11 @@
 
 Current Chrome with WebCodecs H.264 and AAC encoder support is required for
 export. A visible capability error is shown when the browser cannot provide it.
+An undecodable voiceover also returns a visible local-analysis error; no audio
+is uploaded or transcribed.
+
+`WEBVIDEO-FAT-001` is technically repaired by synthetic preview/export evidence,
+but founder acceptance is not complete. The next founder check is
+`WEBVIDEO-FOUNDER-VOICEOVER-RETEST-001`, repeating only tap-through Sections 8
+and 12 with authorised real-world media. Findings FAT-002 through FAT-011 remain
+open for a later accepted-alpha refinement goal.

@@ -1,7 +1,8 @@
 # AIM Video client-alpha target result
 
-Task: `WEBVIDEO-CLIENT-ALPHA-001`
-Evidence date: 2026-08-06
+Base task: `WEBVIDEO-CLIENT-ALPHA-001`
+Repair task: `WEBVIDEO-VOICEOVER-EXPORT-REPAIR-001`
+Latest evidence date: 2026-08-09
 
 ## Result
 
@@ -23,7 +24,8 @@ or retime a shot, and rerender without reconfiguring unaffected shots.
 | Complete preview | Working and verified | Play, pause, seek, current shot and end card in Chrome |
 | Preview/export parity | Working and verified | One canvas/evaluator path; canonical decoded MP4 comparisons cover all five presets, pair midpoint and end card, with representative 15/30-shot checks |
 | Music | Working and verified | Self-created local WAV fixture exported with AAC; volume/fades implemented |
-| Optional voiceover | Implemented but unverified | Local upload, independent volume/fades and exact duck-boundary mixing are implemented and unit-tested; no separate voice recording was included in an MP4 fixture |
+| Optional voiceover | Working and verified | Local upload, independent volume/fades, local energy analysis and a separate voiceover-bearing real MP4 fixture |
+| Speech-aware music recovery | Working and verified | 28% active gain, short-pause hold, five-second-silence recovery, resumed-speech duck and exported right-channel RMS evidence |
 | Title/address/end card/watermark | Working and verified | Canonical and 15/30 branded fixtures rendered and frame-compared |
 | Unbranded 16:9 | Working and verified | Real 5,564,973-byte MP4; neutral closing frame and no product-brand metadata string |
 | Branded 16:9 | Working and verified | Canonical, edited 15-shot and 30-shot real MP4s |
@@ -50,5 +52,18 @@ invalidation and preserve unaffected setup, but shot-level encoded render cache
 reuse is not implemented. Performance and codec support therefore depend on the
 operator's current browser/hardware.
 
-The appropriate next task after founder acceptance is
-`WEBVIDEO-FOUNDER-TAP-THROUGH-001`. Generative motion remains deferred.
+## Repair and acceptance status
+
+`WEBVIDEO-FAT-001` is technically repaired. The detector is deterministic,
+local and content-agnostic: 30 ms RMS windows, track-adaptive thresholds,
+hysteresis, 0.8 s minimum silence for recovery, 0.18 s attack, 0.65 s release
+and 28% active music gain. Preview and export consume the same source-hash-bound
+envelope; no transcription, speaker identification, provider or raw-PCM
+persistence was added.
+
+Founder acceptance is not complete. FAT-002 through FAT-011 remain open and
+unchanged. The exact next task is `WEBVIDEO-FOUNDER-VOICEOVER-RETEST-001`,
+repeating only founder tap-through Sections 8 and 12 with authorised real-world
+media. Do not recommend merge until the founder confirms that the downloaded
+branded MP4 recovers music during silent voiceover passages. Generative motion
+remains deferred.

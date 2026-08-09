@@ -50,6 +50,8 @@ export interface AcceptedAudioFile {
   detectedFormat: SupportedAudioFormat;
   detectedMimeType: string;
   durationSec: number;
+  /** Ephemeral decoded audio reused for local voice analysis; never persisted. */
+  decodedAudioBuffer?: AudioBuffer;
 }
 
 export interface ImageBatchResult {
@@ -96,18 +98,19 @@ export const decodeImageDimensions = async (blob: Blob): Promise<DecodedImageDim
   });
 };
 
-export const decodeAudioDuration = async (blob: Blob) => {
+export const decodeAudioBuffer = async (blob: Blob) => {
   const AudioContextConstructor = window.AudioContext
     ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextConstructor) throw new Error('Audio decoding is not supported in this browser.');
   const context = new AudioContextConstructor();
   try {
-    const buffer = await context.decodeAudioData(await blob.arrayBuffer());
-    return buffer.duration;
+    return await context.decodeAudioData(await blob.arrayBuffer());
   } finally {
     await context.close();
   }
 };
+
+export const decodeAudioDuration = async (blob: Blob) => (await decodeAudioBuffer(blob)).duration;
 
 const issue = (
   code: MediaIntakeErrorCode,
@@ -299,8 +302,14 @@ export const validateAudioFile = async (
   }
 
   let durationSec: number;
+  let decodedAudioBuffer: AudioBuffer | undefined;
   try {
-    durationSec = await (options.decodeDuration ?? decodeAudioDuration)(file);
+    if (options.decodeDuration) {
+      durationSec = await options.decodeDuration(file);
+    } else {
+      decodedAudioBuffer = await decodeAudioBuffer(file);
+      durationSec = decodedAudioBuffer.duration;
+    }
   } catch {
     return {
       accepted: null,
@@ -331,6 +340,7 @@ export const validateAudioFile = async (
       detectedFormat,
       detectedMimeType: audioMimeForFormat(detectedFormat),
       durationSec,
+      decodedAudioBuffer,
     },
     issues,
   };

@@ -15,6 +15,7 @@
     "test:unit": "vitest run",
     "test:e2e": "node scripts/browser-verification.mjs --mode e2e",
     "test:render": "node scripts/browser-verification.mjs --mode canonical",
+    "verify:voiceover": "node scripts/browser-verification.mjs --mode voiceover",
     "verify:fixtures": "node scripts/browser-verification.mjs --mode fixtures",
     "build": "tsc -b && vite build",
     "preview": "vite preview"

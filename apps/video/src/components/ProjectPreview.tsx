@@ -33,6 +33,7 @@ export function ProjectPreview({
   onFocusConsumed,
 }: ProjectPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewRef = useRef<HTMLElement>(null);
   const frameRequestRef = useRef<number | null>(null);
   const anchorRef = useRef({ clockMs: 0, timeSec: 0 });
   const currentTimeRef = useRef(0);
@@ -108,7 +109,10 @@ export function ProjectPreview({
       const audio = audioElementsRef.current.get(track.id);
       if (!audio) continue;
       const active = isAudioTrackActive(track, timeSec);
-      audio.volume = audioGainAtTime(track, project.audioTracks, timeSec);
+      audio.volume = audioGainAtTime(track, project, timeSec);
+      if (track.kind === 'music') {
+        previewRef.current?.setAttribute('data-preview-music-gain', String(audio.volume));
+      }
       if (!active || !play) {
         audio.pause();
         continue;
@@ -122,7 +126,7 @@ export function ProjectPreview({
           setAudioError(`The ${track.kind} preview could not start. Use Play again or check the local audio file.`);
         });
     }
-  }, [project.audioTracks]);
+  }, [project]);
 
   const seek = useCallback((timeSec: number) => {
     const next = Math.max(0, Math.min(timeSec, duration));
@@ -187,7 +191,7 @@ export function ProjectPreview({
   };
 
   return (
-    <section className="surface" aria-labelledby="preview-heading">
+    <section ref={previewRef} className="surface" aria-labelledby="preview-heading">
       <div className="surface__header">
         <div>
           <h2 id="preview-heading">Preview complete video</h2>

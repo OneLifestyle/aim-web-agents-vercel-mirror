@@ -121,6 +121,15 @@ try {
     return loaded;
   };
 
+  const loadVoiceoverFixture = async () => {
+    const loaded = await page.evaluate(async () => {
+      if (!window.__AIM_VIDEO_TEST__) throw new Error('Browser verification API is unavailable.');
+      return window.__AIM_VIDEO_TEST__.loadVoiceoverFixture();
+    });
+    await page.waitForFunction((shots) => document.querySelectorAll('[data-shot-id]').length === shots, loaded.shots);
+    return loaded;
+  };
+
   const memorySnapshot = () => page.evaluate(() => {
     const memory = performance.memory;
     return memory ? {
@@ -485,6 +494,120 @@ try {
     assert(canonical.parity.length >= 7, 'Canonical parity did not sample every shot and the end card.');
     assert(canonical.parity.every((sample) => sample.withinLossyTolerance), 'Canonical exported frames exceed parity tolerance.');
     evidence.canonical = canonical;
+  } else if (mode === 'voiceover') {
+    const beforeAnalysisMemory = await memorySnapshot();
+    const loaded = await loadVoiceoverFixture();
+    const afterAnalysisMemory = await memorySnapshot();
+    const analysisPerformance = await page.evaluate(() => window.__AIM_VIDEO_TEST__.measureVoiceAnalysisPerformance());
+    assert(loaded.activeSegments === 2, 'Voiceover fixture did not detect two speech-active regions.');
+    assert(loaded.analysisElapsedMs >= 0, 'Voiceover analysis timing was not recorded.');
+    assert(await page.getByText('Reduce music while speech is detected', { exact: true }).isVisible(), 'Speech-aware ducking label is not visible.');
+
+    const missingEnvelopeReopen = await page.evaluate(() => window.__AIM_VIDEO_TEST__.recalculateMissingEnvelopeAndReopen());
+    assert(missingEnvelopeReopen.analysisPerformed, 'Missing derived analysis was not recalculated on reopen.');
+    assert(missingEnvelopeReopen.persistedSegments === 2, 'Recalculated derived analysis was not persisted locally.');
+    const saveReopen = await page.evaluate(() => window.__AIM_VIDEO_TEST__.saveAndReopen());
+    assert(saveReopen.missingAssetIds.length === 0 && saveReopen.corruptAssetIds.length === 0, 'Voiceover fixture save/reopen lost local media.');
+    assert(saveReopen.voiceActivitySegments === 2, 'Voice activity envelope was not retained across save/reopen.');
+
+    const previewSection = page.locator('section[aria-labelledby="preview-heading"]');
+    const previewSeek = page.getByLabel('Seek complete video');
+    const previewAppliedGains = {};
+    for (const [label, timeSec] of [['speechOne', 1.5], ['longSilence', 5], ['speechTwo', 8.25]]) {
+      await previewSeek.evaluate((element, value) => {
+        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        if (!valueSetter) throw new Error('The browser did not expose the range value setter.');
+        valueSetter.call(element, String(value));
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+      }, timeSec);
+      const applied = Number(await previewSection.getAttribute('data-preview-music-gain'));
+      assert(Number.isFinite(applied), `Preview did not expose applied music gain for ${label}.`);
+      previewAppliedGains[label] = applied;
+    }
+
+    const rendered = await renderFixture('voiceover-speech-silence-speech-branded');
+    assertAlphaProfile(rendered, 'Voiceover speech/silence/speech output');
+    assert(rendered.parity.every((sample) => sample.withinLossyTolerance), 'Voiceover fixture frame parity exceeded tolerance.');
+    const audio = rendered.audioEvidence;
+    assert(audio, 'Rendered voiceover audio evidence was not collected.');
+    assert(audio.intendedMusicGains.speechOne < audio.intendedMusicGains.longSilence * 0.35, 'Preview gain did not duck the first speech region.');
+    assert(audio.intendedMusicGains.speechTwo < audio.intendedMusicGains.longSilence * 0.35, 'Preview gain did not duck resumed speech.');
+    assert(Math.abs(previewAppliedGains.speechOne - audio.intendedMusicGains.speechOne) < 0.000001, `Actual preview music gain ${previewAppliedGains.speechOne} differed from ${audio.intendedMusicGains.speechOne} in first speech.`);
+    assert(Math.abs(previewAppliedGains.longSilence - audio.intendedMusicGains.longSilence) < 0.000001, `Actual preview music gain ${previewAppliedGains.longSilence} differed from ${audio.intendedMusicGains.longSilence} in long silence.`);
+    assert(Math.abs(previewAppliedGains.speechTwo - audio.intendedMusicGains.speechTwo) < 0.000001, `Actual preview music gain ${previewAppliedGains.speechTwo} differed from ${audio.intendedMusicGains.speechTwo} in resumed speech.`);
+    assert(audio.longSilenceRms > audio.speechOneRms * 2.4, 'Exported music did not recover during the long voiceover silence.');
+    assert(audio.longSilenceRms > audio.speechTwoRms * 2.4, 'Exported music did not duck again when voice activity resumed.');
+
+    const disabled = await page.evaluate(() => window.__AIM_VIDEO_TEST__.setDuckingEnabled(false));
+    assert(disabled.enabled === false, 'Ducking-disabled fixture did not update the music setting.');
+    assert(Math.abs(disabled.speechGain - disabled.silenceGain) < 0.000001, 'Ducking-disabled preview retained speech-dependent gain.');
+    await page.evaluate(() => window.__AIM_VIDEO_TEST__.setDuckingEnabled(true));
+
+    const cancellation = await renderFixture('voiceover-mix-cancelled', {
+      download: false,
+      cancelAtStage: 'mixing-audio',
+    });
+    assert(cancellation.cancelled === true, 'Voiceover audio-mix cancellation did not return a controlled cancellation.');
+
+    const replacement = await page.evaluate(() => window.__AIM_VIDEO_TEST__.replaceVoiceoverFixture());
+    assert(replacement.sourceChanged && replacement.activeSegments === 1, 'Voiceover replacement did not invalidate and replace derived analysis.');
+    const removed = await page.evaluate(() => window.__AIM_VIDEO_TEST__.removeVoiceoverFixture());
+    assert(removed.removed && removed.envelopeRemoved, 'Voiceover removal did not remove its derived analysis.');
+
+    await loadVoiceoverFixture();
+    const damagedPreparation = await page.evaluate(() => window.__AIM_VIDEO_TEST__.prepareMissingEnvelopeDamagedReopen());
+    await page.evaluate(async (imageAssetId) => {
+      const database = await new Promise((resolve, reject) => {
+        const request = indexedDB.open('aim-video-local-projects', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const transaction = database.transaction('assets', 'readwrite');
+      const store = transaction.objectStore('assets');
+      const records = await new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const target = records.find((record) => record.assetId === imageAssetId);
+      if (!target) throw new Error('No stored synthetic photograph was available to corrupt.');
+      store.put({ ...target, blob: new Blob(['deliberately corrupt synthetic photograph']) });
+      await new Promise((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+      });
+      database.close();
+    }, damagedPreparation.imageAssetId);
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: 'Open', exact: true }).click();
+    await page.waitForFunction(() => window.__AIM_VIDEO_TEST__?.state().voiceActivitySegments === 2);
+    await page.getByText(/failed its size or SHA-256 integrity check/i).waitFor();
+    const damagedProjectReopen = {
+      opened: await page.getByRole('heading', { name: 'Production settings' }).isVisible(),
+      voiceActivitySegments: await page.evaluate(() => window.__AIM_VIDEO_TEST__.state().voiceActivitySegments),
+      corruptPhotoVisible: true,
+    };
+    assert(damagedProjectReopen.opened, 'A damaged photograph prevented the project from opening after derived voice analysis was recalculated.');
+
+    evidence.voiceover = {
+      loaded,
+      analysisPerformance,
+      missingEnvelopeReopen,
+      saveReopen,
+      previewAppliedGains,
+      beforeAnalysisMemory,
+      afterAnalysisMemory,
+      approximateFixtureLoadHeapDeltaBytes: beforeAnalysisMemory && afterAnalysisMemory
+        ? Math.max(0, afterAnalysisMemory.usedJsHeapBytes - beforeAnalysisMemory.usedJsHeapBytes)
+        : null,
+      render: rendered,
+      disabled,
+      cancellation,
+      replacement,
+      removed,
+      damagedProjectReopen,
+    };
   } else if (mode === 'fixtures') {
     const loaded15 = await loadFixture(15, 'branded');
     const saveReopen = await page.evaluate(() => window.__AIM_VIDEO_TEST__.saveAndReopen());

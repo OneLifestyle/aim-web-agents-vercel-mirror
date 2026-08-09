@@ -1,7 +1,8 @@
 # AIM Video capability matrix
 
-Task: `WEBVIDEO-CLIENT-ALPHA-001`
-Evidence date: 2026-08-06
+Base task: `WEBVIDEO-CLIENT-ALPHA-001`
+Repair task: `WEBVIDEO-VOICEOVER-EXPORT-REPAIR-001`
+Latest evidence date: 2026-08-09
 
 Classification is based on commands and browser/MP4 evidence that actually ran.
 “Working and verified” does not mean public-launch or universal portal
@@ -42,8 +43,8 @@ certification.
 | Still | Working and verified | Motion tests and real fixture export |
 | Zoom In | Working and verified | Corrected label semantics, endpoint/easing tests and export |
 | Zoom Out | Working and verified | Corrected label semantics, endpoint/easing tests and export |
-| Pan Left | Working and verified | Cover-safe crop travel tests and export |
-| Pan Right | Working and verified | Cover-safe crop travel tests and export |
+| Pan Left | Founder finding open | Existing cover-safe crop/export tests pass, but FAT-002 reports the operator labels are reversed; unchanged in this repair |
+| Pan Right | Founder finding open | Existing cover-safe crop/export tests pass, but FAT-002 reports the operator labels are reversed; unchanged in this repair |
 | Freeform crop editor | Deferred | Donor `PositionRect` surface was removed from the alpha; normalized crop fields remain in the contract for a future Advanced boundary |
 | Title/address | Working and verified | Shared canvas overlays and parity evidence |
 | Logo/watermark/end card | Working and verified | Branded canonical/15/30 outputs |
@@ -57,12 +58,13 @@ certification.
 | Current time/current shot/end card | Working and verified | Timeline UI and canvas preview |
 | Shared preview/export evaluator | Working and verified | `drawProjectFrame` single path plus decoded MP4 frame comparisons |
 | Music upload/volume/fades | Working and verified | Self-created WAV fixture, AAC output and timing tests |
-| Voiceover/independent volume | Implemented but unverified | Local track UI/decoder/mixer implemented; no separate voice file in export fixture |
-| Music reduction under voice | Working and verified | Shared gain evaluator unit tests; production control |
+| Voiceover/independent volume | Working and verified | Separate synthetic voiceover in a real H.264/AAC MP4; save/reopen, replacement, removal and cancellation evidence |
+| Speech-aware music reduction | Working and verified | Shared `energy-rms-v1` envelope; short-pause hold, long-silence recovery, resumed-speech duck and exported right-channel RMS proof |
+| Preview/export audio parity | Working and verified | Preview samples and export schedule use one activity envelope/gain evaluator; rendered audio measured speech/silence/speech |
 | Export progress | Working and verified | Frame-based progress used by fixture harness/UI |
 | Cancellation | Working and verified | 30-shot frame-12 and canonical finalization-stage cancellation; no output returned |
 | Controlled failure | Working and verified | Missing local photo returned visible deterministic error |
-| Real MP4 download | Working and verified | Four real MP4 files generated and inspected |
+| Real MP4 download | Working and verified | Five real MP4 files generated and inspected |
 | H.264/AAC/1080p/30 fps | Working and verified | Track inspection plus macOS `file`/`afinfo` corroboration |
 | Branded 16:9 | Working and verified | Canonical, edited 15-shot and 30-shot MP4s |
 | Unbranded 16:9 | Working and verified | 15-shot unbranded MP4 |
@@ -95,3 +97,19 @@ certification.
 The recovery-era donor classifications remain documented in the import commit
 and source-lineage records. This matrix describes the current client-alpha
 branch, not the frozen import checkpoint.
+
+## Founder finding status
+
+`WEBVIDEO-FAT-001` is technically repaired, pending founder tap-through
+Sections 8 and 12. These out-of-scope findings remain open and unchanged:
+
+- FAT-002 — Pan Left/Right labels reversed;
+- FAT-003 — trailing spaces removed during production-text entry;
+- FAT-004 — preview workflow separation;
+- FAT-005 — Image Pair filename-only selector;
+- FAT-006 — drag feedback;
+- FAT-007 — replacement rights timing;
+- FAT-008 — project identity versus rendered title explanation;
+- FAT-009 — end-card icon;
+- FAT-010 — stale cancellation progress;
+- FAT-011 — visual-design refinement.

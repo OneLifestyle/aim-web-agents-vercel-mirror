@@ -24,8 +24,12 @@ import {
   type MediaIntakeIssue,
 } from '../media/intake';
 import { createCoverCrop, createMotionPresetCrops } from '../motion';
+import { analyseVoiceActivity } from '../audio/voiceActivity';
 import {
   createSelfCreatedMusicFile,
+  createSelfCreatedVoiceoverFile,
+  createSyntheticVoiceActivitySampleSource,
+  SYNTHETIC_VOICE_ACTIVITY_DURATIONS,
   createSyntheticPropertyImage,
 } from './syntheticMedia';
 
@@ -468,6 +472,68 @@ export const buildSyntheticVerificationProject = async (
 export const buildCanonicalRendererFixture = (
   options?: BuildSyntheticFixtureProjectOptions,
 ) => buildSyntheticVerificationProject(6, options);
+
+/** Branded real-render fixture for speech → long silence → speech evidence. */
+export const buildVoiceoverDuckingRendererFixture = async (
+  options: BuildSyntheticFixtureProjectOptions = {},
+): Promise<SyntheticFixtureProjectBundle> => {
+  const bundle = await buildSyntheticVerificationProject(6, {
+    ...options,
+    outputVariant: 'branded',
+  });
+  const voiceoverFile = createSelfCreatedVoiceoverFile('long-silence');
+  const voiceoverDurationSec = SYNTHETIC_VOICE_ACTIVITY_DURATIONS['long-silence'];
+  const intake = await validateAudioFile(voiceoverFile, {
+    decodeDuration: async () => voiceoverDurationSec,
+  });
+  assertNoBlockingIssues('Self-created fixture voiceover', intake.issues);
+  if (!intake.accepted) {
+    throw new SyntheticFixtureBuildError('Self-created fixture voiceover was not accepted.', intake.issues);
+  }
+  const voiceoverAssetId = 'fixture-6-branded-voiceover';
+  const voiceoverAsset = withFixtureTimestamp(createAudioMediaAsset(
+    intake.accepted,
+    SELF_CREATED_FIXTURE_RIGHTS,
+    voiceoverAssetId,
+  ));
+  const projectWithAsset = addAssetAndBlob(
+    bundle.project,
+    voiceoverAsset,
+    voiceoverFile,
+    bundle.blobs,
+  );
+  const envelope = analyseVoiceActivity(
+    createSyntheticVoiceActivitySampleSource('long-silence'),
+    voiceoverAsset.id,
+    voiceoverAsset.contentHash,
+  );
+  const project = VideoProjectSchema.parse({
+    ...projectWithAsset,
+    voiceActivityEnvelope: envelope,
+    audioTracks: [
+      ...projectWithAsset.audioTracks,
+      {
+        id: 'fixture-6-branded-voiceover-track',
+        assetId: voiceoverAsset.id,
+        kind: 'voiceover',
+        startTimeSec: 0,
+        durationSec: voiceoverDurationSec,
+        trimStartSec: 0,
+        volume: 0.9,
+        fadeInSec: 0.25,
+        fadeOutSec: 0.25,
+        loop: false,
+        duckUnderVoice: false,
+        enabled: true,
+      },
+    ],
+  });
+  return {
+    project,
+    blobs: bundle.blobs,
+    intakeIssues: [...bundle.intakeIssues, ...intake.issues],
+  };
+};
 
 export const buildFifteenShotFixture = (
   options?: BuildSyntheticFixtureProjectOptions,

@@ -1,9 +1,10 @@
 # Client-alpha verification evidence
 
-Evidence date: 2026-08-06
+Client-alpha evidence date: 2026-08-06
+Speech-aware ducking repair evidence date: 2026-08-09
 
-Browser: Google Chrome 150.0.7871.187
-Media: locally generated synthetic PNGs and self-created WAV only
+Browser: Google Chrome 151.0.7922.108 for the repair evidence
+Media: locally generated synthetic PNGs and self-created WAV music/voice only
 
 ## Commands
 
@@ -14,13 +15,14 @@ npm run test:unit
 npm run test:e2e
 npm run build
 npm run test:render
+npm run verify:voiceover
 npm run verify:fixtures
 ```
 
-Unit suite: 70 tests passed across 11 files covering project validation, hashes/migrations,
+Repair unit suite: 91 tests passed across 12 files covering project validation, hashes/migrations,
 motion/crops/easing/pair dissolve, media signatures/object-URL lifecycle,
 bounded encoded-dimension parsing, negative intake, media-rights records, audio
-timing/envelopes, controlled render errors and synthetic fixture construction. Browser workflow verification
+timing/envelopes, adaptive voice activity, controlled render errors and synthetic fixture construction. Browser workflow verification
 passed with no console warning/error and exercised fresh-origin UI
 create/rename/save/close/open/delete, dirty-close protection, 15-shot loading,
 HTML drag/drop, Move Up/Down, remove, clear-unused, complete preview playback,
@@ -37,17 +39,19 @@ late load cannot replace a newer local project selection.
 
 | Project | Variant | Video duration | Container duration | Size | Render time | Peak JS heap |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Canonical 6-shot | Branded | 11.500 s | 11.584 s | 3,765,694 B | 4.515 s | 53,316,182 B |
-| Edited 15-shot | Branded | 18.500 s | 18.581 s | 5,915,539 B | 7.136 s | 71,985,429 B |
-| 15-shot | Unbranded | 17.500 s | 17.579 s | 5,564,973 B | 6.045 s | 86,179,974 B |
-| 30-shot | Branded | 32.500 s | 32.576 s | 10,789,878 B | 17.237 s | 122,179,006 B |
+| Canonical 6-shot | Branded | 11.500 s | 11.584 s | 3,765,694 B | 2.959 s | 45,561,384 B |
+| Voiceover speech/silence/speech 6-shot | Branded | 11.500 s | 11.584 s | 3,773,307 B | 2.756 s | 40,944,385 B |
+| Edited 15-shot | Branded | 18.500 s | 18.581 s | 5,915,539 B | 5.015 s | 90,481,390 B |
+| 15-shot | Unbranded | 17.500 s | 17.579 s | 5,564,973 B | 4.508 s | 72,172,058 B |
+| 30-shot | Branded | 32.500 s | 32.576 s | 10,789,878 B | 11.974 s | 115,630,727 B |
 
 Final SHA-256 checksums:
 
-- canonical: `b5f95afe094ecdde64d7edd93d8f8210d2156aef9913c941e8b553a7963eaedc`;
-- edited 15-shot branded: `25709131f86443276f5d0d44b3f4a9314da5ff54de8b148fe1c96a3d5c21342a`;
-- 15-shot unbranded: `1ab459b318bc2ab16f07d6fee6451b9b9bc3ea41a1b32299c1f788595ff68566`;
-- 30-shot branded: `38ddb90feb19866287efbd75b42e7ffcd4eaa31430823064fd5ee017803d241e`.
+- canonical: `bb4091e45ddf00879c6ae68fe3805e58e04e2201c7b72b0321bfcaca1ac6211b`;
+- voiceover speech/silence/speech: `9c9e094b90d06486c33a8d0193611cd5b6dcd6d478f19cb39ada58b6f1b40ed6`;
+- edited 15-shot branded: `840bc28132c2204132c37f1384186c10a3ce51352fb45ec928ad6df10eb71511`;
+- 15-shot unbranded: `0ef90c680b7241586a9770e3d5254a7d509a6f8ce6445fe742ad8589523546cd`;
+- 30-shot branded: `6c847970526832e581faf735bc65d3018848abd9d4f63ddd80b447b8b8aa5d24`.
 
 Every file inspected as MP4 with a 1920 × 1080 H.264/AVC video track at exactly
 30 fps and stereo 48 kHz AAC audio. The small container/audio overhang is AAC
@@ -77,6 +81,54 @@ brand was absent from embedded metadata.
 The 30-shot test also passed controlled cancellation after frame 12 and a
 deliberately missing-photo failure. A second canonical run cancelled at the
 finalization stage. Neither cancellation returned a partial/completed output.
+
+## WEBVIDEO-FAT-001 speech-aware evidence
+
+The prior gain evaluator treated the complete placed voiceover file as active,
+so music stayed at 28% through internal silence. The repair analyses decoded
+PCM locally into one `energy-rms-v1` envelope, then gives both preview and
+export the same activity segments and gain evaluator. The envelope is persisted
+as small derived metadata and safely recalculated if absent or stale; PCM is not
+persisted.
+
+Five deterministic fixtures cover short pause, five-second silence,
+initial/ending silence, deterministic low-level background noise and an isolated spike. Unit tests
+prove RMS windows, adaptive thresholds, hysteresis, short-gap joining,
+quiet clean speech after strong attenuation, long-silence preservation, spike rejection, attack/release, replacement,
+removal, no-voiceover, ducking-off, save/reopen and exact preview/export knot
+parity.
+
+The real branded voiceover MP4 uses left-only synthetic voice so exported right
+channel RMS isolates music. A 0.4 s sample measured `0.0085886` during first
+speech, `0.0322955` in the long silence (3.76× recovery), and `0.0090318` after
+speech resumed (3.58× below silence). Intended shared gains at those times were
+`0.0896`, `0.32` and `0.0896`. Independent atom inspection found `isom`/`mp41`,
+`avc1`, `mp4a`, 1920 × 1080, exactly 30 fps, stereo 48 kHz and the expected
+durations. All seven decoded video-frame parity samples passed.
+
+The same browser run proved the gain applied by the actual preview audio
+element was exactly `0.0896`, `0.32`, `0.0896`, matching the common contract
+used to schedule export. It also proved envelope save/reopen, source-hash change on
+voiceover replacement with fresh analysis, removal invalidation, equal speech/
+silence gain when ducking is disabled, audio-mix cancellation and zero console
+problems. A missing derived envelope was also recalculated when an unrelated
+saved photograph was deliberately corrupted: the project still opened with
+two activity segments and a visible photograph-integrity error even though
+cache persistence could not complete. Decode plus analysis of the 10.5 s WAV
+took 343.9 ms. Pure 48 kHz sample analysis took 10.4 ms for 30 s and 49.6 ms for
+120 s. A complete local reopen with a deliberately missing derived envelope
+took 123 ms to load, recalculate and persist it; a complete reopen with a cached
+matching envelope took 33 ms. The complete fixture load increased measured JS
+heap by approximately 16,706,585 bytes, although
+decoded audio may also occupy native memory outside that counter. The normal
+intake path reuses the already decoded buffer, and a matching source envelope
+avoids reanalysis during preview and export. The 30-minute allowed input bound
+was not stress-tested on every target device.
+
+`WEBVIDEO-FAT-001` is technically repaired. Founder acceptance remains open
+until `WEBVIDEO-FOUNDER-VOICEOVER-RETEST-001` repeats tap-through Sections 8
+and 12 with authorised real-world media. FAT-002 through FAT-011 remain open and
+were not repaired here.
 
 Generated evidence is intentionally gitignored under `verification-output/`.
 The JSON evidence files record exact inspection, parity and memory readings.

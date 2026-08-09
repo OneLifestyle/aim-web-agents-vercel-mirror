@@ -17,7 +17,8 @@ server upload, account, Hub, or server/cloud database and storage.
 - complete play/pause/seek preview from the same project/frame evaluator used by
   MP4 export;
 - authorised music, optional voiceover, independent volume/fades and music
-  reduction under voice;
+  reduction while local speech activity is detected, with smooth recovery in
+  meaningful voiceover pauses;
 - import-session source, rights owner, permission basis/reference, permitted use
   and confirmation time recorded for local media;
 - title/address, optional logo/watermark and neutral or branded end card;
@@ -41,12 +42,19 @@ npm run test:e2e
 npm run build
 npm run dev
 npm run test:render
+npm run verify:voiceover
 npm run verify:fixtures
 ```
 
-The browser suites use only synthetic local images and a self-created WAV. Real
+The browser suites use only synthetic local images and self-created WAV music
+and speech/silence fixtures. Real
 MP4 and JSON evidence is written to the gitignored `verification-output/`
 directory. No customer media or commercial music is used.
+
+Voice activity uses deterministic local PCM energy analysis, not speech
+recognition. A small versioned envelope of time ranges is reusable after save;
+raw decoded PCM is not persisted. Preview and export consume that same envelope
+and gain evaluator.
 
 ## Architecture and evidence
 

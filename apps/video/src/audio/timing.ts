@@ -1,4 +1,5 @@
-import type { AudioTrack } from '../project/schemas';
+import type { AudioTrack, VideoProject } from '../project/schemas';
+import { musicDuckGainAtTime } from './voiceActivity';
 
 export const isAudioTrackActive = (track: AudioTrack, timeSec: number) => (
   track.enabled
@@ -14,15 +15,20 @@ const fadeGain = (track: AudioTrack, timeSec: number) => {
   const fadeOut = track.fadeOutSec > 0 ? Math.min(1, remaining / track.fadeOutSec) : 1;
   return Math.max(0, Math.min(fadeIn, fadeOut));
 };
+
+export const audioTrackGainAtTime = (track: AudioTrack, timeSec: number) => {
+  if (!isAudioTrackActive(track, timeSec)) return 0;
+  return Math.max(0, Math.min(1, track.volume * fadeGain(track, timeSec)));
+};
+
 export const audioGainAtTime = (
   track: AudioTrack,
-  allTracks: readonly AudioTrack[],
+  project: VideoProject,
   timeSec: number,
 ) => {
   if (!isAudioTrackActive(track, timeSec)) return 0;
-  const voiceoverActive = allTracks.some((candidate) => (
-    candidate.kind === 'voiceover' && isAudioTrackActive(candidate, timeSec)
-  ));
-  const duck = track.kind === 'music' && track.duckUnderVoice && voiceoverActive ? 0.28 : 1;
-  return Math.max(0, Math.min(1, track.volume * fadeGain(track, timeSec) * duck));
+  const duck = track.kind === 'music' && track.duckUnderVoice
+    ? musicDuckGainAtTime(project, timeSec)
+    : 1;
+  return Math.max(0, Math.min(1, audioTrackGainAtTime(track, timeSec) * duck));
 };

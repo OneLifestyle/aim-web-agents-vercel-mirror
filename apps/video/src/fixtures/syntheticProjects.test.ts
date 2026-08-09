@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getCurrentVoiceActivityEnvelope } from '../audio/voiceActivity';
 import {
   VideoProjectSchema,
   retimeShot,
@@ -9,6 +10,7 @@ import {
   buildCanonicalRendererFixture,
   buildFifteenShotFixture,
   buildThirtyShotFixture,
+  buildVoiceoverDuckingRendererFixture,
   type BuildSyntheticFixtureProjectOptions,
 } from './syntheticProjects';
 
@@ -120,6 +122,18 @@ describe('deterministic synthetic verification projects', () => {
     expect(project.endCard.logoAssetId).toBeUndefined();
     expect(project.endCard.agentName).toBeUndefined();
     expect(project.endCard.phone).toBeUndefined();
+  });
+
+  it('builds a branded voiceover fixture with a reusable two-region activity envelope', async () => {
+    const { project, blobs } = await buildVoiceoverDuckingRendererFixture(fixtureOptions(6));
+    expect(VideoProjectSchema.parse(project)).toEqual(project);
+    expect(project.outputVariant).toBe('branded');
+    expect(project.audioTracks.map((track) => track.kind).sort()).toEqual(['music', 'voiceover']);
+    const envelope = getCurrentVoiceActivityEnvelope(project)!;
+    expect(envelope.activeSegments).toHaveLength(2);
+    expect(envelope.activeSegments[1]!.startTimeSec
+      - envelope.activeSegments[0]!.endTimeSec).toBeGreaterThan(4.8);
+    expect(blobs.size).toBe(project.mediaAssets.length);
   });
 
   it('repeats stable IDs and hashes and isolates a retime to one settings hash', async () => {

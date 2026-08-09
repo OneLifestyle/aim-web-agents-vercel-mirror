@@ -1,45 +1,48 @@
 # AIM Video next build plan
 
-## Completed goal
+## Completed technical repair
 
-`WEBVIDEO-CLIENT-ALPHA-001 — Build and prove the deterministic complete-property-video production spine`
+`WEBVIDEO-VOICEOVER-EXPORT-REPAIR-001 — Add speech-aware music ducking and prove preview/export parity`
 
-The provider-free operator alpha now has its validated project contract,
-source-aware deterministic motion, guided storyboard, shared complete
-preview/export composition, audio/branding/end card, IndexedDB persistence and
-real inspected MP4 output.
+`WEBVIDEO-FAT-001` is technically repaired. Local energy analysis now creates a
+reusable source-hash-bound voice-activity envelope; preview and export share its
+smoothed 28% ducking gain. A real branded synthetic MP4 proves first-speech
+duck, five-second-silence recovery and resumed-speech duck. Founder acceptance
+is not complete.
 
 ## Exact next goal
 
-**`WEBVIDEO-FOUNDER-TAP-THROUGH-001 — Founder acceptance of the deterministic AIM Video client alpha.`**
+**`WEBVIDEO-FOUNDER-VOICEOVER-RETEST-001 — Founder voiceover silence-recovery retest.`**
 
-Run the founder through one representative property workflow on the intended
-operator Mac and current Chrome:
+Repeat only founder tap-through Sections 8 and 12 on the intended operator Mac
+and current Chrome:
 
-1. create a local project and add an authorised 15–30-photo set;
-2. arrange, convert one shot to Image Pair and adjust treatments/durations;
-3. add properly authorised real music/voice/brand assets;
-4. compare complete preview with branded and unbranded downloads;
-5. close/reopen, replace and retime one shot, then rerender;
-6. record product-language, layout and output-quality acceptance or narrow
-   repair findings.
+1. use authorised representative photographs, music, voiceover and branding;
+2. listen through a meaningful silent passage inside the voiceover in preview;
+3. render and download the branded MP4;
+4. confirm music recovers smoothly in that silence and ducks again on resumed
+   speech in the downloaded file;
+5. record pass/fail for Sections 8 and 12 only.
 
 ## Acceptance focus
 
-- the flow is materially simpler than iMovie for a founder/operator;
-- actual property photographs stay covered and look intentional in all presets;
-- local H.264/AAC capability and render time are acceptable on intended
-  hardware;
-- authorised audio level/fades/ducking sound acceptable;
-- unbranded output is reviewed against the actual destination portal before use;
-- browser-local persistence expectations are understood;
-- no provider, Hub or deployment work is inferred from acceptance.
+- short natural pauses do not cause audible pumping;
+- meaningful silence inside the file restores music smoothly;
+- resumed speech lowers music smoothly;
+- preview and downloaded MP4 behave consistently;
+- no provider, Hub, deployment or unrelated refinement is inferred.
 
 ## Repair threshold
 
-If tap-through finds a narrow blocker, use
-`WEBVIDEO-CLIENT-ALPHA-REPAIR-001` and limit it to accepted defects. Do not add a
-generative-video provider until the deterministic alpha is explicitly accepted.
+Do not merge on technical evidence alone. Merge is not recommended until the
+founder confirms downloaded branded-MP4 silence recovery. If the bounded retest
+still fails, open a new narrow blocker with the exact authorised-media behavior;
+do not roll FAT-002 through FAT-011 into it.
+
+FAT-002 through FAT-011 remain open for a later accepted-alpha refinement goal:
+pan labels, production-text spaces, preview workflow separation, Image Pair
+selector, drag feedback, replacement-rights timing, project/title explanation,
+end-card icon, stale cancellation progress and visual-design refinement.
 
 After acceptance, a separate planning-only
 `WEBVIDEO-AI-MOTION-SOURCE-PLAN-001` may assess Motion Pair inputs, provider
