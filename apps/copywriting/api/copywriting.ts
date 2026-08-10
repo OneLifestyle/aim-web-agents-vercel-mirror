@@ -1,6 +1,23 @@
 import { GoogleGenAI, GenerateContentParameters, GenerateContentResponse } from '@google/genai';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
-import type { GenerationParams, ChatMessage, ImageContent, GroundingSource, ResearchResult, PreviewTab, UsageStats, ServiceResponse, StrategyAnalysisResult } from '../types';
+import type {
+    GenerationParams,
+    ChatMessage,
+    ImageContent,
+    GroundingSource,
+    ResearchResult,
+    PreviewTab,
+    UsageStats,
+    ServiceResponse,
+    StrategyAnalysisResult,
+    ApprovedBriefSnapshot,
+    HardExcludedClaim,
+    ReviewedClaim,
+    ReviewedPhotoHighlight,
+    SuggestionGovernanceContext,
+} from '../types';
+import { computeApprovedBriefSnapshotId } from '../domain/approvedBrief';
+import { sanitizeCorrectedClaimContext, sanitizeLowerAuthorityText } from '../domain/governance';
 
 const BETA_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
@@ -608,6 +625,516 @@ const validateCopyContext = (value: unknown) => {
     };
 };
 
+const REVIEWED_FACT_KEYS = ['bedrooms', 'bathrooms', 'carSpaces', 'landValue', 'propertyType'] as const;
+const LAND_UNITS = ['m²', 'ha', 'acres'] as const;
+
+const requireStringArray = (
+    value: unknown,
+    fieldName: string,
+    maxItems: number,
+    maxItemLength: number,
+    minItems = 0
+): string[] => {
+    if (!Array.isArray(value) || value.length < minItems || value.length > maxItems) {
+        throw new ApiError(400, `${fieldName} must contain between ${minItems} and ${maxItems} values.`);
+    }
+    return value.map((item, index) => requireString(item, `${fieldName}[${index}]`, maxItemLength));
+};
+
+const requireNullableSnapshotNumber = (
+    value: unknown,
+    fieldName: string,
+    options: { integer?: boolean; maximum?: number } = {}
+): number | null => {
+    if (value === null) return null;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        throw new ApiError(400, `${fieldName} must be a non-negative finite number or null.`);
+    }
+    if (options.integer && !Number.isInteger(value)) {
+        throw new ApiError(400, `${fieldName} must be a whole number or null.`);
+    }
+    if (options.maximum !== undefined && value > options.maximum) {
+        throw new ApiError(400, `${fieldName} is outside the supported range.`);
+    }
+    return value;
+};
+
+const requireSnapshotFactValue = (value: unknown, fieldName: string): string | number | null => {
+    if (value === null) return null;
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value)) throw new ApiError(400, `${fieldName} must be finite.`);
+        return value;
+    }
+    if (typeof value === 'string') return requireString(value, fieldName, 500, 0);
+    throw new ApiError(400, `${fieldName} must be a string, number, or null.`);
+};
+
+const requireStableId = (value: unknown, fieldName: string, maxLength = 200): string => {
+    const id = requireString(value, fieldName, maxLength);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(id)) {
+        throw new ApiError(400, `${fieldName} must be a stable identifier.`);
+    }
+    return id;
+};
+
+const validateOptionalSnapshotString = (value: unknown, fieldName: string, maxLength: number): string | undefined => {
+    if (value === undefined) return undefined;
+    return requireString(value, fieldName, maxLength, 0);
+};
+
+const validateLandUnit = (value: unknown, fieldName: string): ApprovedBriefSnapshot['approvedFacts']['landUnit'] => {
+    const unit = requireString(value, fieldName, 10) as ApprovedBriefSnapshot['approvedFacts']['landUnit'];
+    if (!LAND_UNITS.includes(unit)) throw new ApiError(400, `${fieldName} is invalid.`);
+    return unit;
+};
+
+const validateApprovedFacts = (
+    value: unknown,
+    fieldName: string
+): ApprovedBriefSnapshot['approvedFacts'] => {
+    const facts = requireObject(value, fieldName);
+    return {
+        bedrooms: requireNullableSnapshotNumber(facts.bedrooms, `${fieldName}.bedrooms`, { integer: true, maximum: 100 }),
+        bathrooms: requireNullableSnapshotNumber(facts.bathrooms, `${fieldName}.bathrooms`, { maximum: 100 }),
+        carSpaces: requireNullableSnapshotNumber(facts.carSpaces, `${fieldName}.carSpaces`, { integer: true, maximum: 100 }),
+        landValue: requireNullableSnapshotNumber(facts.landValue, `${fieldName}.landValue`, { maximum: 100000000 }),
+        landUnit: validateLandUnit(facts.landUnit, `${fieldName}.landUnit`),
+        propertyType: requireString(facts.propertyType, `${fieldName}.propertyType`, 100),
+    };
+};
+
+const validateHardExcludedClaim = (value: unknown, fieldName: string): HardExcludedClaim => {
+    const claim = requireObject(value, fieldName);
+    const text = requireString(claim.text, `${fieldName}.text`, 1000);
+    const aliases = requireStringArray(claim.aliases, `${fieldName}.aliases`, 50, 1000);
+    const reason = validateOptionalSnapshotString(claim.reason, `${fieldName}.reason`, 2000);
+    return {
+        id: requireStableId(claim.id, `${fieldName}.id`),
+        text,
+        aliases: Array.from(new Set(aliases.map(alias => alias.trim()).filter(Boolean))),
+        provenance: requireString(claim.provenance, `${fieldName}.provenance`, 500),
+        ...(reason === undefined ? {} : { reason }),
+    };
+};
+
+const validateHardExcludedClaims = (value: unknown, fieldName: string): HardExcludedClaim[] => {
+    if (!Array.isArray(value) || value.length > 100) {
+        throw new ApiError(400, `${fieldName} must be an array with no more than 100 claims.`);
+    }
+    const claims = value.map((claim, index) => validateHardExcludedClaim(claim, `${fieldName}[${index}]`));
+    const ids = new Set<string>();
+    for (const claim of claims) {
+        if (ids.has(claim.id)) throw new ApiError(400, `${fieldName} contains duplicate claim id ${claim.id}.`);
+        ids.add(claim.id);
+    }
+    return claims;
+};
+
+const mergeHardExclusions = (...groups: HardExcludedClaim[][]): HardExcludedClaim[] => {
+    const merged = new Map<string, HardExcludedClaim>();
+    for (const claim of groups.flat()) {
+        const current = merged.get(claim.id);
+        if (!current) {
+            merged.set(claim.id, claim);
+            continue;
+        }
+        if (current.text.toLocaleLowerCase() !== claim.text.toLocaleLowerCase()) {
+            throw new ApiError(400, `Hard exclusion ${claim.id} has conflicting canonical text.`);
+        }
+        merged.set(claim.id, {
+            ...current,
+            aliases: Array.from(new Set([...current.aliases, ...claim.aliases])),
+            reason: current.reason ?? claim.reason,
+        });
+    }
+    return Array.from(merged.values());
+};
+
+const validateReviewedClaim = (
+    value: unknown,
+    fieldName: string,
+    expectedState: 'confirmed' | 'corrected'
+): ReviewedClaim => {
+    const claim = requireObject(value, fieldName);
+    const state = requireString(claim.state, `${fieldName}.state`, 30);
+    if (state !== expectedState) {
+        throw new ApiError(400, `${fieldName}.state must be ${expectedState}.`);
+    }
+    const reason = validateOptionalSnapshotString(claim.reason, `${fieldName}.reason`, 2000);
+    return {
+        id: requireStableId(claim.id, `${fieldName}.id`),
+        sourceText: requireString(claim.sourceText, `${fieldName}.sourceText`, 5000),
+        approvedText: requireString(claim.approvedText, `${fieldName}.approvedText`, 5000),
+        provenance: requireString(claim.provenance, `${fieldName}.provenance`, 500),
+        state: expectedState,
+        aliases: requireStringArray(claim.aliases, `${fieldName}.aliases`, 50, 1000),
+        ...(reason === undefined ? {} : { reason }),
+    };
+};
+
+const validateReviewedClaims = (
+    value: unknown,
+    fieldName: string,
+    expectedState: 'confirmed' | 'corrected'
+): ReviewedClaim[] => {
+    if (!Array.isArray(value) || value.length > 100) {
+        throw new ApiError(400, `${fieldName} must be an array with no more than 100 claims.`);
+    }
+    const claims = value.map((claim, index) => validateReviewedClaim(claim, `${fieldName}[${index}]`, expectedState));
+    const ids = new Set<string>();
+    for (const claim of claims) {
+        if (ids.has(claim.id)) throw new ApiError(400, `${fieldName} contains duplicate claim id ${claim.id}.`);
+        ids.add(claim.id);
+    }
+    return claims;
+};
+
+const validateFactProvenance = (
+    value: unknown,
+    fieldName: string,
+    approvedFacts: ApprovedBriefSnapshot['approvedFacts']
+): ApprovedBriefSnapshot['factProvenance'] => {
+    if (!Array.isArray(value) || value.length !== REVIEWED_FACT_KEYS.length) {
+        throw new ApiError(400, `${fieldName} must contain one entry for every approved structured fact.`);
+    }
+    const seen = new Set<string>();
+    const entries = value.map((item, index) => {
+        const entry = requireObject(item, `${fieldName}[${index}]`);
+        const key = requireString(entry.key, `${fieldName}[${index}].key`, 30) as ApprovedBriefSnapshot['factProvenance'][number]['key'];
+        if (!REVIEWED_FACT_KEYS.includes(key)) throw new ApiError(400, `${fieldName}[${index}].key is invalid.`);
+        if (seen.has(key)) throw new ApiError(400, `${fieldName} contains duplicate key ${key}.`);
+        seen.add(key);
+        const state = requireString(entry.state, `${fieldName}[${index}].state`, 30);
+        if (state !== 'confirmed' && state !== 'corrected') {
+            throw new ApiError(400, `${fieldName}[${index}].state must be confirmed or corrected.`);
+        }
+        const sourceValue = requireSnapshotFactValue(entry.sourceValue, `${fieldName}[${index}].sourceValue`);
+        const approvedValue = requireSnapshotFactValue(entry.approvedValue, `${fieldName}[${index}].approvedValue`);
+        const sourceUnit = entry.sourceUnit === undefined
+            ? undefined
+            : validateLandUnit(entry.sourceUnit, `${fieldName}[${index}].sourceUnit`);
+        const unit = entry.unit === undefined
+            ? undefined
+            : validateLandUnit(entry.unit, `${fieldName}[${index}].unit`);
+        if (key === 'landValue' && (!sourceUnit || !unit)) {
+            throw new ApiError(400, `${fieldName}[${index}] must preserve both sourceUnit and approved unit for land.`);
+        }
+        if (key !== 'landValue' && (sourceUnit !== undefined || unit !== undefined)) {
+            throw new ApiError(400, `${fieldName}[${index}] units are only valid for landValue.`);
+        }
+        const valueChanged = sourceValue !== approvedValue;
+        const unitChanged = sourceUnit !== unit;
+        if (state === 'confirmed' && (valueChanged || unitChanged)) {
+            throw new ApiError(400, `${fieldName}[${index}] must be marked corrected when source and approved values or units differ.`);
+        }
+        if (state === 'corrected' && !valueChanged && !unitChanged) {
+            throw new ApiError(400, `${fieldName}[${index}] cannot be marked corrected without a changed approved value or unit.`);
+        }
+        return {
+            key,
+            sourceValue,
+            approvedValue,
+            ...(sourceUnit === undefined ? {} : { sourceUnit }),
+            ...(unit === undefined ? {} : { unit }),
+            provenance: requireString(entry.provenance, `${fieldName}[${index}].provenance`, 500),
+            state: state as 'confirmed' | 'corrected',
+        };
+    });
+
+    const approvedByKey: Record<(typeof REVIEWED_FACT_KEYS)[number], string | number | null> = {
+        bedrooms: approvedFacts.bedrooms,
+        bathrooms: approvedFacts.bathrooms,
+        carSpaces: approvedFacts.carSpaces,
+        landValue: approvedFacts.landValue,
+        propertyType: approvedFacts.propertyType,
+    };
+    for (const entry of entries) {
+        if (entry.approvedValue !== approvedByKey[entry.key]) {
+            throw new ApiError(400, `${fieldName}.${entry.key}.approvedValue must match approvedFacts.`);
+        }
+        if (entry.key === 'landValue' && entry.unit !== approvedFacts.landUnit) {
+            throw new ApiError(400, `${fieldName}.landValue.unit must match approvedFacts.landUnit.`);
+        }
+    }
+    return entries;
+};
+
+const validateApprovedPhotoHighlight = (value: unknown, fieldName: string): ReviewedPhotoHighlight => {
+    const highlight = requireObject(value, fieldName);
+    const state = requireString(highlight.state, `${fieldName}.state`, 30);
+    if (state !== 'approved' && state !== 'corrected') {
+        throw new ApiError(400, `${fieldName}.state must be approved or corrected.`);
+    }
+    const imageNumber = highlight.imageNumber;
+    if (typeof imageNumber !== 'number' || !Number.isInteger(imageNumber) || imageNumber < 1 || imageNumber > 100) {
+        throw new ApiError(400, `${fieldName}.imageNumber is invalid.`);
+    }
+    return {
+        id: requireStableId(highlight.id, `${fieldName}.id`),
+        imageId: requireStableId(highlight.imageId, `${fieldName}.imageId`),
+        imageNumber,
+        sourceText: requireString(highlight.sourceText, `${fieldName}.sourceText`, 5000),
+        approvedText: requireString(highlight.approvedText, `${fieldName}.approvedText`, 5000),
+        state,
+        provenance: requireString(highlight.provenance, `${fieldName}.provenance`, 500),
+    };
+};
+
+const validateApprovedBriefSnapshot = (value: unknown): ApprovedBriefSnapshot => {
+    const snapshot = requireObject(value, 'params.approvedBriefSnapshot');
+    if (snapshot.schemaVersion !== 'copywriting-approved-brief.v2') {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.schemaVersion is invalid.');
+    }
+    const snapshotId = requireStableId(snapshot.snapshotId, 'params.approvedBriefSnapshot.snapshotId');
+    const approvedAt = requireString(snapshot.approvedAt, 'params.approvedBriefSnapshot.approvedAt', 100);
+    if (!Number.isFinite(Date.parse(approvedAt))) {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.approvedAt must be a valid date-time.');
+    }
+
+    const product = requireString(snapshot.product, 'params.approvedBriefSnapshot.product', 30) as ApprovedBriefSnapshot['product'];
+    if (product !== 'listing-copy' && product !== 'campaign-pack') {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.product is invalid.');
+    }
+    const listingGenerationSettings = requireObject(
+        snapshot.listingGenerationSettings,
+        'params.approvedBriefSnapshot.listingGenerationSettings'
+    );
+    const approximateWordCount = listingGenerationSettings.approximateWordCount;
+    if (
+        typeof approximateWordCount !== 'number'
+        || !Number.isInteger(approximateWordCount)
+        || approximateWordCount < 50
+        || approximateWordCount > 1000
+        || (approximateWordCount - 50) % 50 !== 0
+    ) {
+        throw new ApiError(
+            400,
+            'params.approvedBriefSnapshot.listingGenerationSettings.approximateWordCount must be from 50 to 1000 in steps of 50.'
+        );
+    }
+    const profileInclusion = requireString(
+        snapshot.profileInclusion,
+        'params.approvedBriefSnapshot.profileInclusion',
+        20,
+    ) as ApprovedBriefSnapshot['profileInclusion'];
+    if (!['none', 'suburb', 'area', 'both'].includes(profileInclusion)) {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.profileInclusion is invalid.');
+    }
+
+    const approvedFacts = validateApprovedFacts(snapshot.approvedFacts, 'params.approvedBriefSnapshot.approvedFacts');
+    const factProvenance = validateFactProvenance(
+        snapshot.factProvenance,
+        'params.approvedBriefSnapshot.factProvenance',
+        approvedFacts
+    );
+
+    const claims = requireObject(snapshot.claims, 'params.approvedBriefSnapshot.claims');
+    const confirmedClaims = validateReviewedClaims(claims.confirmed, 'params.approvedBriefSnapshot.claims.confirmed', 'confirmed');
+    const correctedClaims = validateReviewedClaims(claims.corrected, 'params.approvedBriefSnapshot.claims.corrected', 'corrected');
+    const claimIds = new Set(confirmedClaims.map(claim => claim.id));
+    for (const claim of correctedClaims) {
+        if (claimIds.has(claim.id)) throw new ApiError(400, `Approved claim id ${claim.id} is duplicated.`);
+        claimIds.add(claim.id);
+    }
+    const excludedClaims = validateHardExcludedClaims(claims.excluded, 'params.approvedBriefSnapshot.claims.excluded');
+    const hardExclusions = mergeHardExclusions(
+        excludedClaims,
+        validateHardExcludedClaims(snapshot.hardExclusions, 'params.approvedBriefSnapshot.hardExclusions')
+    );
+    for (const exclusion of hardExclusions) {
+        if (claimIds.has(exclusion.id)) {
+            throw new ApiError(400, `Claim ${exclusion.id} cannot be both approved and hard excluded.`);
+        }
+    }
+
+    const agent = requireObject(snapshot.agentContext, 'params.approvedBriefSnapshot.agentContext');
+    const inclusionMode = requireString(agent.inclusionMode, 'params.approvedBriefSnapshot.agentContext.inclusionMode', 20) as ApprovedBriefSnapshot['agentContext']['inclusionMode'];
+    if (inclusionMode !== 'append' && inclusionMode !== 'integrate') {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.agentContext.inclusionMode is invalid.');
+    }
+    const agency = requireObject(snapshot.agencyContext, 'params.approvedBriefSnapshot.agencyContext');
+    const openHome = requireObject(snapshot.openHomeContext, 'params.approvedBriefSnapshot.openHomeContext');
+    const audience = requireObject(snapshot.audience, 'params.approvedBriefSnapshot.audience');
+    const voice = requireObject(snapshot.voice, 'params.approvedBriefSnapshot.voice');
+
+    const writingStyles = requireStringArray(voice.writingStyles, 'params.approvedBriefSnapshot.voice.writingStyles', 2, 100, 1);
+    if (writingStyles.some(style => !WRITING_STYLES.includes(style as any))) {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.voice.writingStyles contains an unsupported style.');
+    }
+
+    const photoContext = requireObject(snapshot.photoContext, 'params.approvedBriefSnapshot.photoContext');
+    const photoPolicy = requireString(photoContext.policy, 'params.approvedBriefSnapshot.photoContext.policy', 20) as ApprovedBriefSnapshot['photoContext']['policy'];
+    if (photoPolicy !== 'off' && photoPolicy !== 'included') {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.photoContext.policy is invalid.');
+    }
+    if (!Array.isArray(photoContext.selectedPhotos) || photoContext.selectedPhotos.length > 20) {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.photoContext.selectedPhotos must contain no more than 20 photos.');
+    }
+    const selectedPhotos = photoContext.selectedPhotos.map((item: unknown, index: number) => {
+        const photo = requireObject(item, `params.approvedBriefSnapshot.photoContext.selectedPhotos[${index}]`);
+        const imageNumber = photo.imageNumber;
+        if (typeof imageNumber !== 'number' || !Number.isInteger(imageNumber) || imageNumber < 1 || imageNumber > 100) {
+            throw new ApiError(400, `params.approvedBriefSnapshot.photoContext.selectedPhotos[${index}].imageNumber is invalid.`);
+        }
+        return {
+            id: requireStableId(photo.id, `params.approvedBriefSnapshot.photoContext.selectedPhotos[${index}].id`),
+            name: requireString(photo.name, `params.approvedBriefSnapshot.photoContext.selectedPhotos[${index}].name`, 500),
+            imageNumber,
+        };
+    });
+    const selectedPhotoIds = new Set(selectedPhotos.map(photo => photo.id));
+    const selectedPhotoNumbers = new Map(selectedPhotos.map(photo => [photo.id, photo.imageNumber]));
+    if (selectedPhotoIds.size !== selectedPhotos.length) {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.photoContext.selectedPhotos contains duplicate ids.');
+    }
+    if (!Array.isArray(photoContext.approvedHighlights) || photoContext.approvedHighlights.length > 200) {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.photoContext.approvedHighlights must contain no more than 200 highlights.');
+    }
+    const approvedHighlights = photoContext.approvedHighlights.map((item: unknown, index: number) => (
+        validateApprovedPhotoHighlight(item, `params.approvedBriefSnapshot.photoContext.approvedHighlights[${index}]`)
+    ));
+    const highlightIds = new Set<string>();
+    for (const highlight of approvedHighlights) {
+        if (highlightIds.has(highlight.id)) {
+            throw new ApiError(400, `params.approvedBriefSnapshot.photoContext.approvedHighlights contains duplicate id ${highlight.id}.`);
+        }
+        highlightIds.add(highlight.id);
+        if (!selectedPhotoIds.has(highlight.imageId)) {
+            throw new ApiError(400, `Approved photo highlight ${highlight.id} is not linked to a selected photo.`);
+        }
+        if (selectedPhotoNumbers.get(highlight.imageId) !== highlight.imageNumber) {
+            throw new ApiError(400, `Approved photo highlight ${highlight.id} has an inconsistent image number.`);
+        }
+    }
+    if (photoPolicy === 'off' && (selectedPhotos.length > 0 || approvedHighlights.length > 0)) {
+        throw new ApiError(400, 'Photo context marked off must not include selected photos or approved highlights.');
+    }
+    if (photoPolicy === 'included') {
+        if (selectedPhotos.length === 0) {
+            throw new ApiError(400, 'Included photo context requires at least one selected photo.');
+        }
+        for (const photo of selectedPhotos) {
+            if (!approvedHighlights.some(highlight => highlight.imageId === photo.id)) {
+                throw new ApiError(400, `Selected photo ${photo.imageNumber} requires an approved highlight.`);
+            }
+        }
+    }
+
+    const approval = requireObject(snapshot.humanApproval, 'params.approvedBriefSnapshot.humanApproval');
+    if (approval.approved !== true) {
+        throw new ApiError(400, 'params.approvedBriefSnapshot must be human-approved before generation.');
+    }
+
+    const validatedSnapshot: ApprovedBriefSnapshot = {
+        schemaVersion: 'copywriting-approved-brief.v2',
+        snapshotId,
+        approvedAt,
+        selectedAddress: requireString(snapshot.selectedAddress, 'params.approvedBriefSnapshot.selectedAddress', 500),
+        includeAddressInCopy: requireBoolean(snapshot.includeAddressInCopy, 'params.approvedBriefSnapshot.includeAddressInCopy'),
+        product,
+        listingGenerationSettings: {
+            approximateWordCount,
+        },
+        approvedFacts,
+        factProvenance,
+        propertyOverview: requireString(snapshot.propertyOverview, 'params.approvedBriefSnapshot.propertyOverview', 20000, 0),
+        suburbContext: requireString(snapshot.suburbContext, 'params.approvedBriefSnapshot.suburbContext', 20000, 0),
+        areaContext: requireString(snapshot.areaContext, 'params.approvedBriefSnapshot.areaContext', 20000, 0),
+        profileInclusion,
+        claims: {
+            confirmed: confirmedClaims,
+            corrected: correctedClaims,
+            excluded: hardExclusions,
+        },
+        agentContext: {
+            included: requireBoolean(agent.included, 'params.approvedBriefSnapshot.agentContext.included'),
+            name: requireString(agent.name, 'params.approvedBriefSnapshot.agentContext.name', 200, 0),
+            title: requireString(agent.title, 'params.approvedBriefSnapshot.agentContext.title', 200, 0),
+            phone: requireString(agent.phone, 'params.approvedBriefSnapshot.agentContext.phone', 80, 0),
+            email: requireString(agent.email, 'params.approvedBriefSnapshot.agentContext.email', 200, 0),
+            inclusionMode,
+        },
+        agencyContext: {
+            included: requireBoolean(agency.included, 'params.approvedBriefSnapshot.agencyContext.included'),
+            name: requireString(agency.name, 'params.approvedBriefSnapshot.agencyContext.name', 200, 0),
+        },
+        openHomeContext: {
+            included: requireBoolean(openHome.included, 'params.approvedBriefSnapshot.openHomeContext.included'),
+            date: requireString(openHome.date, 'params.approvedBriefSnapshot.openHomeContext.date', 200, 0),
+            time: requireString(openHome.time, 'params.approvedBriefSnapshot.openHomeContext.time', 200, 0),
+            url: requireString(openHome.url, 'params.approvedBriefSnapshot.openHomeContext.url', 1000, 0),
+        },
+        audience: {
+            primary: requireString(audience.primary, 'params.approvedBriefSnapshot.audience.primary', 100),
+            secondary: requireString(audience.secondary, 'params.approvedBriefSnapshot.audience.secondary', 100, 0),
+        },
+        voice: {
+            writingStyles,
+            tone: requireString(voice.tone, 'params.approvedBriefSnapshot.voice.tone', 500),
+        },
+        campaignEmphasis: requireStringArray(snapshot.campaignEmphasis, 'params.approvedBriefSnapshot.campaignEmphasis', 100, 5000),
+        styleAvoidances: requireStringArray(snapshot.styleAvoidances, 'params.approvedBriefSnapshot.styleAvoidances', 100, 5000),
+        hardExclusions,
+        photoContext: {
+            policy: photoPolicy,
+            selectedPhotos,
+            approvedHighlights,
+        },
+        humanApproval: {
+            approved: true,
+            statement: requireString(approval.statement, 'params.approvedBriefSnapshot.humanApproval.statement', 2000),
+        },
+    };
+    if (validatedSnapshot.agentContext.included && !validatedSnapshot.agentContext.name) {
+        throw new ApiError(400, 'Included agent context requires an approved agent name.');
+    }
+    if (validatedSnapshot.agencyContext.included && !validatedSnapshot.agencyContext.name) {
+        throw new ApiError(400, 'Included agency context requires an approved agency name.');
+    }
+    if (
+        validatedSnapshot.openHomeContext.included
+        && (!validatedSnapshot.openHomeContext.date || !validatedSnapshot.openHomeContext.time)
+    ) {
+        throw new ApiError(400, 'Included open-home context requires an approved date and time.');
+    }
+    const suburbIncluded = profileInclusion === 'suburb' || profileInclusion === 'both';
+    const areaIncluded = profileInclusion === 'area' || profileInclusion === 'both';
+    if (suburbIncluded !== Boolean(validatedSnapshot.suburbContext)) {
+        throw new ApiError(400, 'Approved suburb context must exactly match the selected location inclusion policy.');
+    }
+    if (areaIncluded !== Boolean(validatedSnapshot.areaContext)) {
+        throw new ApiError(400, 'Approved area context must exactly match the selected location inclusion policy.');
+    }
+    const lowerAuthorityGovernance = {
+        factProvenance: validatedSnapshot.factProvenance,
+        hardExclusions: validatedSnapshot.hardExclusions,
+    };
+    for (const [fieldName, context] of [
+        ['propertyOverview', validatedSnapshot.propertyOverview],
+        ['suburbContext', validatedSnapshot.suburbContext],
+        ['areaContext', validatedSnapshot.areaContext],
+    ] as const) {
+        const governedContext = sanitizeCorrectedClaimContext(
+            sanitizeLowerAuthorityText(context, lowerAuthorityGovernance).text,
+            validatedSnapshot.claims.corrected,
+        );
+        if (governedContext !== context) {
+            throw new ApiError(400, `params.approvedBriefSnapshot.${fieldName} contains superseded or excluded lower-authority context.`);
+        }
+    }
+    // This deterministic dependency marker detects a payload/ID mismatch. It
+    // complements the beta gate; it is not an authentication signature.
+    const expectedSnapshotId = computeApprovedBriefSnapshotId(validatedSnapshot);
+    if (snapshotId !== expectedSnapshotId) {
+        throw new ApiError(400, 'params.approvedBriefSnapshot.snapshotId does not match the approved brief content.');
+    }
+    return validatedSnapshot;
+};
+
+const getCanonicalProfileInclusion = (snapshot: ApprovedBriefSnapshot): GenerationParams['profileInclusion'] => {
+    return snapshot.profileInclusion;
+};
+
 const validateGenerationParams = (value: unknown): GenerationParams => {
     const params = requireObject(value, 'params');
     const output = requireObject(params.output, 'params.output');
@@ -624,37 +1151,88 @@ const validateGenerationParams = (value: unknown): GenerationParams => {
         throw new ApiError(400, 'params.agentProfile.inclusionMode is invalid.');
     }
 
-    const wordCount = Number(output.wordCount);
-    if (!Number.isFinite(wordCount) || wordCount < 50 || wordCount > 1000) {
+    const legacyWordCount = Number(output.wordCount);
+    if (!Number.isFinite(legacyWordCount) || legacyWordCount < 50 || legacyWordCount > 1000) {
         throw new ApiError(400, 'params.output.wordCount must be between 50 and 1000.');
     }
 
+    // Validate the legacy fields for shape/size, then deliberately replace their
+    // factual content with the approved snapshot. This prevents fetched prose,
+    // inferred features, or earlier photo analysis from outranking human review.
+    requireString(params.address, 'params.address', 500, 0);
+    requireBoolean(params.includeAddress, 'params.includeAddress');
+    validatePropertyDetails(params.details);
+    validateCopyContext(params.context);
+    optionalString(params.features, 'params.features', 20000);
+    optionalString(params.imageAnalysis, 'params.imageAnalysis', 50000);
+    optionalString(params.researchData, 'params.researchData', 80000);
+    if (profileData) {
+        optionalString(profileData.suburb, 'params.profileData.suburb', 50000);
+        optionalString(profileData.area, 'params.profileData.area', 50000);
+    }
+    optionalString(agentProfile.name, 'params.agentProfile.name', 200);
+    optionalString(agentProfile.agency, 'params.agentProfile.agency', 200);
+    optionalString(agentProfile.phone, 'params.agentProfile.phone', 80);
+    optionalString(agentProfile.email, 'params.agentProfile.email', 200);
+    optionalString(openHouse.date, 'params.openHouse.date', 200);
+    optionalString(openHouse.time, 'params.openHouse.time', 200);
+    optionalString(openHouse.url, 'params.openHouse.url', 1000);
+
+    const approvedBriefSnapshot = validateApprovedBriefSnapshot(params.approvedBriefSnapshot);
+    const approvedClaims = [
+        ...approvedBriefSnapshot.claims.confirmed,
+        ...approvedBriefSnapshot.claims.corrected,
+    ].map(claim => claim.approvedText);
+    const approvedFeatures = Array.from(new Set([
+        ...approvedBriefSnapshot.campaignEmphasis,
+        ...approvedClaims,
+    ])).join('\n');
+    const approvedPhotoContext = approvedBriefSnapshot.photoContext.policy === 'included'
+        ? approvedBriefSnapshot.photoContext.approvedHighlights.map(highlight => highlight.approvedText).join('\n') || null
+        : null;
+    const canonicalProfileInclusion = getCanonicalProfileInclusion(approvedBriefSnapshot);
+
     return {
-        address: requireString(params.address, 'params.address', 500, 0),
-        includeAddress: requireBoolean(params.includeAddress, 'params.includeAddress'),
-        details: validatePropertyDetails(params.details),
-        context: validateCopyContext(params.context),
-        features: optionalString(params.features, 'params.features', 20000) || '',
-        output: { wordCount },
-        imageAnalysis: optionalString(params.imageAnalysis, 'params.imageAnalysis', 50000),
-        researchData: optionalString(params.researchData, 'params.researchData', 80000),
-        profileData: profileData ? {
-            suburb: optionalString(profileData.suburb, 'params.profileData.suburb', 50000) || '',
-            area: optionalString(profileData.area, 'params.profileData.area', 50000) || '',
-        } : null,
-        profileInclusion: inclusion,
+        address: approvedBriefSnapshot.selectedAddress,
+        includeAddress: approvedBriefSnapshot.includeAddressInCopy,
+        details: {
+            beds: approvedBriefSnapshot.approvedFacts.bedrooms,
+            baths: approvedBriefSnapshot.approvedFacts.bathrooms,
+            cars: approvedBriefSnapshot.approvedFacts.carSpaces,
+            landSize: approvedBriefSnapshot.approvedFacts.landValue,
+            propertyType: approvedBriefSnapshot.approvedFacts.propertyType,
+        },
+        context: {
+            primaryTargetMarket: approvedBriefSnapshot.audience.primary,
+            secondaryTargetMarket: approvedBriefSnapshot.audience.secondary,
+            writingStyle: approvedBriefSnapshot.voice.writingStyles,
+            featuresToHighlight: approvedBriefSnapshot.campaignEmphasis.join('\n'),
+            thingsToAvoid: approvedBriefSnapshot.styleAvoidances.join('\n'),
+        },
+        features: approvedFeatures,
+        // The legacy output field remains shape-validated for compatibility, but
+        // the human-approved snapshot is the sole authority for Listing length.
+        output: { wordCount: approvedBriefSnapshot.listingGenerationSettings.approximateWordCount },
+        imageAnalysis: approvedPhotoContext,
+        researchData: approvedBriefSnapshot.propertyOverview || null,
+        profileData: canonicalProfileInclusion === 'none' ? null : {
+            suburb: approvedBriefSnapshot.suburbContext,
+            area: approvedBriefSnapshot.areaContext,
+        },
+        profileInclusion: canonicalProfileInclusion,
         agentProfile: {
-            name: optionalString(agentProfile.name, 'params.agentProfile.name', 200) || '',
-            agency: optionalString(agentProfile.agency, 'params.agentProfile.agency', 200) || '',
-            phone: optionalString(agentProfile.phone, 'params.agentProfile.phone', 80) || '',
-            email: optionalString(agentProfile.email, 'params.agentProfile.email', 200) || '',
-            inclusionMode,
+            name: approvedBriefSnapshot.agentContext.included ? approvedBriefSnapshot.agentContext.name : '',
+            agency: approvedBriefSnapshot.agencyContext.included ? approvedBriefSnapshot.agencyContext.name : '',
+            phone: approvedBriefSnapshot.agentContext.included ? approvedBriefSnapshot.agentContext.phone : '',
+            email: approvedBriefSnapshot.agentContext.included ? approvedBriefSnapshot.agentContext.email : '',
+            inclusionMode: approvedBriefSnapshot.agentContext.inclusionMode,
         },
         openHouse: {
-            date: optionalString(openHouse.date, 'params.openHouse.date', 200) || '',
-            time: optionalString(openHouse.time, 'params.openHouse.time', 200) || '',
-            url: optionalString(openHouse.url, 'params.openHouse.url', 1000) || '',
+            date: approvedBriefSnapshot.openHomeContext.included ? approvedBriefSnapshot.openHomeContext.date : '',
+            time: approvedBriefSnapshot.openHomeContext.included ? approvedBriefSnapshot.openHomeContext.time : '',
+            url: approvedBriefSnapshot.openHomeContext.included ? approvedBriefSnapshot.openHomeContext.url : '',
         },
+        approvedBriefSnapshot,
     };
 };
 
@@ -886,11 +1464,202 @@ ${responseText || '[empty response]'}`;
     }
 };
 
+const validateSuggestionGovernanceContext = (value: unknown): SuggestionGovernanceContext | undefined => {
+    if (value === undefined || value === null) return undefined;
+    const context = requireObject(value, 'governanceContext');
+    const approvedFacts = validateApprovedFacts(context.approvedFacts, 'governanceContext.approvedFacts');
+    const photoContextPolicy = requireString(context.photoContextPolicy, 'governanceContext.photoContextPolicy', 20) as SuggestionGovernanceContext['photoContextPolicy'];
+    if (photoContextPolicy !== 'off' && photoContextPolicy !== 'included') {
+        throw new ApiError(400, 'governanceContext.photoContextPolicy is invalid.');
+    }
+    return {
+        approvedFacts,
+        factProvenance: validateFactProvenance(context.factProvenance, 'governanceContext.factProvenance', approvedFacts),
+        hardExclusions: validateHardExcludedClaims(context.hardExclusions, 'governanceContext.hardExclusions'),
+        photoContextPolicy,
+    };
+};
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const flexiblePhrasePattern = (value: string): string => (
+    value
+        .trim()
+        .split(/[\s-]+/)
+        .map(part => escapeRegExp(part))
+        .join('[\\s-]+')
+);
+
+const boundedFlexiblePhraseRegExp = (value: string, flags = 'gi'): RegExp => (
+    new RegExp(`(?<![A-Za-z0-9])${flexiblePhrasePattern(value)}(?![A-Za-z0-9])`, flags)
+);
+
+const NUMBER_WORDS = [
+    'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+    'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty',
+] as const;
+
+const factValuePattern = (value: string | number): string => {
+    const numeric = typeof value === 'number' ? value : Number(value.replace(/,/g, '').trim());
+    if (Number.isInteger(numeric) && numeric >= 0 && numeric < NUMBER_WORDS.length) {
+        return `(?:${escapeRegExp(String(numeric))}|${NUMBER_WORDS[numeric]})`;
+    }
+    return flexiblePhrasePattern(String(value));
+};
+
+const formatApprovedFact = (
+    key: ApprovedBriefSnapshot['factProvenance'][number]['key'],
+    approvedValue: string | number | null,
+    unit?: ApprovedBriefSnapshot['approvedFacts']['landUnit']
+): string => {
+    if (approvedValue === null || approvedValue === '') return '[superseded fact removed]';
+    switch (key) {
+        case 'bedrooms': return `${approvedValue} bedrooms`;
+        case 'bathrooms': return `${approvedValue} bathrooms`;
+        case 'carSpaces': return `${approvedValue} car spaces`;
+        case 'landValue': return `${approvedValue}${unit ? ` ${unit}` : ''}`;
+        case 'propertyType': return String(approvedValue);
+    }
+};
+
+type SupersededFactRule = { pattern: RegExp; replacement: string; protectedPhrases?: string[] };
+
+const getSupersededFactRules = (governance: SuggestionGovernanceContext): SupersededFactRule[] => {
+    return governance.factProvenance.flatMap(entry => {
+        const valueChanged = entry.sourceValue !== entry.approvedValue;
+        const unitChanged = entry.sourceUnit !== entry.unit;
+        if (entry.state !== 'corrected' || entry.sourceValue === null || (!valueChanged && !unitChanged)) return [];
+        const sourcePattern = factValuePattern(entry.sourceValue);
+        const replacement = formatApprovedFact(entry.key, entry.approvedValue, entry.unit);
+        let pattern: string;
+        switch (entry.key) {
+            case 'bedrooms':
+                pattern = `\\b${sourcePattern}[\\s-]+bed(?:room)?s?\\b`;
+                break;
+            case 'bathrooms':
+                pattern = `\\b${sourcePattern}[\\s-]+bath(?:room)?s?\\b`;
+                break;
+            case 'carSpaces':
+                pattern = `\\b${sourcePattern}[\\s-]+(?:car(?:[\\s-]+spaces?|[\\s-]+garage)|vehicle[\\s-]+garage|parking[\\s-]+spaces?)\\b|\\bparking[\\s-]+for[\\s-]+${sourcePattern}\\b`;
+                break;
+            case 'landValue':
+                pattern = entry.sourceUnit === 'm²'
+                    ? `\\b${sourcePattern}[\\s-]*(?:m²|m2|sqm|sq[\\s-]*m|square[\\s-]+metres?|square[\\s-]+meters?)\\b`
+                    : entry.sourceUnit === 'ha'
+                        ? `\\b${sourcePattern}[\\s-]*(?:ha|hectares?)\\b`
+                        : `\\b${sourcePattern}[\\s-]*acres?\\b`;
+                break;
+            case 'propertyType':
+                pattern = `\\b${sourcePattern}\\b`;
+                break;
+        }
+        return [{
+            pattern: new RegExp(pattern, 'gi'),
+            replacement,
+            ...(entry.key === 'propertyType' && typeof entry.approvedValue === 'string'
+                ? {
+                    protectedPhrases: [
+                        entry.approvedValue,
+                        ...(String(entry.sourceValue).trim().toLocaleLowerCase('en-AU') === 'house' ? ['open house'] : []),
+                    ],
+                }
+                : {}),
+        }];
+    });
+};
+
+const getHardExclusionPatterns = (governance: SuggestionGovernanceContext): RegExp[] => (
+    governance.hardExclusions.flatMap(claim => (
+        Array.from(new Set([claim.text, ...claim.aliases]))
+            .filter(alias => alias.trim().length > 0)
+            .map(alias => boundedFlexiblePhraseRegExp(alias))
+    ))
+);
+
+const sanitiseLowerAuthorityText = (
+    value: string | null,
+    governance: SuggestionGovernanceContext | undefined
+): string | null => {
+    if (!value || !governance) return value;
+    let sanitised = value;
+    for (const pattern of getHardExclusionPatterns(governance)) {
+        sanitised = sanitised.replace(pattern, '[hard-excluded claim removed]');
+    }
+    for (const rule of getSupersededFactRules(governance)) {
+        const protectedMatches: string[] = [];
+        for (const protectedPhrase of rule.protectedPhrases ?? []) {
+            sanitised = sanitised.replace(boundedFlexiblePhraseRegExp(protectedPhrase), match => {
+                const index = protectedMatches.push(match) - 1;
+                return `\uE000${index}\uE001`;
+            });
+        }
+        sanitised = sanitised.replace(rule.pattern, rule.replacement);
+        sanitised = sanitised.replace(/\uE000(\d+)\uE001/g, (_match, index: string) => protectedMatches[Number(index)] ?? '');
+    }
+    return sanitised;
+};
+
+const containsGovernanceConflict = (value: string, governance: SuggestionGovernanceContext): boolean => {
+    if (getHardExclusionPatterns(governance).some(pattern => pattern.test(value))) return true;
+    return getSupersededFactRules(governance).some(rule => {
+        const candidate = (rule.protectedPhrases ?? []).reduce(
+            (current, protectedPhrase) => current.replace(boundedFlexiblePhraseRegExp(protectedPhrase), ''),
+            value,
+        );
+        return rule.pattern.test(candidate);
+    });
+};
+
+const filterGovernedSuggestionText = (value: string, governance: SuggestionGovernanceContext | undefined): string => {
+    if (!governance || !value) return value;
+    return value
+        .split(/\r?\n|\s*[,;]\s*/)
+        .map(item => item.trim())
+        .filter(item => item && !containsGovernanceConflict(item, governance))
+        .join(', ');
+};
+
+const buildSuggestionGovernanceContract = (governance: SuggestionGovernanceContext | undefined): string => {
+    if (!governance) return 'No approved governance context was supplied.';
+    return JSON.stringify({
+        approvedFacts: governance.approvedFacts,
+        correctedFacts: governance.factProvenance
+            .filter(entry => entry.state === 'corrected')
+            .map(entry => ({
+                key: entry.key,
+                sourceValue: entry.sourceValue,
+                approvedValue: entry.approvedValue,
+                sourceUnit: entry.sourceUnit,
+                unit: entry.unit,
+                rule: 'This is the human-corrected value. Use it as authoritative.',
+            })),
+        hardExclusions: governance.hardExclusions.map(claim => ({
+            id: claim.id,
+            text: claim.text,
+            aliases: claim.aliases,
+        })),
+        photoContextPolicy: governance.photoContextPolicy,
+    }, null, 2);
+};
+
 const analyzeStrategy = async (payload: Record<string, any>): Promise<ServiceResponse<StrategyAnalysisResult>> => {
     const researchData = requireString(payload.researchData, 'researchData', 80000);
     const profileData = optionalString(payload.profileData, 'profileData', 80000);
     const imageAnalysis = optionalString(payload.imageAnalysis, 'imageAnalysis', 50000);
-    const prompt = `Analyze: Research: ${researchData}, Profile: ${profileData}, Images: ${imageAnalysis}.
+    const governance = validateSuggestionGovernanceContext(payload.governanceContext);
+    const governedResearchData = sanitiseLowerAuthorityText(researchData, governance);
+    const governedProfileData = sanitiseLowerAuthorityText(profileData, governance);
+    const governedImageAnalysis = governance?.photoContextPolicy === 'off'
+        ? null
+        : sanitiseLowerAuthorityText(imageAnalysis, governance);
+    const prompt = `Analyze the lower-authority source context using the approved governance contract below.
+    Approved governance contract (authoritative):
+    ${buildSuggestionGovernanceContract(governance)}
+    Sanitised source context:
+    Research: ${governedResearchData}
+    Profile: ${governedProfileData}
+    Photo analysis: ${governedImageAnalysis ?? 'Not included by the approved photo policy'}.
+    Governance rules: corrected approved facts replace source values; never propose a hard-excluded claim or alias; when photo context is off, do not infer from photo analysis. Hard exclusions are factual boundaries and must not be returned as style advice.
     Return JSON: primaryTargetMarket, secondaryTargetMarket, writingStyles, featuresToHighlight, thingsToAvoid.
     IMPORTANT: Pick EXACTLY 1 or 2 writing styles from this list: ${JSON.stringify(WRITING_STYLES)}. DO NOT pick more than 2.
     Markets: ${JSON.stringify(TARGET_MARKETS)}.
@@ -941,6 +1710,12 @@ ${response.text || '[empty response]'}`;
             usage = aggregateServerUsage('analyzeStrategy', [firstUsage, extractUsage(repairResponse, model, 'analyzeStrategy')], model);
         }
 
+        analysis = {
+            ...analysis,
+            featuresToHighlight: filterGovernedSuggestionText(analysis.featuresToHighlight, governance),
+            thingsToAvoid: filterGovernedSuggestionText(analysis.thingsToAvoid, governance),
+        };
+
         return {
             data: analysis,
             usage
@@ -955,7 +1730,18 @@ const analyzeFeatures = async (payload: Record<string, any>): Promise<ServiceRes
     const researchData = requireString(payload.researchData, 'researchData', 80000);
     const profileData = optionalString(payload.profileData, 'profileData', 80000);
     const imageAnalysis = optionalString(payload.imageAnalysis, 'imageAnalysis', 50000);
-    const prompt = `Extract features JSON { propertyFeatures: [string] }. Research: ${researchData}, Profile: ${profileData}, Images: ${imageAnalysis}.`;
+    const governance = validateSuggestionGovernanceContext(payload.governanceContext);
+    const governedImageAnalysis = governance?.photoContextPolicy === 'off'
+        ? null
+        : sanitiseLowerAuthorityText(imageAnalysis, governance);
+    const prompt = `Extract features as JSON { propertyFeatures: [string] }.
+Approved governance contract (authoritative):
+${buildSuggestionGovernanceContract(governance)}
+Sanitised lower-authority context:
+Research: ${sanitiseLowerAuthorityText(researchData, governance)}
+Profile: ${sanitiseLowerAuthorityText(profileData, governance)}
+Photo analysis: ${governedImageAnalysis ?? 'Not included by the approved photo policy'}.
+Rules: corrected approved facts replace source values; omit every hard-excluded claim and alias; when photo context is off, do not infer any feature from photo analysis. Return only features that can enter human review.`;
     try {
         const model = resolveModelForOperation('analyzeFeatures');
         if (!model) throw new ApiError(500, 'No model configured for feature extraction.');
@@ -966,7 +1752,12 @@ const analyzeFeatures = async (payload: Record<string, any>): Promise<ServiceRes
         }));
         const result = JSON.parse(response.text || '{}');
         return {
-            data: { propertyFeatures: formatAIResponseList(result.propertyFeatures, '\n') },
+            data: {
+                propertyFeatures: filterGovernedSuggestionText(
+                    formatAIResponseList(result.propertyFeatures, '\n'),
+                    governance
+                ).replace(/, /g, '\n')
+            },
             usage: extractUsage(response, model, 'analyzeFeatures')
         };
     } catch (e: any) {
@@ -1001,25 +1792,145 @@ Rules:
     }
 };
 
-const getPromptForContentType = (params: GenerationParams, contentType: string): string => {
-    const { address, includeAddress, details, context, features, researchData, profileData, profileInclusion, imageAnalysis, agentProfile } = params;
-    let prompt = PROMPT_DEFINITIONS;
-    let profiles = '';
-    if (profileData && profileInclusion !== 'none') {
-        if (['suburb', 'both'].includes(profileInclusion)) profiles += `\nSuburb: ${profileData.suburb}`;
-        if (['area', 'both'].includes(profileInclusion)) profiles += `\nArea: ${profileData.area}`;
+const getSnapshotGovernanceContext = (snapshot: ApprovedBriefSnapshot): SuggestionGovernanceContext => ({
+    approvedFacts: snapshot.approvedFacts,
+    factProvenance: snapshot.factProvenance,
+    hardExclusions: snapshot.hardExclusions,
+    photoContextPolicy: snapshot.photoContext.policy,
+});
+
+const sanitiseBaseCopyForSnapshot = (baseCopy: string, snapshot: ApprovedBriefSnapshot): string => {
+    let sanitised = sanitiseLowerAuthorityText(baseCopy, getSnapshotGovernanceContext(snapshot)) || '';
+    const contextToOmit = [
+        ...(!snapshot.includeAddressInCopy ? [snapshot.selectedAddress] : []),
+        ...(!snapshot.agentContext.included ? [
+            snapshot.agentContext.name,
+            snapshot.agentContext.title,
+            snapshot.agentContext.phone,
+            snapshot.agentContext.email,
+        ] : []),
+        ...(!snapshot.agencyContext.included ? [snapshot.agencyContext.name] : []),
+        ...(!snapshot.openHomeContext.included ? [
+            snapshot.openHomeContext.date,
+            snapshot.openHomeContext.time,
+            snapshot.openHomeContext.url,
+        ] : []),
+    ].filter(value => value.trim().length > 0);
+    for (const value of contextToOmit) {
+        sanitised = sanitised.replace(boundedFlexiblePhraseRegExp(value), '[context omitted by approved brief]');
     }
-    prompt += `
-Brief:
-Address: ${includeAddress ? address : 'Do not include'}
-Property: ${details.beds}b/${details.baths}b, ${details.propertyType}
-Strategy: Market: ${context.primaryTargetMarket}, Style: ${context.writingStyle.join(', ')}
-Data: Features: ${features}. Research: ${researchData}. Images: ${imageAnalysis}. ${profiles}
-Agent: ${agentProfile.inclusionMode === 'integrate' ? `Name: ${agentProfile.name}, Agency: ${agentProfile.agency}, Phone: ${agentProfile.phone}, Email: ${agentProfile.email}` : `Name: ${agentProfile.name}`}
-Task: ${contentType}, ~${params.output.wordCount} words.
-`;
-    return prompt;
+    const approvedClaimPlaceholders = snapshot.claims.corrected.map((claim, index) => ({
+        claim,
+        token: `\uE000approved-claim-${index}\uE001`,
+    }));
+
+    for (const { claim, token } of approvedClaimPlaceholders) {
+        sanitised = sanitised.replace(boundedFlexiblePhraseRegExp(claim.approvedText), token);
+    }
+    for (const { claim } of approvedClaimPlaceholders) {
+        const supersededPhrases = Array.from(new Set([claim.sourceText, ...claim.aliases]))
+            .filter(phrase => phrase.trim() && phrase.trim().toLocaleLowerCase() !== claim.approvedText.trim().toLocaleLowerCase());
+        for (const phrase of supersededPhrases) {
+            sanitised = sanitised.replace(boundedFlexiblePhraseRegExp(phrase), claim.approvedText);
+        }
+    }
+    for (const { claim, token } of approvedClaimPlaceholders) {
+        sanitised = sanitised.replaceAll(token, claim.approvedText);
+    }
+    return sanitised;
 };
+
+const buildApprovedGenerationContract = (snapshot: ApprovedBriefSnapshot): string => JSON.stringify({
+    schemaVersion: snapshot.schemaVersion,
+    snapshotId: snapshot.snapshotId,
+    approvedAt: snapshot.approvedAt,
+    product: snapshot.product,
+    bindingRule: 'The output must be generated only against this exact approved snapshot ID.',
+    property: {
+        selectedAddress: snapshot.includeAddressInCopy ? snapshot.selectedAddress : null,
+        includeAddressInCopy: snapshot.includeAddressInCopy,
+        addressRule: snapshot.includeAddressInCopy
+            ? 'The selected address may be used in copy.'
+            : 'Do not state or imply the selected address in copy.',
+        approvedFacts: snapshot.approvedFacts,
+        correctedFacts: snapshot.factProvenance
+            .filter(entry => entry.state === 'corrected')
+            .map(entry => ({
+                key: entry.key,
+                sourceValue: entry.sourceValue,
+                approvedValue: entry.approvedValue,
+                sourceUnit: entry.sourceUnit,
+                unit: entry.unit,
+                rule: 'This is the human-corrected value. Use it as authoritative.',
+            })),
+        propertyOverview: snapshot.propertyOverview,
+        profileInclusion: snapshot.profileInclusion,
+        suburbContext: snapshot.suburbContext,
+        areaContext: snapshot.areaContext,
+        confirmedClaims: snapshot.claims.confirmed.map(claim => ({
+            id: claim.id,
+            text: claim.approvedText,
+            provenance: claim.provenance,
+        })),
+        correctedClaims: snapshot.claims.corrected.map(claim => ({
+            id: claim.id,
+            approvedText: claim.approvedText,
+            provenance: claim.provenance,
+            rule: 'This human-corrected claim replaces every earlier wording for the same claim.',
+        })),
+    },
+    campaign: {
+        audience: snapshot.audience,
+        voice: snapshot.voice,
+        approvedEmphasis: snapshot.campaignEmphasis,
+        advisoryStyleAvoidances: snapshot.styleAvoidances,
+    },
+    hardExclusions: snapshot.hardExclusions.map(claim => ({
+        id: claim.id,
+        text: claim.text,
+        aliases: claim.aliases,
+        rule: 'Never state, imply, paraphrase, or reintroduce this claim.',
+    })),
+    agentContext: snapshot.agentContext.included
+        ? snapshot.agentContext
+        : { included: false },
+    agencyContext: snapshot.agencyContext.included
+        ? snapshot.agencyContext
+        : { included: false },
+    openHomeContext: snapshot.openHomeContext.included
+        ? snapshot.openHomeContext
+        : { included: false },
+    photoContext: {
+        policy: snapshot.photoContext.policy,
+        approvedHighlights: snapshot.photoContext.policy === 'included'
+            ? snapshot.photoContext.approvedHighlights.map(highlight => ({
+                id: highlight.id,
+                imageId: highlight.imageId,
+                imageNumber: highlight.imageNumber,
+                text: highlight.approvedText,
+            }))
+            : [],
+        rule: snapshot.photoContext.policy === 'included'
+            ? 'Use only these reviewed photo highlights.'
+            : 'Do not use, infer, or mention photo-derived context.',
+    },
+    humanApproval: snapshot.humanApproval,
+}, null, 2);
+
+const getPromptForContentType = (params: GenerationParams, contentType: string): string => `${PROMPT_DEFINITIONS}
+Authoritative Approved Brief Snapshot:
+${buildApprovedGenerationContract(params.approvedBriefSnapshot)}
+
+Generation rules:
+- The Approved Brief Snapshot is the sole factual and campaign contract.
+- Corrected approved values replace every conflicting source value.
+- Hard exclusions apply even when lower-authority source material or prior copy conflicts.
+- Style avoidances are advisory writing guidance; do not treat them as factual exclusions.
+- Respect the effective photo policy exactly.
+- Do not reveal the snapshot identifier in user-facing copy.
+
+Task: ${contentType}, approximately ${params.output.wordCount} words.
+`;
 
 const generateCopy = async (payload: Record<string, any>): Promise<ServiceResponse<string>> => {
     const params = validateGenerationParams(payload.params);
@@ -1050,24 +1961,36 @@ const generateCopyVariant = async (payload: Record<string, any>): Promise<Servic
         throw new ApiError(400, 'variantType is not supported.');
     }
     const params = validateGenerationParams(payload.params);
+    const governedBaseCopy = sanitiseBaseCopyForSnapshot(baseCopy, params.approvedBriefSnapshot);
+    const variantGenerationContract = `
+Authoritative Approved Brief Snapshot:
+${buildApprovedGenerationContract(params.approvedBriefSnapshot)}
+
+Contract rules for this variant:
+- Bind this output to snapshot ID ${params.approvedBriefSnapshot.snapshotId}; do not reveal the ID in user-facing copy.
+- Corrected facts and hard exclusions in the snapshot govern this variant independently of the base copy.
+- The base copy is lower authority. Never repeat a conflicting or excluded claim from it.
+- Respect the effective photo-context policy exactly.
+`;
     const model = resolveModelForOperation('generateCopyVariant', variantType);
     if (!model) throw new ApiError(500, 'No model configured for copy variant generation.');
 
     if (variantType === 'Open House') {
         const prompt = `
 Generate an "Open House" announcement based on this copy and details.
-Base Copy: ${baseCopy}
-Address: ${params.address}
+${variantGenerationContract}
+Sanitised Base Copy: ${governedBaseCopy}
+Address: ${params.includeAddress ? params.address : '[OMIT ADDRESS UNDER APPROVED BRIEF POLICY]'}
 Date: ${params.openHouse.date || '[DATE]'}
 Time: ${params.openHouse.time || '[TIME]'}
 URL: ${params.openHouse.url || '[PROPERTY LISTING URL]'}
 Agent: ${params.agentProfile.name}, ${params.agentProfile.phone}, ${params.agentProfile.email}
 
 Template to follow:
-🏡 Open House: [Address] 🏖️
+🏡 Open House: [Address only when permitted by the approved brief] 🏖️
 📅 Date: [Date]
 ⏰ Time: [Time]
-📍 Location: [Address]
+📍 Location: [Address only when permitted by the approved brief]
 
 [Hook sentence about the property]
 
@@ -1095,12 +2018,13 @@ RULES: Use emojis as in template. Bullet points must be concise. No em-dashes. R
 
     if (variantType === 'Just Listed') {
         const prompt = `Adapt this property listing into a high-impact, short, and punchy "JUST LISTED" social media post.
+        ${variantGenerationContract}
         TASK: Create a catchy, early hook to grab attention.
         STYLE: Tailored for social media users with limited time. Concise and energetic.
         GOAL: Drive users to view the full listing.
         RULES: Include a clear placeholder for the URL (e.g., [VIEW FULL LISTING: https://...]).
         Return ONLY the post content. No extra variants or formatting like "X post".
-        Listing Data: ${baseCopy}`;
+        Sanitised Listing Data: ${governedBaseCopy}`;
         try {
             const response: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({ model, contents: prompt }));
             return { data: cleanMarkdown(response.text), usage: extractUsage(response, model, 'generateCopyVariant') };
@@ -1112,11 +2036,12 @@ RULES: Use emojis as in template. Bullet points must be concise. No em-dashes. R
 
     if (variantType === 'Coming Soon Teaser') {
         const prompt = `Adapt this property listing into an exciting "COMING SOON" teaser post.
+        ${variantGenerationContract}
         TASK: Create a short, high-impact 'tease'.
         LENGTH: Maximum 500 characters and no more than 2 short paragraphs.
         GOAL: Create a sense of exclusivity and anticipation. Focus on the core lifestyle hook.
         Include contact details if provided.
-        Listing Data: ${baseCopy}
+        Sanitised Listing Data: ${governedBaseCopy}
         RULES: Return ONLY the teaser content. No extra versions. Do NOT include an X post or extra formats at the end.`;
         try {
             const response: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({ model, contents: prompt }));
@@ -1129,9 +2054,10 @@ RULES: Use emojis as in template. Bullet points must be concise. No em-dashes. R
 
     if (variantType === 'Coming Soon Email') {
         const prompt = `Write a high-converting "COMING SOON" preview email to an agent's database.
+        ${variantGenerationContract}
         Subject line should be punchy and professional. The body should build hype without revealing everything.
         LENGTH: Concise (max 150 words).
-        Base Copy: ${baseCopy}
+        Sanitised Base Copy: ${governedBaseCopy}
         Agent: ${params.agentProfile.name}, ${params.agentProfile.agency}
         RULES: Return ONLY the email subject and body. No extra chat. Do NOT include an X post or extra formats at the end.`;
         try {
@@ -1145,8 +2071,9 @@ RULES: Use emojis as in template. Bullet points must be concise. No em-dashes. R
 
     if (variantType === 'Coming Soon SMS') {
         const prompt = `Write a short, engaging "COMING SOON" SMS for potential buyers.
+        ${variantGenerationContract}
         Must be under 160 characters. No em-dashes.
-        Base Copy: ${baseCopy}
+        Sanitised Base Copy: ${governedBaseCopy}
         RULES: Return ONLY the SMS content. Do NOT include an X post or extra formats at the end.`;
         try {
             const response: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({ model, contents: prompt }));
@@ -1164,7 +2091,9 @@ RULES: Use emojis as in template. Bullet points must be concise. No em-dashes. R
         extraRules = 'Do NOT include an X post or additional formats. Return ONLY the content for this specific variant.';
     }
 
-    const prompt = `Adapt this property listing for ${variantType}. No em-dashes. ${extraRules}\n\nBase Copy: ${baseCopy}`;
+    const prompt = `Adapt this property listing for ${variantType}. No em-dashes. ${extraRules}
+${variantGenerationContract}
+Sanitised Base Copy: ${governedBaseCopy}`;
     try {
         const response: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({ model, contents: prompt }));
         return { data: cleanMarkdown(response.text), usage: extractUsage(response, model, 'generateCopyVariant') };
@@ -1268,8 +2197,12 @@ export default async function handler(req: any, res: any) {
             return;
         }
         if (error instanceof ApiError) {
+            const isServerFailure = error.statusCode >= 500;
+            if (isServerFailure) console.error('Copywriting API server failure:', error.message);
             sendJson(res, error.statusCode, {
-                error: error.message,
+                error: isServerFailure
+                    ? 'Copywriting service is temporarily unavailable. Retry when ready.'
+                    : error.message,
                 statusCode: error.statusCode,
                 errorName: error.name,
                 isRetryable: isRetryableHttpStatus(error.statusCode),
@@ -1278,7 +2211,7 @@ export default async function handler(req: any, res: any) {
         }
         console.error('Copywriting API error:', error?.message || error);
         sendJson(res, 500, {
-            error: error instanceof Error ? error.message : 'Copywriting request failed.',
+            error: 'Copywriting service is temporarily unavailable. Retry when ready.',
             statusCode: 500,
             errorName: error instanceof Error ? error.name : 'Error',
             isRetryable: true,

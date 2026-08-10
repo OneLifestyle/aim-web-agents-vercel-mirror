@@ -1,4 +1,13 @@
-import type { GenerationParams, ChatMessage, ImageContent, ResearchResult, PreviewTab, ServiceResponse, StrategyAnalysisResult } from '../types';
+import type {
+    GenerationParams,
+    ChatMessage,
+    ImageContent,
+    ResearchResult,
+    PreviewTab,
+    ServiceResponse,
+    StrategyAnalysisResult,
+    SuggestionGovernanceContext,
+} from '../types';
 
 export const MODEL_GROUNDING = 'server-configured Gemini Pro model';
 export const MODEL_FAST = 'server-configured Gemini Flash model';
@@ -85,6 +94,28 @@ const safeString = (value: unknown): string | undefined => {
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 };
 
+const getDevelopmentFixtureState = (): string | null => {
+    const isDevelopment = Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV);
+    if (!isDevelopment || typeof window === 'undefined') return null;
+
+    const query = new URLSearchParams(window.location.search);
+    return safeString(query.get('fixture')) || null;
+};
+
+const assertFixtureCannotUseNetwork = (operation: CopywritingOperation): void => {
+    const fixtureState = getDevelopmentFixtureState();
+    if (!fixtureState) return;
+
+    throw new CopywritingRequestError(
+        `Development fixture "${fixtureState}" attempted the live ${operation} request. Fixture mode is network-disabled.`,
+        {
+            errorName: 'FixtureNetworkBlockedError',
+            isRetryable: false,
+            technicalMessage: `Blocked /api/copywriting for fixture ${fixtureState}.`,
+        }
+    );
+};
+
 const parseErrorPayload = async (response: Response): Promise<CopywritingErrorPayload> => {
     try {
         const body = await response.json();
@@ -100,6 +131,8 @@ const postCopywritingOperation = async <T>(
     payload: unknown,
     options: { signal?: AbortSignal } = {}
 ): Promise<T> => {
+    assertFixtureCannotUseNetwork(operation);
+
     const betaToken = getStoredBetaToken();
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (betaToken) headers['x-beta-access-code'] = betaToken;
@@ -140,6 +173,8 @@ const postCopywritingOperation = async <T>(
 };
 
 export const verifyBetaAccess = async (code: string): Promise<void> => {
+    assertFixtureCannotUseNetwork('verifyBetaAccess');
+
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (code) headers['x-beta-access-code'] = code;
 
@@ -176,24 +211,30 @@ export const suggestAddresses = async (
     return postCopywritingOperation<ServiceResponse<string[]>>('suggestAddresses', { query, userLocation }, { signal });
 };
 
-export const researchProperty = async (address: string, userLocation?: {latitude: number, longitude: number}): Promise<ServiceResponse<ResearchResult>> => {
-    return postCopywritingOperation<ServiceResponse<ResearchResult>>('researchProperty', { address, userLocation });
+export const researchProperty = async (
+    address: string,
+    userLocation?: {latitude: number, longitude: number},
+    signal?: AbortSignal
+): Promise<ServiceResponse<ResearchResult>> => {
+    return postCopywritingOperation<ServiceResponse<ResearchResult>>('researchProperty', { address, userLocation }, { signal });
 };
 
 export const analyzeStrategy = async (
     researchData: string,
     profileData: string | null,
-    imageAnalysis: string | null
+    imageAnalysis: string | null,
+    governanceContext?: SuggestionGovernanceContext
 ): Promise<ServiceResponse<StrategyAnalysisResult>> => {
-    return postCopywritingOperation('analyzeStrategy', { researchData, profileData, imageAnalysis });
+    return postCopywritingOperation('analyzeStrategy', { researchData, profileData, imageAnalysis, governanceContext });
 };
 
 export const analyzeFeatures = async (
     researchData: string,
     profileData: string | null,
-    imageAnalysis: string | null
+    imageAnalysis: string | null,
+    governanceContext?: SuggestionGovernanceContext
 ): Promise<ServiceResponse<{ propertyFeatures: string; }>> => {
-    return postCopywritingOperation('analyzeFeatures', { researchData, profileData, imageAnalysis });
+    return postCopywritingOperation('analyzeFeatures', { researchData, profileData, imageAnalysis, governanceContext });
 };
 
 export const analyzeSingleImage = async (image: ImageContent): Promise<ServiceResponse<string>> => {
