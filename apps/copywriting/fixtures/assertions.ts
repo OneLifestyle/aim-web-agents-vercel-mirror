@@ -352,6 +352,73 @@ export const runFixtureAssertions = (): FixtureAssertionReport => {
   assert(!photosIncludedParams.imageAnalysis?.includes('Marble kitchen finishes'), 'included params must omit superseded photo wording');
   assert(!photosIncludedParams.imageAnalysis?.includes('Six vehicle garage'), 'included params must omit excluded photo highlight');
 
+  const includedBlankOpenHome = getFixtureState('brief.ready');
+  includedBlankOpenHome.people.openHomeIncluded = true;
+  includedBlankOpenHome.people.openHome = { date: '', time: '', url: '' };
+  assert(
+    !getApprovedBriefBlockers(includedBlankOpenHome).some(blocker => blocker.id.startsWith('people.open-home')),
+    'included Open Home context with blank optional fields must not block brief approval',
+  );
+
+  const noScheduleOpenHouse = getFixtureState('open-house.no-schedule');
+  const noScheduleSnapshot = noScheduleOpenHouse.brief.snapshot!;
+  const noScheduleOutput = noScheduleOpenHouse.outputs['Open House'];
+  const noSchedulePack = deriveCampaignPackState(noScheduleOpenHouse.outputs);
+  const noScheduleParams = assembleGenerationParamsFromApprovedSnapshot(noScheduleSnapshot);
+  assert(noScheduleSnapshot.openHomeContext.included === false, 'no-schedule fixture must use the normal absent optional context state');
+  assert(noScheduleParams.openHouse.date === '' && noScheduleParams.openHouse.time === '' && noScheduleParams.openHouse.url === '', 'no-schedule params must keep every optional value blank');
+  assert(noScheduleOutput.state === 'ready', 'Open House without an approved schedule must become Ready');
+  assert(noScheduleOutput.content.includes('Open House') && noScheduleOutput.content.includes('four-bedroom home'), 'no-schedule Open House must retain useful generic promotional copy');
+  assert(/📅 Date:\s*\n/.test(noScheduleOutput.content), 'no-schedule Open House must leave its Date value blank');
+  assert(/⏰ Time:\s*\n/.test(noScheduleOutput.content), 'no-schedule Open House must leave its Time value blank');
+  assert(!/\b(?:tbc|tbd|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\[(?:date|time|url)\]|\{\{?(?:date|time|url)\}?\}|https?:\/\//i.test(noScheduleOutput.content), 'no-schedule Open House fixture must not inject a schedule, URL or placeholder');
+  assert(noSchedulePack.state === 'ready' && noSchedulePack.readyOutputIds.length === 16, 'no-schedule Campaign Pack must reach 16/16 Ready');
+
+  const inventedNoScheduleOutput = validateReturnedOutput({
+    id: 'Open House',
+    content: 'Open House this Saturday at 11:00 am. Explore a welcoming four-bedroom home.',
+    snapshot: noScheduleSnapshot,
+    boundSnapshotId: noScheduleSnapshot.snapshotId,
+    usedPhotoContext: false,
+    generatedAt: FIXTURE_GENERATED_AT,
+  });
+  assert(inventedNoScheduleOutput.state === 'needs-review', 'an invented schedule without approved context must not become Ready');
+
+  const dateOnlyOpenHouse = getFixtureState('open-house.date-only');
+  const dateOnlySnapshot = dateOnlyOpenHouse.brief.snapshot!;
+  const dateOnlyOutput = dateOnlyOpenHouse.outputs['Open House'];
+  assert(dateOnlySnapshot.openHomeContext.date === '2026-08-22' && dateOnlySnapshot.openHomeContext.time === '', 'date-only snapshot must preserve the approved date and blank time');
+  assert(dateOnlyOutput.state === 'ready' && dateOnlyOutput.content.includes('2026-08-22'), 'date-only Open House must preserve its approved date and become Ready');
+  assert(/⏰ Time:\s*\n/.test(dateOnlyOutput.content), 'date-only Open House must leave its Time value blank');
+
+  const timeOnlyOpenHouse = getFixtureState('open-house.time-only');
+  const timeOnlySnapshot = timeOnlyOpenHouse.brief.snapshot!;
+  const timeOnlyOutput = timeOnlyOpenHouse.outputs['Open House'];
+  assert(timeOnlySnapshot.openHomeContext.date === '' && timeOnlySnapshot.openHomeContext.time === '11:00', 'time-only snapshot must preserve the approved time and blank date');
+  assert(timeOnlyOutput.state === 'ready' && timeOnlyOutput.content.includes('11:00'), 'time-only Open House must preserve its approved time and become Ready');
+  assert(/📅 Date:\s*\n/.test(timeOnlyOutput.content), 'time-only Open House must leave its Date value blank');
+
+  const fullScheduleOpenHouse = getFixtureState('open-house.full-schedule');
+  const fullScheduleSnapshot = fullScheduleOpenHouse.brief.snapshot!;
+  const fullScheduleOutput = fullScheduleOpenHouse.outputs['Open House'];
+  assert(fullScheduleOutput.state === 'ready', 'full-schedule Open House must become Ready');
+  assert(
+    fullScheduleOutput.content.includes(fullScheduleSnapshot.openHomeContext.date)
+      && fullScheduleOutput.content.includes(fullScheduleSnapshot.openHomeContext.time),
+    'full-schedule Open House must preserve both approved values',
+  );
+
+  const conflictingScheduleOpenHouse = getFixtureState('open-house.conflicting-approved-schedule');
+  const conflictingScheduleOutput = conflictingScheduleOpenHouse.outputs['Open House'];
+  const conflictingSchedulePack = deriveCampaignPackState(conflictingScheduleOpenHouse.outputs);
+  assert(conflictingScheduleOutput.state === 'needs-review', 'conflicting approved Open House schedule must not become Ready');
+  assert(conflictingScheduleOutput.integrityIssues.some(issue => issue.governingBriefItem === 'Open home context'), 'conflicting schedule must identify Open home context as the governing brief item');
+  assert(conflictingSchedulePack.state === 'partial' && conflictingSchedulePack.readyOutputIds.length === 15, 'conflicting Open House must preserve fifteen Ready Campaign Pack siblings');
+  assert(comparableJson(conflictingSchedulePack.retryOutputIds) === comparableJson(['Open House']), 'conflicting schedule retry scope must contain only Open House');
+
+  assert(safe.outputs['Open House'].state === 'ready', 'supplied Open House URL must retain Ready integrity when preserved');
+  assert(safe.outputs['Open House'].content.includes(safeSnapshot!.openHomeContext.url), 'supplied approved Open House URL must be preserved exactly');
+
   const openHouseMissingContext = validateReturnedOutput({
     id: 'Open House',
     content: 'Join us for an open home at 11:00 am.',
@@ -504,7 +571,7 @@ export const runFixtureAssertions = (): FixtureAssertionReport => {
   const afternoonSnapshot = buildApprovedBriefSnapshot(afternoonOpenHouse, { approvedAt: FIXTURE_APPROVED_AT });
   const afternoonOutput = validateReturnedOutput({
     id: 'Open House',
-    content: 'Open House on Saturday 22 August 2026 at 1:00 pm.',
+    content: 'Open House on Saturday 22 August 2026 at 1:00 pm. https://example.test/open-home/fictional-bay',
     snapshot: afternoonSnapshot,
     boundSnapshotId: afternoonSnapshot.snapshotId,
     usedPhotoContext: false,
@@ -520,7 +587,7 @@ export const runFixtureAssertions = (): FixtureAssertionReport => {
   const openHousePropertyTypeSnapshot = buildApprovedBriefSnapshot(openHousePropertyType, { approvedAt: FIXTURE_APPROVED_AT });
   const openHousePropertyTypeOutput = validateReturnedOutput({
     id: 'Open House',
-    content: 'Open House on Saturday 22 August 2026 at 11:00 am for this welcoming townhouse.',
+    content: 'Open House on Saturday 22 August 2026 at 11:00 am for this welcoming townhouse. https://example.test/open-home/fictional-bay',
     snapshot: openHousePropertyTypeSnapshot,
     boundSnapshotId: openHousePropertyTypeSnapshot.snapshotId,
     usedPhotoContext: false,

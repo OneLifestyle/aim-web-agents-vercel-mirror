@@ -148,7 +148,10 @@ const findPhotoContextIssues = (
   return issues;
 };
 
-const OPEN_HOME_PLACEHOLDER = /\b(?:tbc|tbd|date here|time here|insert date|insert time)\b|\[(?:date|time|url)\]|\{\{?(?:date|time|url)\}?\}/i;
+const OPEN_HOME_PLACEHOLDER = /\b(?:tbc|tbd|date here|time here|insert date|insert time)\b|\[(?:date|time|url|property listing url)\]|\{\{?(?:date|time|url)\}?\}/i;
+const UNAPPROVED_OPEN_HOME_DATE = /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\b|\b(?:\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+\d{4})?|(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:,?\s+\d{4})?)\b/i;
+const UNAPPROVED_OPEN_HOME_TIME = /\b(?:[01]?\d|2[0-3])[:.][0-5]\d\s*(?:am|pm)?\b|\b(?:1[0-2]|0?[1-9])\s*(?:am|pm)\b/i;
+const UNAPPROVED_OPEN_HOME_URL = /\b(?:https?:\/\/|www\.)\S+/i;
 
 const findOpenHouseIssues = (
   outputId: PreviewTab,
@@ -157,15 +160,11 @@ const findOpenHouseIssues = (
 ): OutputIntegrityIssue[] => {
   if (outputId !== 'Open House') return [];
   const { included, date, time } = snapshot.openHomeContext;
-  if (!included || !date.trim() || !time.trim()) {
-    return [createIssue(
-      'missing-required-context',
-      'Open House copy requires an approved date and time.',
-      'Open home context',
-    )];
-  }
-  const dateAlternatives = [date];
-  const isoDateMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const approvedDate = included ? date.trim() : '';
+  const approvedTime = included ? time.trim() : '';
+  const approvedUrl = included ? snapshot.openHomeContext.url.trim() : '';
+  const dateAlternatives = [approvedDate];
+  const isoDateMatch = approvedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoDateMatch) {
     const [, year, month, day] = isoDateMatch;
     const parsedDate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
@@ -179,8 +178,8 @@ const findOpenHouseIssues = (
       );
     }
   }
-  const timeAlternatives = [time];
-  const isoTimeMatch = time.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  const timeAlternatives = [approvedTime];
+  const isoTimeMatch = approvedTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
   if (isoTimeMatch) {
     const [, hoursText, minutes] = isoTimeMatch;
     const hours = Number(hoursText);
@@ -192,14 +191,27 @@ const findOpenHouseIssues = (
       ...(minutes === '00' ? [`${twelveHour} ${period}`, `${twelveHour}${period}`] : []),
     );
   }
-  const missingValues: string[] = [];
-  if (!dateAlternatives.some(candidate => includesGovernedText(content, candidate))) missingValues.push('date');
-  if (!timeAlternatives.some(candidate => includesGovernedText(content, candidate))) missingValues.push('time');
-  if (OPEN_HOME_PLACEHOLDER.test(content)) missingValues.push('unresolved placeholder');
-  if (missingValues.length === 0) return [];
+  const conflicts: string[] = [];
+  if (approvedDate) {
+    if (!dateAlternatives.some(candidate => includesGovernedText(content, candidate))) conflicts.push('approved date');
+  } else if (UNAPPROVED_OPEN_HOME_DATE.test(content)) {
+    conflicts.push('unapproved date');
+  }
+  if (approvedTime) {
+    if (!timeAlternatives.some(candidate => includesGovernedText(content, candidate))) conflicts.push('approved time');
+  } else if (UNAPPROVED_OPEN_HOME_TIME.test(content)) {
+    conflicts.push('unapproved time');
+  }
+  if (approvedUrl) {
+    if (!content.includes(approvedUrl)) conflicts.push('approved URL');
+  } else if (UNAPPROVED_OPEN_HOME_URL.test(content)) {
+    conflicts.push('unapproved URL');
+  }
+  if (OPEN_HOME_PLACEHOLDER.test(content)) conflicts.push('unresolved placeholder');
+  if (conflicts.length === 0) return [];
   return [createIssue(
     'missing-required-context',
-    `Open House copy is missing approved ${missingValues.join(' and ')} context.`,
+    `Open House copy conflicts with approved optional context: ${conflicts.join(', ')}.`,
     'Open home context',
   )];
 };

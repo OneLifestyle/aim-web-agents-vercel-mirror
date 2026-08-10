@@ -1091,12 +1091,6 @@ const validateApprovedBriefSnapshot = (value: unknown): ApprovedBriefSnapshot =>
     if (validatedSnapshot.agencyContext.included && !validatedSnapshot.agencyContext.name) {
         throw new ApiError(400, 'Included agency context requires an approved agency name.');
     }
-    if (
-        validatedSnapshot.openHomeContext.included
-        && (!validatedSnapshot.openHomeContext.date || !validatedSnapshot.openHomeContext.time)
-    ) {
-        throw new ApiError(400, 'Included open-home context requires an approved date and time.');
-    }
     const suburbIncluded = profileInclusion === 'suburb' || profileInclusion === 'both';
     const areaIncluded = profileInclusion === 'area' || profileInclusion === 'both';
     if (suburbIncluded !== Boolean(validatedSnapshot.suburbContext)) {
@@ -1981,15 +1975,15 @@ Generate an "Open House" announcement based on this copy and details.
 ${variantGenerationContract}
 Sanitised Base Copy: ${governedBaseCopy}
 Address: ${params.includeAddress ? params.address : '[OMIT ADDRESS UNDER APPROVED BRIEF POLICY]'}
-Date: ${params.openHouse.date || '[DATE]'}
-Time: ${params.openHouse.time || '[TIME]'}
-URL: ${params.openHouse.url || '[PROPERTY LISTING URL]'}
+Approved date: ${params.openHouse.date}
+Approved time: ${params.openHouse.time}
+Approved URL: ${params.openHouse.url}
 Agent: ${params.agentProfile.name}, ${params.agentProfile.phone}, ${params.agentProfile.email}
 
-Template to follow:
+Template to follow. The Date, Time and URL values below are deliberately blank when the corresponding approved value above is blank:
 🏡 Open House: [Address only when permitted by the approved brief] 🏖️
-📅 Date: [Date]
-⏰ Time: [Time]
+📅 Date: ${params.openHouse.date}
+⏰ Time: ${params.openHouse.time}
 📍 Location: [Address only when permitted by the approved brief]
 
 [Hook sentence about the property]
@@ -2001,11 +1995,16 @@ What to Expect:
 
 📞 [Agent Name] – [Phone]
 📧 [Email]
-🔗 [URL]
+🔗 ${params.openHouse.url}
 
 We look forward to seeing you there!
 
-RULES: Use emojis as in template. Bullet points must be concise. No em-dashes. Return ONLY this announcement.
+RULES:
+- Date, time and URL are independently optional. Use only the exact non-blank approved values supplied above.
+- When an approved date, time or URL is blank, leave that template value blank. Do not infer or invent a replacement.
+- Never add a weekday, weekend day, calendar date, inspection time or URL that was not supplied.
+- Never substitute TBC, TBD, [DATE], [TIME], [URL], template braces or any other placeholder token for a blank value.
+- Use emojis as in the template. Bullet points must be concise. No em-dashes. Return ONLY this announcement.
 `;
         try {
             const response: GenerateContentResponse = await withRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({ model, contents: prompt }));

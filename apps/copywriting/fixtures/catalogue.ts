@@ -1,4 +1,5 @@
 import type {
+  ApprovedBriefSnapshot,
   CopywritingProductId,
   PreviewTab,
   ReviewedClaim,
@@ -43,6 +44,11 @@ export const REQUIRED_FIXTURE_IDS = [
   'pack.partial',
   'pack.complete',
   'pack.failed-child-preserved-siblings',
+  'open-house.no-schedule',
+  'open-house.date-only',
+  'open-house.time-only',
+  'open-house.full-schedule',
+  'open-house.conflicting-approved-schedule',
   'output.integrity-conflict',
   'session.temporary',
   'six-car-garage-exclusion.safe',
@@ -426,7 +432,26 @@ VOICEOVER: Four bedrooms. Two bathrooms. Flexible family living in the invented 
 ON SCREEN: 18 Wattlebird Rise, Fictional Bay VIC 3999. Generated draft for deterministic development review.
 `;
 
-const safeOutputText = (outputId: PreviewTab, photoContextIncluded: boolean): string => {
+const openHouseFixtureText = (snapshot: ApprovedBriefSnapshot): string => {
+  const openHome = snapshot.openHomeContext.included
+    ? snapshot.openHomeContext
+    : { date: '', time: '', url: '' };
+  return [
+    `🏡 Open House: ${FIXTURE_ADDRESS}`,
+    `📅 Date: ${openHome.date}`,
+    `⏰ Time: ${openHome.time}`,
+    `📍 Location: ${FIXTURE_ADDRESS}`,
+    '',
+    'Explore a warm four-bedroom home with two bathrooms, two car spaces and a north-facing rear garden.',
+    openHome.url ? `🔗 ${openHome.url}` : '🔗',
+  ].join('\n');
+};
+
+const safeOutputText = (
+  outputId: PreviewTab,
+  photoContextIncluded: boolean,
+  snapshot: ApprovedBriefSnapshot,
+): string => {
   const photoSentence = photoContextIncluded
     ? 'Approved visual context notes broad windows and a bright kitchen with pale stone-look benchtops.'
     : 'A north-facing rear garden creates an inviting outdoor connection.';
@@ -437,9 +462,7 @@ const safeOutputText = (outputId: PreviewTab, photoContextIncluded: boolean): st
   }
   if (outputId === 'Long-form / Blog') return blogFixtureText(photoContextIncluded);
   if (outputId === 'Video Script') return videoScriptFixtureText(photoContextIncluded);
-  if (outputId === 'Open House') {
-    return `Open House at ${FIXTURE_ADDRESS} on Saturday 22 August 2026 at 11:00 am. Explore a four-bedroom home with two bathrooms and two car spaces.`;
-  }
+  if (outputId === 'Open House') return openHouseFixtureText(snapshot);
   return `${OUTPUT_PRESENTATION_BY_ID[outputId].label}: Discover a four-bedroom Fictional Bay home with two bathrooms and two car spaces. ${photoSentence}`;
 };
 
@@ -448,7 +471,7 @@ const setReadyOutput = (state: CampaignSessionState, outputId: PreviewTab): void
   if (!snapshot) throw new Error('Fixture output generation requires an Approved Brief Snapshot.');
   state.outputs[outputId] = validateReturnedOutput({
     id: outputId,
-    content: safeOutputText(outputId, snapshot.photoContext.policy === 'included'),
+    content: safeOutputText(outputId, snapshot.photoContext.policy === 'included', snapshot),
     snapshot,
     boundSnapshotId: snapshot.snapshotId,
     usedPhotoContext: snapshot.photoContext.policy === 'included',
@@ -465,16 +488,38 @@ const createApprovedBriefState = (photoPolicy: 'off' | 'included' = 'off'): Camp
   approveFixtureBrief(createReviewedCampaignState(photoPolicy))
 );
 
-const createListingReadyState = (photoPolicy: 'off' | 'included' = 'included'): CampaignSessionState => {
-  const state = createApprovedBriefState(photoPolicy);
+interface OpenHomeFixtureContext {
+  included: boolean;
+  date: string;
+  time: string;
+  url: string;
+}
+
+const createListingReadyState = (
+  photoPolicy: 'off' | 'included' = 'included',
+  openHome?: OpenHomeFixtureContext,
+): CampaignSessionState => {
+  const reviewedState = createReviewedCampaignState(photoPolicy);
+  if (openHome) {
+    reviewedState.people.openHomeIncluded = openHome.included;
+    reviewedState.people.openHome = {
+      date: openHome.date,
+      time: openHome.time,
+      url: openHome.url,
+    };
+  }
+  const state = approveFixtureBrief(reviewedState);
   state.stage = 'outputs';
   state.activeOutputId = 'Full Copy';
   setReadyOutput(state, 'Full Copy');
   return state;
 };
 
-const createPackCompleteState = (photoPolicy: 'off' | 'included' = 'off'): CampaignSessionState => {
-  const state = createListingReadyState(photoPolicy);
+const createPackCompleteState = (
+  photoPolicy: 'off' | 'included' = 'off',
+  openHome?: OpenHomeFixtureContext,
+): CampaignSessionState => {
+  const state = createListingReadyState(photoPolicy, openHome);
   CAMPAIGN_PACK_OUTPUT_ORDER.forEach(outputId => setReadyOutput(state, outputId));
   const derived = deriveCampaignPackState(state.outputs);
   state.pack = {
@@ -486,6 +531,27 @@ const createPackCompleteState = (photoPolicy: 'off' | 'included' = 'off'): Campa
     remainingOutputIds: [...derived.remainingOutputIds],
     retryOutputIds: [...derived.retryOutputIds],
   };
+  return state;
+};
+
+const createOpenHouseConflictState = (): CampaignSessionState => {
+  const state = createPackCompleteState('off', {
+    included: true,
+    date: '2026-08-22',
+    time: '11:00',
+    url: '',
+  });
+  const snapshot = state.brief.snapshot!;
+  state.outputs['Open House'] = validateReturnedOutput({
+    id: 'Open House',
+    content: `🏡 Open House: ${FIXTURE_ADDRESS}\n📅 Date: Sunday 23 August 2026\n⏰ Time: 1:00 pm\n📍 Location: ${FIXTURE_ADDRESS}\n\nExplore this welcoming four-bedroom home.`,
+    snapshot,
+    boundSnapshotId: snapshot.snapshotId,
+    usedPhotoContext: false,
+    generatedAt: FIXTURE_GENERATED_AT,
+  });
+  state.activeOutputId = 'Open House';
+  synchronisePackFromOutputs(state);
   return state;
 };
 
@@ -710,6 +776,33 @@ export const FIXTURE_CATALOGUE: Readonly<Record<FixtureId, CampaignFixtureDefini
     state.activeOutputId = 'TikTok';
     return state;
   }),
+  'open-house.no-schedule': fixture('open-house.no-schedule', 'Open House without schedule', 'Generic Open House copy stays Ready with blank optional scheduling values.', () => createPackCompleteState('off', {
+    included: false,
+    date: '',
+    time: '',
+    url: '',
+  })),
+  'open-house.date-only': fixture('open-house.date-only', 'Open House with date only', 'The approved date is preserved while time and URL remain blank.', () => createPackCompleteState('off', {
+    included: true,
+    date: '2026-08-22',
+    time: '',
+    url: '',
+  })),
+  'open-house.time-only': fixture('open-house.time-only', 'Open House with time only', 'The approved time is preserved while date and URL remain blank.', () => createPackCompleteState('off', {
+    included: true,
+    date: '',
+    time: '11:00',
+    url: '',
+  })),
+  'open-house.full-schedule': fixture('open-house.full-schedule', 'Open House with full schedule', 'Approved date and time are both preserved.', () => createPackCompleteState('off', {
+    included: true,
+    date: '2026-08-22',
+    time: '11:00',
+    url: '',
+  })),
+  'open-house.conflicting-approved-schedule': fixture('open-house.conflicting-approved-schedule', 'Open House schedule conflict', 'A returned schedule that conflicts with approved values cannot become Ready.', () => (
+    createOpenHouseConflictState()
+  )),
   'output.integrity-conflict': fixture('output.integrity-conflict', 'Output integrity conflict', 'Returned Listing Copy contains an excluded claim.', () => {
     const state = createListingReadyState('off');
     const snapshot = state.brief.snapshot!;

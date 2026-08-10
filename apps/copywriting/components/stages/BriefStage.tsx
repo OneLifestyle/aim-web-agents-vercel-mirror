@@ -125,13 +125,13 @@ export const BriefStage: React.FC<BriefStageProps> = ({
 
             <label className="choice" data-selected={session.people.openHomeIncluded}>
               <input type="checkbox" checked={session.people.openHomeIncluded} onChange={event => onBooleanChange('openHomeIncluded', event.target.checked)} />
-              <span><strong>Include open-home context</strong><span>Open House output requires an approved date and time.</span></span>
+              <span><strong>Include open-home context (optional)</strong><span>Add any approved date, time or URL. Each field is optional.</span></span>
             </label>
             {session.people.openHomeIncluded ? (
               <div className="field-grid field-grid--three">
-                <label className="field"><span>Date</span><input type="date" value={session.people.openHome.date} onChange={event => onOpenHomeChange('date', event.target.value)} /></label>
-                <label className="field"><span>Time</span><input type="time" value={session.people.openHome.time} onChange={event => onOpenHomeChange('time', event.target.value)} /></label>
-                <label className="field"><span>URL</span><input type="url" value={session.people.openHome.url} onChange={event => onOpenHomeChange('url', event.target.value)} /></label>
+                <label className="field"><span>Date (optional)</span><input type="date" value={session.people.openHome.date} onChange={event => onOpenHomeChange('date', event.target.value)} /></label>
+                <label className="field"><span>Time (optional)</span><input type="time" value={session.people.openHome.time} onChange={event => onOpenHomeChange('time', event.target.value)} /></label>
+                <label className="field"><span>URL (optional)</span><input type="url" value={session.people.openHome.url} onChange={event => onOpenHomeChange('url', event.target.value)} /></label>
               </div>
             ) : null}
           </div>

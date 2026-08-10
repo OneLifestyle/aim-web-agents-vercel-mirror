@@ -402,14 +402,6 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       governingStage: 'brief',
     });
   }
-  if (state.people.openHomeIncluded && (!state.people.openHome.date.trim() || !state.people.openHome.time.trim())) {
-    blockers.push({
-      id: 'people.open-home-date-time',
-      message: 'Included open-home context requires an approved date and time.',
-      governingStage: 'brief',
-    });
-  }
-
   return blockers;
 };
 

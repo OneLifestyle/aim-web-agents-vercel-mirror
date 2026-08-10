@@ -172,7 +172,7 @@ export const ReviewedBriefProof: React.FC<ReviewedBriefProofProps> = ({
         <SectionHeading className="brief-section__title" id={`${compact ? 'drawer-' : ''}brief-people-title`}>People and campaign context</SectionHeading>
         <p><strong>Agent.</strong> {agentIncluded ? agentName || 'Included' : 'Not included'}</p>
         <p><strong>Agency.</strong> {agencyIncluded ? agencyName || 'Included' : 'Not included'}</p>
-        <p><strong>Open home.</strong> {openHomeIncluded ? `${openHomeDate || 'Date required'} · ${openHomeTime || 'Time required'}` : 'Not included'}</p>
+        <p><strong>Open home.</strong> {openHomeIncluded ? `Date: ${openHomeDate || 'Not supplied'} · Time: ${openHomeTime || 'Not supplied'}` : 'No scheduling details supplied'}</p>
         {onNavigate ? <button className="row-action" type="button" onClick={() => onNavigate('brief', 'brief-supporting-context-summary')}>Review people and open-home context</button> : null}
       </section>
 
