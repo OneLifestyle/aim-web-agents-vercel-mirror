@@ -374,6 +374,126 @@ export const runFixtureAssertions = (): FixtureAssertionReport => {
   assert(!/\b(?:tbc|tbd|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\[(?:date|time|url)\]|\{\{?(?:date|time|url)\}?\}|https?:\/\//i.test(noScheduleOutput.content), 'no-schedule Open House fixture must not inject a schedule, URL or placeholder');
   assert(noSchedulePack.state === 'ready' && noSchedulePack.readyOutputIds.length === 16, 'no-schedule Campaign Pack must reach 16/16 Ready');
 
+  const decimalLandOpenHouse = getFixtureState('open-house.blank-schedule-with-decimal-land');
+  const decimalLandSnapshot = decimalLandOpenHouse.brief.snapshot!;
+  const decimalLandFact = decimalLandSnapshot.factProvenance.find(fact => fact.key === 'landValue');
+  const decimalLandOutput = decimalLandOpenHouse.outputs['Open House'];
+  const decimalLandPack = deriveCampaignPackState(decimalLandOpenHouse.outputs);
+  assert(
+    decimalLandFact?.approvedValue === 2.02 && decimalLandFact.unit === 'ha' && decimalLandFact.state === 'corrected',
+    'decimal-land fixture must govern the corrected 2.02 ha value',
+  );
+  assert(decimalLandSnapshot.openHomeContext.date === '', 'decimal-land Open House must keep approved date blank');
+  assert(decimalLandSnapshot.openHomeContext.time === '', 'decimal-land Open House must keep approved time blank');
+  assert(decimalLandSnapshot.openHomeContext.url === '', 'decimal-land Open House must keep approved URL blank');
+  assert(decimalLandOutput.content.includes('2.02 ha'), 'decimal-land Open House must contain the corrected land measurement');
+  assert(/📅 Date:\s*\n/.test(decimalLandOutput.content), 'decimal-land Open House must render a blank Date label');
+  assert(/⏰ Time:\s*\n/.test(decimalLandOutput.content), 'decimal-land Open House must render a blank Time label');
+  assert(decimalLandOutput.state === 'ready', 'decimal-land Open House must become Ready');
+  assert(decimalLandOutput.integrityIssues.length === 0, 'decimal-land Open House must have zero integrity issues');
+  assert(
+    decimalLandPack.state === 'ready'
+      && decimalLandPack.readyOutputIds.length === 16
+      && decimalLandPack.blockedOutputIds.length === 0
+      && decimalLandPack.remainingOutputIds.length === 0,
+    'decimal-land Campaign Pack must derive 16 Ready, 0 blocked and 0 remaining',
+  );
+
+  for (const decimalMeasurement of [
+    { text: '1.25 ha', value: 1.25, unit: 'ha' },
+    { text: '2.02 ha', value: 2.02, unit: 'ha' },
+    { text: '10.50 acres', value: 10.5, unit: 'acres' },
+    { text: '202.50 m²', value: 202.5, unit: 'm²' },
+  ] as const) {
+    const measurementBrief = getFixtureState('brief.ready');
+    const measurementLandFact = measurementBrief.property.facts.find(fact => fact.key === 'landValue')!;
+    measurementLandFact.sourceValue = decimalMeasurement.value;
+    measurementLandFact.approvedValue = decimalMeasurement.value;
+    measurementLandFact.sourceUnit = decimalMeasurement.unit;
+    measurementLandFact.unit = decimalMeasurement.unit;
+    measurementLandFact.state = 'confirmed';
+    measurementBrief.people.openHomeIncluded = false;
+    measurementBrief.people.openHome = { date: '', time: '', url: '' };
+    const measurementSnapshot = buildApprovedBriefSnapshot(measurementBrief, { approvedAt: FIXTURE_APPROVED_AT });
+    const decimalMeasurementOutput = validateReturnedOutput({
+      id: 'Open House',
+      content: `Open House\nDate:\nTime:\nLand: ${decimalMeasurement.text}`,
+      snapshot: measurementSnapshot,
+      boundSnapshotId: measurementSnapshot.snapshotId,
+      usedPhotoContext: false,
+      generatedAt: FIXTURE_GENERATED_AT,
+    });
+    assert(decimalMeasurementOutput.state === 'ready', `${decimalMeasurement.text} must not be classified as an Open House time`);
+  }
+
+  const ambiguousDotBrief = getFixtureState('brief.ready');
+  const ambiguousDotLandFact = ambiguousDotBrief.property.facts.find(fact => fact.key === 'landValue')!;
+  ambiguousDotLandFact.sourceValue = 2.3;
+  ambiguousDotLandFact.approvedValue = 2.3;
+  ambiguousDotLandFact.sourceUnit = 'ha';
+  ambiguousDotLandFact.unit = 'ha';
+  ambiguousDotLandFact.state = 'confirmed';
+  ambiguousDotBrief.people.openHomeIncluded = false;
+  ambiguousDotBrief.people.openHome = { date: '', time: '', url: '' };
+  const ambiguousDotSnapshot = buildApprovedBriefSnapshot(ambiguousDotBrief, { approvedAt: FIXTURE_APPROVED_AT });
+  const ambiguousDotTime = validateReturnedOutput({
+    id: 'Open House',
+    content: 'Open House\nDate:\nTime:\nLand: 2.30 ha',
+    snapshot: ambiguousDotSnapshot,
+    boundSnapshotId: ambiguousDotSnapshot.snapshotId,
+    usedPhotoContext: false,
+    generatedAt: FIXTURE_GENERATED_AT,
+  });
+  assert(ambiguousDotTime.state === 'ready', 'dot-separated 2.30 without am/pm must not be classified as time syntax');
+
+  for (const legitimateTime of ['14:30', '09:05', '2:30 pm', '2:30pm', '2.30 pm', '2.30pm', '2 pm', '11 am']) {
+    const inventedTimeOutput = validateReturnedOutput({
+      id: 'Open House',
+      content: `Open House\nDate:\nTime:\nJoin us at ${legitimateTime}.`,
+      snapshot: noScheduleSnapshot,
+      boundSnapshotId: noScheduleSnapshot.snapshotId,
+      usedPhotoContext: false,
+      generatedAt: FIXTURE_GENERATED_AT,
+    });
+    assert(
+      inventedTimeOutput.state === 'needs-review'
+        && inventedTimeOutput.integrityIssues.some(issue => issue.message.includes('unapproved time')),
+      `${legitimateTime} must remain detected as an invented Open House time`,
+    );
+  }
+
+  for (const placeholder of ['TBC', 'TBD', '[DATE]', '[TIME]', '{{date}}', '{{time}}']) {
+    const placeholderOutput = validateReturnedOutput({
+      id: 'Open House',
+      content: `Open House\nDate: ${placeholder}\nTime:`,
+      snapshot: noScheduleSnapshot,
+      boundSnapshotId: noScheduleSnapshot.snapshotId,
+      usedPhotoContext: false,
+      generatedAt: FIXTURE_GENERATED_AT,
+    });
+    assert(
+      placeholderOutput.state === 'needs-review'
+        && placeholderOutput.integrityIssues.some(issue => issue.message.includes('unresolved placeholder')),
+      `${placeholder} must remain rejected as an unresolved Open House placeholder`,
+    );
+  }
+
+  for (const inventedDate of ['Saturday', '10 August 2026', '10/08/2026']) {
+    const inventedDateOutput = validateReturnedOutput({
+      id: 'Open House',
+      content: `Open House\nDate: ${inventedDate}\nTime:`,
+      snapshot: noScheduleSnapshot,
+      boundSnapshotId: noScheduleSnapshot.snapshotId,
+      usedPhotoContext: false,
+      generatedAt: FIXTURE_GENERATED_AT,
+    });
+    assert(
+      inventedDateOutput.state === 'needs-review'
+        && inventedDateOutput.integrityIssues.some(issue => issue.message.includes('unapproved date')),
+      `${inventedDate} must remain detected as an invented Open House date`,
+    );
+  }
+
   const inventedNoScheduleOutput = validateReturnedOutput({
     id: 'Open House',
     content: 'Open House this Saturday at 11:00 am. Explore a welcoming four-bedroom home.',

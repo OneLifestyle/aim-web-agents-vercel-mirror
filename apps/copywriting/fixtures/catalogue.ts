@@ -7,6 +7,7 @@ import type {
 } from '../types';
 import {
   CAMPAIGN_PACK_OUTPUT_ORDER,
+  CANONICAL_OUTPUT_ORDER,
   OUTPUT_PRESENTATION_BY_ID,
   buildApprovedBriefSnapshot,
   cloneCampaignSessionState,
@@ -45,6 +46,7 @@ export const REQUIRED_FIXTURE_IDS = [
   'pack.complete',
   'pack.failed-child-preserved-siblings',
   'open-house.no-schedule',
+  'open-house.blank-schedule-with-decimal-land',
   'open-house.date-only',
   'open-house.time-only',
   'open-house.full-schedule',
@@ -466,12 +468,12 @@ const safeOutputText = (
   return `${OUTPUT_PRESENTATION_BY_ID[outputId].label}: Discover a four-bedroom Fictional Bay home with two bathrooms and two car spaces. ${photoSentence}`;
 };
 
-const setReadyOutput = (state: CampaignSessionState, outputId: PreviewTab): void => {
+const setReadyOutput = (state: CampaignSessionState, outputId: PreviewTab, content?: string): void => {
   const snapshot = state.brief.snapshot;
   if (!snapshot) throw new Error('Fixture output generation requires an Approved Brief Snapshot.');
   state.outputs[outputId] = validateReturnedOutput({
     id: outputId,
-    content: safeOutputText(outputId, snapshot.photoContext.policy === 'included', snapshot),
+    content: content ?? safeOutputText(outputId, snapshot.photoContext.policy === 'included', snapshot),
     snapshot,
     boundSnapshotId: snapshot.snapshotId,
     usedPhotoContext: snapshot.photoContext.policy === 'included',
@@ -581,6 +583,40 @@ const synchronisePackFromOutputs = (state: CampaignSessionState): void => {
     remainingOutputIds: [...derived.remainingOutputIds],
     retryOutputIds: [...derived.retryOutputIds],
   };
+};
+
+const createBlankScheduleWithDecimalLandState = (): CampaignSessionState => {
+  const reviewedState = createReviewedCampaignState('off');
+  const landFact = reviewedState.property.facts.find(fact => fact.key === 'landValue')!;
+  landFact.approvedValue = 2.02;
+  landFact.unit = 'ha';
+  landFact.state = 'corrected';
+  reviewedState.property.overview = `${reviewedState.property.overview} Set across 2.02 ha.`;
+  reviewedState.people.openHomeIncluded = true;
+  reviewedState.people.openHome = { date: '', time: '', url: '' };
+
+  const state = approveFixtureBrief(reviewedState);
+  const snapshot = state.brief.snapshot!;
+  state.stage = 'outputs';
+  state.activeOutputId = 'Open House';
+
+  for (const outputId of CANONICAL_OUTPUT_ORDER) {
+    const content = outputId === 'Open House'
+      ? [
+        `🏡 Open House: ${FIXTURE_ADDRESS}`,
+        '📅 Date:',
+        '⏰ Time:',
+        `📍 Location: ${FIXTURE_ADDRESS}`,
+        '',
+        'Explore a warm four-bedroom home set across 2.02 ha, with two bathrooms, two car spaces and a north-facing rear garden.',
+      ].join('\n')
+      : safeOutputText(outputId, false, snapshot)
+        .replaceAll('742 m²', '2.02 ha')
+        .replaceAll('742 square metres', '2.02 ha');
+    setReadyOutput(state, outputId, content);
+  }
+  synchronisePackFromOutputs(state);
+  return state;
 };
 
 const createSixCarConflictState = (conflictOutputId: PreviewTab = 'Facebook Marketplace'): CampaignSessionState => {
@@ -782,6 +818,12 @@ export const FIXTURE_CATALOGUE: Readonly<Record<FixtureId, CampaignFixtureDefini
     time: '',
     url: '',
   })),
+  'open-house.blank-schedule-with-decimal-land': fixture(
+    'open-house.blank-schedule-with-decimal-land',
+    'Open House with decimal land and blank schedule',
+    'Corrected 2.02 ha content stays Ready while optional Open House scheduling remains blank.',
+    () => createBlankScheduleWithDecimalLandState(),
+  ),
   'open-house.date-only': fixture('open-house.date-only', 'Open House with date only', 'The approved date is preserved while time and URL remain blank.', () => createPackCompleteState('off', {
     included: true,
     date: '2026-08-22',

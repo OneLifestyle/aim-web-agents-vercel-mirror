@@ -150,7 +150,7 @@ const findPhotoContextIssues = (
 
 const OPEN_HOME_PLACEHOLDER = /\b(?:tbc|tbd|date here|time here|insert date|insert time)\b|\[(?:date|time|url|property listing url)\]|\{\{?(?:date|time|url)\}?\}/i;
 const UNAPPROVED_OPEN_HOME_DATE = /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\b|\b(?:\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+\d{4})?|(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:,?\s+\d{4})?)\b/i;
-const UNAPPROVED_OPEN_HOME_TIME = /\b(?:[01]?\d|2[0-3])[:.][0-5]\d\s*(?:am|pm)?\b|\b(?:1[0-2]|0?[1-9])\s*(?:am|pm)\b/i;
+const UNAPPROVED_OPEN_HOME_TIME = /\b(?:[01]?\d|2[0-3])(?::[0-5]\d\s*(?:am|pm)?|\.[0-5]\d\s*(?:am|pm))\b|\b(?:1[0-2]|0?[1-9])\s*(?:am|pm)\b/i;
 const UNAPPROVED_OPEN_HOME_URL = /\b(?:https?:\/\/|www\.)\S+/i;
 
 const findOpenHouseIssues = (
