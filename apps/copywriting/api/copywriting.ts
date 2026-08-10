@@ -16,8 +16,8 @@ import type {
     ReviewedPhotoHighlight,
     SuggestionGovernanceContext,
 } from '../types';
-import { computeApprovedBriefSnapshotId } from '../domain/approvedBrief';
-import { sanitizeCorrectedClaimContext, sanitizeLowerAuthorityText } from '../domain/governance';
+import { computeApprovedBriefSnapshotId } from '../domain/approvedBrief.js';
+import { sanitizeCorrectedClaimContext, sanitizeLowerAuthorityText } from '../domain/governance.js';
 
 const BETA_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 

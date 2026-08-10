@@ -496,12 +496,13 @@ const App: React.FC = () => {
 
   const handleBetaSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!betaCode.trim() || betaSubmitting) return;
+    const normalizedBetaCode = betaCode.trim();
+    if (!normalizedBetaCode || betaSubmitting) return;
     setBetaSubmitting(true);
     updateSession(current => ({ ...current, gate: { state: 'locked', error: null } }));
     try {
       assertNetworkAllowed(session, 'verifyBetaAccess');
-      await verifyBetaAccess(betaCode);
+      await verifyBetaAccess(normalizedBetaCode);
       setBetaCode('');
       updateSession(current => ({ ...current, gate: { state: 'verified', error: null } }));
     } catch (error) {

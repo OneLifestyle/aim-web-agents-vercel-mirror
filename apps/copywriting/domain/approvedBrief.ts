@@ -10,7 +10,7 @@ import {
   normalizeHardExclusion,
   sanitizeCorrectedClaimContext,
   sanitizeLowerAuthorityText,
-} from './governance';
+} from './governance.js';
 
 export interface BuildApprovedBriefSnapshotOptions {
   approvedAt?: string;
