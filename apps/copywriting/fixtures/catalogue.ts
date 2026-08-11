@@ -51,6 +51,9 @@ export const REQUIRED_FIXTURE_IDS = [
   'open-house.time-only',
   'open-house.full-schedule',
   'open-house.conflicting-approved-schedule',
+  'land-equivalence.flyer-live',
+  'land-equivalence.pack-safe',
+  'land-equivalence.pack-conflict',
   'output.integrity-conflict',
   'session.temporary',
   'six-car-garage-exclusion.safe',
@@ -619,6 +622,117 @@ const createBlankScheduleWithDecimalLandState = (): CampaignSessionState => {
   return state;
 };
 
+const configureEquivalentLiveLandFact = (state: CampaignSessionState): void => {
+  const landFact = state.property.facts.find(fact => fact.key === 'landValue')!;
+  landFact.sourceValue = 20_200;
+  landFact.approvedValue = 2.02;
+  landFact.sourceUnit = 'm²';
+  landFact.unit = 'ha';
+  landFact.state = 'corrected';
+  state.property.overview = `${state.property.overview} The holding extends across 20,200 m² of land.`;
+  state.people.openHomeIncluded = false;
+  state.people.openHome = { date: '', time: '', url: '' };
+};
+
+const createEquivalentLiveLandState = (): CampaignSessionState => {
+  const reviewedState = createReviewedCampaignState('off');
+  configureEquivalentLiveLandFact(reviewedState);
+  return approveFixtureBrief(reviewedState);
+};
+
+const LAND_EQUIVALENT_SURFACES = [
+  '2.02 ha',
+  '2.02 hectares',
+  '20,200 m²',
+  '20200 m2',
+  '20,200 square metres',
+  'approximately 2.02 hectares',
+  'approximately five acres',
+  'about 5 acres',
+] as const;
+
+const semanticLandOutputText = (outputId: PreviewTab, landSurface: string): string => {
+  if (outputId === 'Full Copy') {
+    return `# A generous Fictional Bay holding\n\nA four-bedroom house with two bathrooms and two car spaces, set across ${landSurface} of approved land.`;
+  }
+  if (outputId === 'Open House') {
+    return [
+      `🏡 Open House: ${FIXTURE_ADDRESS}`,
+      '📅 Date:',
+      '⏰ Time:',
+      `📍 Location: ${FIXTURE_ADDRESS}`,
+      '',
+      `Explore a four-bedroom home set across ${landSurface} of land, with two bathrooms and two car spaces.`,
+    ].join('\n');
+  }
+  if (outputId === 'Video Script') {
+    return `VISUAL: Wide property view.\nVOICEOVER: Across ${landSurface} of land, this four-bedroom home pairs two bathrooms with two car spaces.`;
+  }
+  if (outputId === 'Long-form / Blog') {
+    return `# Space and perspective\n\nThe approved property story centres on ${landSurface} of land, four bedrooms, two bathrooms and two car spaces.`;
+  }
+  if (outputId === 'Coming Soon SMS') {
+    return `Coming soon: four bedrooms, two bathrooms and two car spaces across ${landSurface} of approved land in Fictional Bay.`;
+  }
+  return `${OUTPUT_PRESENTATION_BY_ID[outputId].label}: A four-bedroom home with two bathrooms and two car spaces across ${landSurface} of approved land.`;
+};
+
+const createLiveFlyerLandState = (): CampaignSessionState => {
+  const state = createEquivalentLiveLandState();
+  state.stage = 'outputs';
+  state.activeOutputId = 'Flyer';
+  setReadyOutput(state, 'Full Copy', semanticLandOutputText('Full Copy', '2.02 ha'));
+  for (const outputId of CAMPAIGN_PACK_OUTPUT_ORDER.slice(0, 3)) {
+    setReadyOutput(state, outputId, semanticLandOutputText(outputId, '2.02 hectares'));
+  }
+  setReadyOutput(state, 'Flyer', [
+    'Flyer: A private garden setting across approximately 2.02 hectares.',
+    'Property snapshot: land 20,200 m², four bedrooms, two bathrooms and two car spaces.',
+  ].join('\n'));
+  synchronisePackFromOutputs(state);
+  return state;
+};
+
+const createLandEquivalentPackState = (): CampaignSessionState => {
+  const state = createEquivalentLiveLandState();
+  state.stage = 'outputs';
+  state.activeOutputId = 'Flyer';
+  CANONICAL_OUTPUT_ORDER.forEach((outputId, index) => {
+    const landSurface = LAND_EQUIVALENT_SURFACES[index % LAND_EQUIVALENT_SURFACES.length];
+    const content = outputId === 'Flyer'
+      ? [
+        'Flyer: A private garden setting across approximately 2.02 hectares.',
+        'Property snapshot: land 20,200 m², four bedrooms, two bathrooms and two car spaces.',
+      ].join('\n')
+      : semanticLandOutputText(outputId, landSurface);
+    setReadyOutput(state, outputId, content);
+  });
+  synchronisePackFromOutputs(state);
+  return state;
+};
+
+const createLandConflictPackState = (): CampaignSessionState => {
+  const state = createEquivalentLiveLandState();
+  const snapshot = state.brief.snapshot!;
+  state.stage = 'outputs';
+  state.activeOutputId = 'Flyer';
+  setReadyOutput(state, 'Full Copy', semanticLandOutputText('Full Copy', '2.02 ha'));
+  for (const outputId of CAMPAIGN_PACK_OUTPUT_ORDER.slice(0, 3)) {
+    setReadyOutput(state, outputId, semanticLandOutputText(outputId, '20,200 m²'));
+  }
+  state.outputs.Flyer = validateReturnedOutput({
+    id: 'Flyer',
+    content: 'Flyer: A four-bedroom home with two bathrooms and two car spaces set across 3.02 ha of land.',
+    snapshot,
+    boundSnapshotId: snapshot.snapshotId,
+    usedPhotoContext: false,
+    knownPhotoHighlights: state.photos.highlights,
+    generatedAt: FIXTURE_GENERATED_AT,
+  });
+  synchronisePackFromOutputs(state);
+  return state;
+};
+
 const createSixCarConflictState = (conflictOutputId: PreviewTab = 'Facebook Marketplace'): CampaignSessionState => {
   const safeState = createPackCompleteState('off');
   const snapshot = safeState.brief.snapshot!;
@@ -844,6 +958,15 @@ export const FIXTURE_CATALOGUE: Readonly<Record<FixtureId, CampaignFixtureDefini
   })),
   'open-house.conflicting-approved-schedule': fixture('open-house.conflicting-approved-schedule', 'Open House schedule conflict', 'A returned schedule that conflicts with approved values cannot become Ready.', () => (
     createOpenHouseConflictState()
+  )),
+  'land-equivalence.flyer-live': fixture('land-equivalence.flyer-live', 'Live Flyer land equivalence', 'Equivalent source and approved land representations keep the observed Flyer scenario Ready.', () => (
+    createLiveFlyerLandState()
+  )),
+  'land-equivalence.pack-safe': fixture('land-equivalence.pack-safe', 'Land equivalence across all outputs', 'Every stable output validates a realistic equivalent land representation.', () => (
+    createLandEquivalentPackState()
+  )),
+  'land-equivalence.pack-conflict': fixture('land-equivalence.pack-conflict', 'Land conflict with preserved siblings', 'A contradictory Flyer blocks after three successful children and leaves twelve remaining.', () => (
+    createLandConflictPackState()
   )),
   'output.integrity-conflict': fixture('output.integrity-conflict', 'Output integrity conflict', 'Returned Listing Copy contains an excluded claim.', () => {
     const state = createListingReadyState('off');

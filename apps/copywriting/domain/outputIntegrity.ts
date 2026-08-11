@@ -152,6 +152,29 @@ const OPEN_HOME_PLACEHOLDER = /\b(?:tbc|tbd|date here|time here|insert date|inse
 const UNAPPROVED_OPEN_HOME_DATE = /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\b|\b(?:\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+\d{4})?|(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:,?\s+\d{4})?)\b/i;
 const UNAPPROVED_OPEN_HOME_TIME = /\b(?:[01]?\d|2[0-3])(?::[0-5]\d\s*(?:am|pm)?|\.[0-5]\d\s*(?:am|pm))\b|\b(?:1[0-2]|0?[1-9])\s*(?:am|pm)\b/i;
 const UNAPPROVED_OPEN_HOME_URL = /\b(?:https?:\/\/|www\.)\S+/i;
+const OPEN_HOME_URLS = /\b(?:https?:\/\/|www\.)[^\s)>\]}]+/gi;
+const OPEN_HOME_WEEKDAY = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)';
+
+const escapeIntegrityRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const removeApprovedAlternatives = (
+  content: string,
+  alternatives: readonly string[],
+  includeLeadingWeekday = false,
+): string => alternatives
+  .filter(Boolean)
+  .sort((left, right) => right.length - left.length)
+  .reduce((remaining, alternative) => {
+    const surface = escapeIntegrityRegExp(alternative).replace(/\\ /g, '\\s+');
+    const prefix = includeLeadingWeekday ? `(?:\\b${OPEN_HOME_WEEKDAY}\\b[\\s,]*)?` : '';
+    return remaining.replace(new RegExp(`${prefix}${surface}`, 'gi'), ' ');
+  }, content);
+
+const normalizeOpenHomeUrlSurface = (value: string): string => value.replace(/[.,;:!?]+$/, '');
+
+const findOpenHomeUrls = (content: string): string[] => (
+  Array.from(content.matchAll(OPEN_HOME_URLS), match => normalizeOpenHomeUrlSurface(match[0]))
+);
 
 const findOpenHouseIssues = (
   outputId: PreviewTab,
@@ -193,17 +216,30 @@ const findOpenHouseIssues = (
   }
   const conflicts: string[] = [];
   if (approvedDate) {
-    if (!dateAlternatives.some(candidate => includesGovernedText(content, candidate))) conflicts.push('approved date');
+    if (!dateAlternatives.some(candidate => includesGovernedText(content, candidate))) {
+      conflicts.push('approved date');
+    } else if (UNAPPROVED_OPEN_HOME_DATE.test(removeApprovedAlternatives(content, dateAlternatives, true))) {
+      conflicts.push('unapproved date');
+    }
   } else if (UNAPPROVED_OPEN_HOME_DATE.test(content)) {
     conflicts.push('unapproved date');
   }
   if (approvedTime) {
-    if (!timeAlternatives.some(candidate => includesGovernedText(content, candidate))) conflicts.push('approved time');
+    if (!timeAlternatives.some(candidate => includesGovernedText(content, candidate))) {
+      conflicts.push('approved time');
+    } else if (UNAPPROVED_OPEN_HOME_TIME.test(removeApprovedAlternatives(content, timeAlternatives))) {
+      conflicts.push('unapproved time');
+    }
   } else if (UNAPPROVED_OPEN_HOME_TIME.test(content)) {
     conflicts.push('unapproved time');
   }
   if (approvedUrl) {
-    if (!content.includes(approvedUrl)) conflicts.push('approved URL');
+    const mentionedUrls = findOpenHomeUrls(content);
+    if (!mentionedUrls.includes(approvedUrl)) {
+      conflicts.push('approved URL');
+    } else if (mentionedUrls.some(url => url !== approvedUrl)) {
+      conflicts.push('unapproved URL');
+    }
   } else if (UNAPPROVED_OPEN_HOME_URL.test(content)) {
     conflicts.push('unapproved URL');
   }

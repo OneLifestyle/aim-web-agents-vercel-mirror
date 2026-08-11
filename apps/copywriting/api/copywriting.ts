@@ -17,7 +17,13 @@ import type {
     SuggestionGovernanceContext,
 } from '../types';
 import { computeApprovedBriefSnapshotId } from '../domain/approvedBrief.js';
-import { sanitizeCorrectedClaimContext, sanitizeLowerAuthorityText } from '../domain/governance.js';
+import {
+    findGovernanceConflicts,
+    sanitizeCorrectedClaimContext,
+    sanitizeLowerAuthorityText,
+    splitGovernanceListItems,
+} from '../domain/governance.js';
+import { areLandMeasurementsEquivalent } from '../domain/structuredFacts.js';
 
 const BETA_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
@@ -1488,129 +1494,47 @@ const boundedFlexiblePhraseRegExp = (value: string, flags = 'gi'): RegExp => (
     new RegExp(`(?<![A-Za-z0-9])${flexiblePhrasePattern(value)}(?![A-Za-z0-9])`, flags)
 );
 
-const NUMBER_WORDS = [
-    'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
-    'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty',
-] as const;
-
-const factValuePattern = (value: string | number): string => {
-    const numeric = typeof value === 'number' ? value : Number(value.replace(/,/g, '').trim());
-    if (Number.isInteger(numeric) && numeric >= 0 && numeric < NUMBER_WORDS.length) {
-        return `(?:${escapeRegExp(String(numeric))}|${NUMBER_WORDS[numeric]})`;
-    }
-    return flexiblePhrasePattern(String(value));
-};
-
-const formatApprovedFact = (
-    key: ApprovedBriefSnapshot['factProvenance'][number]['key'],
-    approvedValue: string | number | null,
-    unit?: ApprovedBriefSnapshot['approvedFacts']['landUnit']
-): string => {
-    if (approvedValue === null || approvedValue === '') return '[superseded fact removed]';
-    switch (key) {
-        case 'bedrooms': return `${approvedValue} bedrooms`;
-        case 'bathrooms': return `${approvedValue} bathrooms`;
-        case 'carSpaces': return `${approvedValue} car spaces`;
-        case 'landValue': return `${approvedValue}${unit ? ` ${unit}` : ''}`;
-        case 'propertyType': return String(approvedValue);
-    }
-};
-
-type SupersededFactRule = { pattern: RegExp; replacement: string; protectedPhrases?: string[] };
-
-const getSupersededFactRules = (governance: SuggestionGovernanceContext): SupersededFactRule[] => {
-    return governance.factProvenance.flatMap(entry => {
-        const valueChanged = entry.sourceValue !== entry.approvedValue;
-        const unitChanged = entry.sourceUnit !== entry.unit;
-        if (entry.state !== 'corrected' || entry.sourceValue === null || (!valueChanged && !unitChanged)) return [];
-        const sourcePattern = factValuePattern(entry.sourceValue);
-        const replacement = formatApprovedFact(entry.key, entry.approvedValue, entry.unit);
-        let pattern: string;
-        switch (entry.key) {
-            case 'bedrooms':
-                pattern = `\\b${sourcePattern}[\\s-]+bed(?:room)?s?\\b`;
-                break;
-            case 'bathrooms':
-                pattern = `\\b${sourcePattern}[\\s-]+bath(?:room)?s?\\b`;
-                break;
-            case 'carSpaces':
-                pattern = `\\b${sourcePattern}[\\s-]+(?:car(?:[\\s-]+spaces?|[\\s-]+garage)|vehicle[\\s-]+garage|parking[\\s-]+spaces?)\\b|\\bparking[\\s-]+for[\\s-]+${sourcePattern}\\b`;
-                break;
-            case 'landValue':
-                pattern = entry.sourceUnit === 'm²'
-                    ? `\\b${sourcePattern}[\\s-]*(?:m²|m2|sqm|sq[\\s-]*m|square[\\s-]+metres?|square[\\s-]+meters?)\\b`
-                    : entry.sourceUnit === 'ha'
-                        ? `\\b${sourcePattern}[\\s-]*(?:ha|hectares?)\\b`
-                        : `\\b${sourcePattern}[\\s-]*acres?\\b`;
-                break;
-            case 'propertyType':
-                pattern = `\\b${sourcePattern}\\b`;
-                break;
-        }
-        return [{
-            pattern: new RegExp(pattern, 'gi'),
-            replacement,
-            ...(entry.key === 'propertyType' && typeof entry.approvedValue === 'string'
-                ? {
-                    protectedPhrases: [
-                        entry.approvedValue,
-                        ...(String(entry.sourceValue).trim().toLocaleLowerCase('en-AU') === 'house' ? ['open house'] : []),
-                    ],
-                }
-                : {}),
-        }];
-    });
-};
-
-const getHardExclusionPatterns = (governance: SuggestionGovernanceContext): RegExp[] => (
-    governance.hardExclusions.flatMap(claim => (
-        Array.from(new Set([claim.text, ...claim.aliases]))
-            .filter(alias => alias.trim().length > 0)
-            .map(alias => boundedFlexiblePhraseRegExp(alias))
-    ))
-);
-
 const sanitiseLowerAuthorityText = (
     value: string | null,
     governance: SuggestionGovernanceContext | undefined
 ): string | null => {
     if (!value || !governance) return value;
-    let sanitised = value;
-    for (const pattern of getHardExclusionPatterns(governance)) {
-        sanitised = sanitised.replace(pattern, '[hard-excluded claim removed]');
-    }
-    for (const rule of getSupersededFactRules(governance)) {
-        const protectedMatches: string[] = [];
-        for (const protectedPhrase of rule.protectedPhrases ?? []) {
-            sanitised = sanitised.replace(boundedFlexiblePhraseRegExp(protectedPhrase), match => {
-                const index = protectedMatches.push(match) - 1;
-                return `\uE000${index}\uE001`;
-            });
-        }
-        sanitised = sanitised.replace(rule.pattern, rule.replacement);
-        sanitised = sanitised.replace(/\uE000(\d+)\uE001/g, (_match, index: string) => protectedMatches[Number(index)] ?? '');
-    }
-    return sanitised;
+    return sanitizeLowerAuthorityText(value, governance).text;
 };
 
 const containsGovernanceConflict = (value: string, governance: SuggestionGovernanceContext): boolean => {
-    if (getHardExclusionPatterns(governance).some(pattern => pattern.test(value))) return true;
-    return getSupersededFactRules(governance).some(rule => {
-        const candidate = (rule.protectedPhrases ?? []).reduce(
-            (current, protectedPhrase) => current.replace(boundedFlexiblePhraseRegExp(protectedPhrase), ''),
-            value,
-        );
-        return rule.pattern.test(candidate);
-    });
+    return findGovernanceConflicts(value, governance).length > 0;
 };
 
 const filterGovernedSuggestionText = (value: string, governance: SuggestionGovernanceContext | undefined): string => {
     if (!governance || !value) return value;
-    return value
-        .split(/\r?\n|\s*[,;]\s*/)
+    return splitGovernanceListItems(value)
         .map(item => item.trim())
         .filter(item => item && !containsGovernanceConflict(item, governance))
         .join(', ');
+};
+
+const describeCorrectedFactSemantics = (
+    entry: ApprovedBriefSnapshot['factProvenance'][number]
+): { semanticChange: 'representation-only' | 'substantive-correction'; rule: string } => {
+    const equivalentLandRepresentation = entry.key === 'landValue'
+        && typeof entry.sourceValue === 'number'
+        && typeof entry.approvedValue === 'number'
+        && Boolean(entry.sourceUnit)
+        && Boolean(entry.unit)
+        && areLandMeasurementsEquivalent(
+            { value: entry.sourceValue as number, unit: entry.sourceUnit! },
+            { value: entry.approvedValue as number, unit: entry.unit! },
+        );
+    return equivalentLandRepresentation
+        ? {
+            semanticChange: 'representation-only',
+            rule: 'Source and approved land measurements are equivalent representations. Prefer the approved display, but do not treat an equivalent unit conversion as contradictory.',
+        }
+        : {
+            semanticChange: 'substantive-correction',
+            rule: 'This is the human-corrected value. Conflicting source meaning must not be used.',
+        };
 };
 
 const buildSuggestionGovernanceContract = (governance: SuggestionGovernanceContext | undefined): string => {
@@ -1625,7 +1549,7 @@ const buildSuggestionGovernanceContract = (governance: SuggestionGovernanceConte
                 approvedValue: entry.approvedValue,
                 sourceUnit: entry.sourceUnit,
                 unit: entry.unit,
-                rule: 'This is the human-corrected value. Use it as authoritative.',
+                ...describeCorrectedFactSemantics(entry),
             })),
         hardExclusions: governance.hardExclusions.map(claim => ({
             id: claim.id,
@@ -1855,7 +1779,7 @@ const buildApprovedGenerationContract = (snapshot: ApprovedBriefSnapshot): strin
                 approvedValue: entry.approvedValue,
                 sourceUnit: entry.sourceUnit,
                 unit: entry.unit,
-                rule: 'This is the human-corrected value. Use it as authoritative.',
+                ...describeCorrectedFactSemantics(entry),
             })),
         propertyOverview: snapshot.propertyOverview,
         profileInclusion: snapshot.profileInclusion,

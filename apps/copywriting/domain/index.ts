@@ -4,3 +4,4 @@ export * from './governance';
 export * from './outputIntegrity';
 export * from './outputInventory';
 export * from './sessionState';
+export * from './structuredFacts';
