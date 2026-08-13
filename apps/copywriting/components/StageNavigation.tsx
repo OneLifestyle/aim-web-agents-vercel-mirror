@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import type { CampaignStageId } from '../types';
+import { getStageRevealScrollLeft } from './stageNavigationVisibility';
 
 export type StageNavigationState = 'not-started' | 'in-review' | 'approved' | 'optional-off' | 'needs-attention' | 'ready';
 
@@ -26,25 +27,61 @@ export const StageNavigation: React.FC<StageNavigationProps> = ({ activeStage, s
   const navigationRef = useRef<HTMLElement>(null);
   const activeButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia('(max-width: 1100px)').matches) return;
+  const revealActiveStage = useCallback(() => {
     const navigation = navigationRef.current;
     const activeButton = activeButtonRef.current;
     if (!navigation || !activeButton) return;
 
     const navigationBounds = navigation.getBoundingClientRect();
     const activeButtonBounds = activeButton.getBoundingClientRect();
-    const isFullyVisible = activeButtonBounds.left >= navigationBounds.left
-      && activeButtonBounds.right <= navigationBounds.right;
-    if (isFullyVisible) return;
+    const targetScrollLeft = getStageRevealScrollLeft({
+      activeStart: navigation.scrollLeft + activeButtonBounds.left - navigationBounds.left,
+      activeWidth: activeButtonBounds.width,
+      contentWidth: navigation.scrollWidth,
+      edgePadding: 12,
+      scrollLeft: navigation.scrollLeft,
+      viewportWidth: navigation.clientWidth,
+    });
+    if (targetScrollLeft === null) return;
 
-    const navigationCentre = navigationBounds.left + navigationBounds.width / 2;
-    const activeButtonCentre = activeButtonBounds.left + activeButtonBounds.width / 2;
     navigation.scrollTo({
-      left: navigation.scrollLeft + activeButtonCentre - navigationCentre,
+      left: targetScrollLeft,
       behavior: 'auto',
     });
-  }, [activeStage]);
+  }, []);
+
+  useEffect(() => {
+    revealActiveStage();
+  }, [activeStage, revealActiveStage]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const navigation = navigationRef.current;
+    const activeButton = activeButtonRef.current;
+    if (!navigation || !activeButton) return undefined;
+
+    let revealFrame: number | null = null;
+    const scheduleReveal = () => {
+      if (revealFrame !== null) window.cancelAnimationFrame(revealFrame);
+      revealFrame = window.requestAnimationFrame(() => {
+        revealFrame = null;
+        revealActiveStage();
+      });
+    };
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(scheduleReveal);
+
+    resizeObserver?.observe(navigation);
+    resizeObserver?.observe(activeButton);
+    window.addEventListener('resize', scheduleReveal);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', scheduleReveal);
+      if (revealFrame !== null) window.cancelAnimationFrame(revealFrame);
+    };
+  }, [activeStage, revealActiveStage]);
 
   return (
     <nav ref={navigationRef} className="stage-nav" aria-label="Campaign stages">

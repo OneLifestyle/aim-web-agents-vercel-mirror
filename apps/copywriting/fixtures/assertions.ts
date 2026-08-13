@@ -62,6 +62,7 @@ import {
   getAvailableGuidedExportScopeOptions,
 } from '../utils/guidedExport';
 import { deriveOutputRegenerationAction } from '../utils/outputActions';
+import { getStageRevealScrollLeft } from '../components/stageNavigationVisibility';
 
 export interface FixtureAssertionReport {
   passed: true;
@@ -114,6 +115,36 @@ export const runFixtureAssertions = (): FixtureAssertionReport => {
     resolveDevelopmentFixture('?fixture=start.product-selected&product=listing-copy', true)?.product === 'listing-copy',
     'product-selected fixture must support the Listing Copy variant',
   );
+
+  const narrowStageStrip = {
+    contentWidth: 654,
+    edgePadding: 12,
+    viewportWidth: 390,
+  } as const;
+  const stageReveal = (activeStart: number, activeWidth: number, scrollLeft: number) => (
+    getStageRevealScrollLeft({ ...narrowStageStrip, activeStart, activeWidth, scrollLeft })
+  );
+  assert(stageReveal(12, 116, 0) === null, 'initial narrow Property stage must remain visible without scrolling');
+  assert(stageReveal(132, 116, 0) === null, 'narrow Property to Campaign navigation must keep Campaign visible');
+  assert(stageReveal(252, 116, 0) === null, 'narrow Campaign to Photos navigation must keep Photos visible');
+  assert(stageReveal(372, 138, 0) === 246, 'narrow Photos to Reviewed Brief navigation must reveal Reviewed Brief');
+  assert(stageReveal(514, 116, 246) === 264, 'narrow Reviewed Brief to Outputs navigation must reveal Outputs');
+  assert(stageReveal(12, 116, 264) === 0, 'non-linear Outputs to Property navigation must reveal Property');
+  assert(stageReveal(372, 138, 0) === 246, 'non-linear Property to Reviewed Brief navigation must reveal Reviewed Brief');
+  assert(stageReveal(132, 116, 264) === 0, 'an active stage outside the manual strip position must be centred in view');
+  assert(
+    getStageRevealScrollLeft({
+      activeStart: 0,
+      activeWidth: 179,
+      contentWidth: 203,
+      edgePadding: 12,
+      scrollLeft: 0,
+      viewportWidth: 203,
+    }) === null,
+    'desktop stage navigation must not receive a horizontal reveal scroll',
+  );
+  assert(stageReveal(514, 116, 0) === 264, 'narrow viewport re-entry must reveal the current Outputs stage');
+  assert(stageReveal(372, 138, 246) === null, 'manual strip scrolling must remain unchanged while the active stage is visible');
   let unknownFixtureThrew = false;
   try {
     resolveDevelopmentFixture('?fixture=not-a-real-fixture', true);
