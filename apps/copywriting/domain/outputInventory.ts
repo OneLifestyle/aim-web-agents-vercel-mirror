@@ -31,7 +31,7 @@ export interface OutputGroupDefinition {
 export const CANONICAL_OUTPUT_GROUPS: readonly OutputGroupDefinition[] = [
   {
     id: 'foundation',
-    label: 'Foundation',
+    label: 'Listing Copy',
     countLabel: '1',
     outputIds: ['Full Copy'],
   },

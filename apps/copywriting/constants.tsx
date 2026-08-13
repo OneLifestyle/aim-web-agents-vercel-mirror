@@ -1,6 +1,8 @@
 
 import React from 'react';
 
+export { CAMPAIGN_TONE_OPTIONS as TONE_OPTIONS } from './domain/campaignDirection';
+
 export const TARGET_MARKETS = [
   'Young Families',
   'Established Families',

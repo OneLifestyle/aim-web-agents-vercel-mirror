@@ -32,6 +32,8 @@ import {
 } from './services/geminiService';
 import {
   assembleGenerationParamsFromApprovedSnapshot,
+  applyCampaignAnalysisRecommendations,
+  approveAllEligiblePhotoHighlights,
   buildApprovedBriefSnapshot,
   CAMPAIGN_PACK_OUTPUT_ORDER,
   CANONICAL_OUTPUT_GROUPS,
@@ -39,15 +41,24 @@ import {
   createInitialCampaignSessionState,
   deriveBriefApprovalPresentation,
   deriveCampaignPackState,
+  derivePhotoReviewState,
+  derivePropertyReviewReadiness,
+  findGovernanceConflicts,
   getApprovedBriefBlockers,
+  getPreviousCampaignStage,
   getOutputGroup,
   governSuggestions,
+  isCampaignToneOption,
   markOutputsNeedsRegeneration,
   markPackChildrenNeedsRegenerationForFoundation,
   OUTPUT_PRESENTATION_BY_ID,
+  recommendCampaignTone,
   sanitizeCorrectedClaimContext,
+  splitPropertyClaimText,
   stripPhotoDependentDirection,
   validateReturnedOutput,
+  confirmAllEligiblePropertyClaims,
+  confirmAllEligiblePropertyFacts,
   type CampaignSessionState,
 } from './domain';
 import {
@@ -102,6 +113,12 @@ const createInitialSession = (): CampaignSessionState => {
   });
 };
 
+const hasFetchedPropertyDetails = (state: CampaignSessionState): boolean => Boolean(
+  state.property.overview
+  || state.property.claims.length > 0
+  || state.property.facts.some(fact => fact.sourceValue !== null && fact.sourceValue !== ''),
+);
+
 const reconcilePackState = (state: CampaignSessionState): CampaignSessionState => {
   const derived = deriveCampaignPackState(state.outputs);
   return {
@@ -144,18 +161,6 @@ const invalidateGovernedState = (
     },
     outputs: invalidatedOutputs,
   });
-};
-
-const splitProposalText = (value: string): string[] => value
-  .replace(/\r/g, '')
-  .split(/\n|;|•/)
-  .map(item => item.replace(/^[-*\d.)\s]+/, '').trim())
-  .filter(Boolean)
-  .slice(0, 8);
-
-const releaseAppliedSuggestion = (suggestion: CampaignSuggestion): CampaignSuggestion => {
-  const { application: _application, ...released } = suggestion;
-  return { ...released, state: 'suggested' };
 };
 
 const claimAliases = (sourceText: string, approvedText = sourceText): string[] => {
@@ -251,7 +256,7 @@ const stateLabel = (state: CampaignOutputDocument['state']): string => {
   if (state === 'generating') return 'Generating';
   if (state === 'ready') return 'Ready';
   if (state === 'needs-review') return 'Integrity conflict';
-  if (state === 'needs-regeneration') return 'Needs regeneration';
+  if (state === 'needs-regeneration') return 'Update required';
   return 'Failed';
 };
 
@@ -274,6 +279,7 @@ const App: React.FC = () => {
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [propertyDetailsFetched, setPropertyDetailsFetched] = useState(() => hasFetchedPropertyDetails(session));
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | undefined>(undefined);
   const [locationStatus, setLocationStatus] = useState<'pending' | 'granted' | 'denied'>('pending');
   const [isAnalysingCampaign, setIsAnalysingCampaign] = useState(false);
@@ -438,6 +444,14 @@ const App: React.FC = () => {
   const activeOutputId = session.activeOutputId ?? 'Full Copy';
   const packState = useMemo(() => deriveCampaignPackState(session.outputs), [session.outputs]);
   const briefBlockers = useMemo(() => getApprovedBriefBlockers(session), [session]);
+  const propertyApprovalIssues = useMemo(() => getApprovedBriefBlockers({
+    ...session,
+    property: { ...session.property, approved: true },
+  }).filter(blocker => blocker.governingStage === 'property'), [session]);
+  const propertyReadiness = useMemo(
+    () => derivePropertyReviewReadiness(session, propertyApprovalIssues),
+    [propertyApprovalIssues, session],
+  );
   const briefApprovalPresentation = useMemo(
     () => deriveBriefApprovalPresentation(session, briefBlockers),
     [briefBlockers, session],
@@ -453,17 +467,20 @@ const App: React.FC = () => {
     tabs: [...group.outputIds],
   })), []);
   const selectedOutputGroup = getOutputGroup(activeOutputId).label;
+  const activeApprovedSnapshot = session.brief.approved ? session.brief.snapshot : null;
   const contactCard = useMemo(() => {
+    const agent = activeApprovedSnapshot?.agentContext;
+    const agency = activeApprovedSnapshot?.agencyContext;
     return [
-      session.people.agentIncluded ? session.people.agent.name : '',
-      session.people.agentIncluded ? session.people.agent.title : '',
-      session.people.agencyIncluded ? session.people.agencyName : '',
-      session.people.agentIncluded ? session.people.agent.phone : '',
-      session.people.agentIncluded ? session.people.agent.email : '',
+      agent?.included ? agent.name : '',
+      agent?.included ? agent.title : '',
+      agency?.included ? agency.name : '',
+      agent?.included ? agent.phone : '',
+      agent?.included ? agent.email : '',
     ].filter(Boolean).join('\n');
-  }, [session.people]);
+  }, [activeApprovedSnapshot]);
   const exportPlan = useMemo(() => buildGuidedExportPlan({
-    address: session.address.selectedLabel ?? session.address.query,
+    address: activeApprovedSnapshot?.selectedAddress ?? session.address.selectedLabel ?? session.address.query,
     documents: CANONICAL_OUTPUT_ORDER.map(outputId => session.outputs[outputId]),
     orderedTabs: CANONICAL_OUTPUT_ORDER,
     categories: exportCategories,
@@ -471,15 +488,16 @@ const App: React.FC = () => {
     selectedGroup: selectedOutputGroup,
     scope: exportScope,
     format: exportFormat,
-    activeSnapshotId: session.brief.snapshot?.snapshotId ?? null,
+    activeSnapshotId: activeApprovedSnapshot?.snapshotId ?? null,
     generatedAt: exportPreparedAt,
     includeContactDetails,
     contactCard,
-    includeAddressInCopy: session.address.includeInCopy,
+    includeAddressInCopy: activeApprovedSnapshot?.includeAddressInCopy ?? session.address.includeInCopy,
     campaignPackOutputIds: CAMPAIGN_PACK_OUTPUT_ORDER,
     outputLabels: Object.fromEntries(CANONICAL_OUTPUT_ORDER.map(outputId => [outputId, OUTPUT_PRESENTATION_BY_ID[outputId].label])),
   }), [
     activeOutputId,
+    activeApprovedSnapshot,
     contactCard,
     exportCategories,
     exportFormat,
@@ -490,7 +508,6 @@ const App: React.FC = () => {
     session.address.includeInCopy,
     session.address.query,
     session.address.selectedLabel,
-    session.brief.snapshot?.snapshotId,
     session.outputs,
   ]);
 
@@ -523,7 +540,7 @@ const App: React.FC = () => {
       return;
     }
     if (stage !== 'outputs' && briefApprovalPresentation.state === 'APPROVED') {
-      setNotice('You are reviewing an approved value. Any applied change will reopen brief approval and mark existing outputs Needs regeneration; no generation starts automatically.');
+      setNotice('You are reviewing an approved value. Any applied change will reopen brief approval and mark current drafts for an explicit update; no generation starts automatically.');
     }
     updateSession(current => ({
       ...current,
@@ -543,7 +560,7 @@ const App: React.FC = () => {
         activeOutputId: product === 'listing-copy' ? 'Full Copy' : current.activeOutputId,
       }, 'property');
     });
-    if (product === 'listing-copy' && exportScope === 'campaign_pack') setExportScope('current_output');
+    if (product === 'listing-copy' && exportScope !== 'current_output') setExportScope('current_output');
   };
 
   const handleAddressChange = (value: string) => {
@@ -554,6 +571,9 @@ const App: React.FC = () => {
     setFetchError(null);
     setSuggestions([]);
     setActiveSuggestionIndex(-1);
+    const visibleSelectionStillMatches = session.address.selectedLabel?.trim().toLocaleLowerCase('en-AU')
+      === value.trim().toLocaleLowerCase('en-AU');
+    if (!visibleSelectionStillMatches) setPropertyDetailsFetched(false);
     updateSession(current => {
       const selectedStillMatches = current.address.selectedLabel?.trim().toLocaleLowerCase('en-AU')
         === value.trim().toLocaleLowerCase('en-AU');
@@ -579,6 +599,7 @@ const App: React.FC = () => {
     setSuggestions([]);
     setActiveSuggestionIndex(-1);
     setFetchError(null);
+    setPropertyDetailsFetched(false);
     updateSession(current => invalidateGovernedState({
       ...current,
       address: { ...current.address, query: address, selectedLabel: address },
@@ -670,7 +691,7 @@ const App: React.FC = () => {
         provenance: `Property research · ${selectedAddress}`,
         state: 'needs-review',
       }));
-      const claims = splitProposalText(research.keyFeatures).map((text, index): ReviewedClaim => ({
+      const claims = splitPropertyClaimText(research.keyFeatures).map((text, index): ReviewedClaim => ({
         id: `claim.research.${index + 1}`,
         sourceText: text,
         approvedText: text,
@@ -697,6 +718,7 @@ const App: React.FC = () => {
           approved: false,
         },
       }, 'property'));
+      setPropertyDetailsFetched(true);
       setSuggestions([]);
       focusResultById('core-facts-title');
     } catch (error) {
@@ -729,6 +751,17 @@ const App: React.FC = () => {
     }, 'property'));
   };
 
+  const handleConfirmAllFacts = () => {
+    updateSession(current => {
+      const facts = confirmAllEligiblePropertyFacts(current.property.facts);
+      if (facts.every((fact, index) => fact === current.property.facts[index])) return current;
+      return invalidateGovernedState({
+        ...current,
+        property: { ...current.property, facts },
+      }, 'property');
+    });
+  };
+
   const handleCorrectFact = (fact: ReviewedFact) => {
     setGovernedReviewDraft({
       kind: 'fact',
@@ -743,6 +776,22 @@ const App: React.FC = () => {
   };
 
   const handleConfirmClaim = (claim: ReviewedClaim) => {
+    const conflict = findGovernanceConflicts(claim.sourceText, createGovernanceContext(session))[0];
+    if (conflict) {
+      updateSession(current => ({
+        ...current,
+        property: {
+          ...current.property,
+          claims: current.property.claims.map(candidate => candidate.id === claim.id
+            ? { ...candidate, approvedText: candidate.sourceText, state: 'conflict' as const }
+            : candidate),
+        },
+      }));
+      const fact = session.property.facts.find(candidate => candidate.key === conflict.governingBriefItem);
+      setNotice(`This claim conflicts with ${fact?.label ?? 'an approved Property decision'}. Correct or exclude it before approval.`);
+      focusResultById(`property-claim-${claim.id}`);
+      return;
+    }
     updateSession(current => invalidateGovernedState({
       ...current,
       property: {
@@ -752,6 +801,21 @@ const App: React.FC = () => {
           : candidate),
       },
     }, 'property'));
+  };
+
+  const handleConfirmAllClaims = () => {
+    updateSession(current => {
+      const claims = confirmAllEligiblePropertyClaims(
+        current.property.claims,
+        claim => findGovernanceConflicts(claim.sourceText, createGovernanceContext(current)).length === 0,
+        claim => findGovernanceConflicts(claim.sourceText, createGovernanceContext(current)).length > 0,
+      );
+      if (claims.every((claim, index) => claim === current.property.claims[index])) return current;
+      return invalidateGovernedState({
+        ...current,
+        property: { ...current.property, claims },
+      }, 'property');
+    });
   };
 
   const handleCorrectClaim = (claim: ReviewedClaim) => {
@@ -891,23 +955,27 @@ const App: React.FC = () => {
       });
     }
     setGovernedReviewDraft(null);
-    setNotice('Governed review decision applied. Existing outputs, if any, now require regeneration.');
+    setNotice('Review decision applied. Existing drafts, if any, now require an explicit update.');
   };
 
   const handleApproveProperty = () => {
-    const issues = getApprovedBriefBlockers({
-      ...session,
-      property: { ...session.property, approved: true },
-    }).filter(blocker => blocker.governingStage === 'property');
-    if (issues.length > 0) {
-      setNotice(issues[0].message);
+    if (!propertyReadiness.canApprove) {
+      const issue = propertyReadiness.issues[0];
+      if (issue) {
+        setNotice(issue.message);
+        handleStageSelect('property', issue.targetId);
+      }
       return;
     }
-    updateSession(current => ({
-      ...current,
-      property: { ...current.property, approved: true },
-      stage: 'campaign',
-    }));
+    updateSession(current => {
+      const candidate = {
+        ...current,
+        property: { ...current.property, approved: true },
+      };
+      const readiness = derivePropertyReviewReadiness(current, getApprovedBriefBlockers(candidate));
+      if (!readiness.canApprove) return current;
+      return { ...candidate, stage: 'campaign' };
+    });
     setNotice('Property facts approved for this temporary session.');
   };
 
@@ -931,15 +999,13 @@ const App: React.FC = () => {
       campaign: {
         ...current.campaign,
         [field]: value,
-        suggestions: current.campaign.suggestions.map(suggestion => (
+        suggestions: current.campaign.suggestions.filter(suggestion => !(
           suggestion.state === 'applied'
           && suggestion.kind === 'audience'
           && (
             (field === 'primaryAudience' && suggestion.audienceTarget !== 'secondary')
             || (field === 'secondaryAudience' && suggestion.audienceTarget === 'secondary')
           )
-            ? releaseAppliedSuggestion(suggestion)
-            : suggestion
         )),
       },
     }, 'campaign'));
@@ -958,10 +1024,8 @@ const App: React.FC = () => {
         campaign: {
           ...current.campaign,
           writingStyles,
-          suggestions: current.campaign.suggestions.map(suggestion => (
+          suggestions: current.campaign.suggestions.filter(suggestion => !(
             suggestion.state === 'applied' && suggestion.kind === 'voice' && suggestion.text === style
-              ? releaseAppliedSuggestion(suggestion)
-              : suggestion
           )),
         },
       }, 'campaign');
@@ -974,11 +1038,9 @@ const App: React.FC = () => {
       ...current,
       campaign: {
         ...current.campaign,
-        [field]: splitProposalText(value),
-        suggestions: current.campaign.suggestions.map(suggestion => (
+        [field]: splitPropertyClaimText(value),
+        suggestions: current.campaign.suggestions.filter(suggestion => !(
           suggestion.state === 'applied' && suggestion.kind === suggestionKind
-            ? releaseAppliedSuggestion(suggestion)
-            : suggestion
         )),
       },
     }, 'campaign'));
@@ -1039,16 +1101,16 @@ const App: React.FC = () => {
         if (strategy.primaryTargetMarket) proposals.push({ id: 'suggestion.audience.primary', kind: 'audience', text: strategy.primaryTargetMarket, state: 'suggested', audienceTarget: 'primary' });
         if (strategy.secondaryTargetMarket) proposals.push({ id: 'suggestion.audience.secondary', kind: 'audience', text: strategy.secondaryTargetMarket, state: 'suggested', audienceTarget: 'secondary' });
         strategy.writingStyles.slice(0, 2).forEach((style, index) => proposals.push({ id: `suggestion.voice.${index + 1}`, kind: 'voice', text: style, state: 'suggested' }));
-        splitProposalText(strategy.featuresToHighlight).forEach((text, index) => proposals.push({
+        splitPropertyClaimText(strategy.featuresToHighlight).forEach((text, index) => proposals.push({
           id: `suggestion.emphasis.research.${index + 1}`,
           kind: 'selling-point',
           text,
           state: 'suggested',
         }));
-        splitProposalText(strategy.thingsToAvoid).forEach((text, index) => proposals.push({ id: `suggestion.boundary.${index + 1}`, kind: 'boundary', text, state: 'suggested' }));
+        splitPropertyClaimText(strategy.thingsToAvoid).forEach((text, index) => proposals.push({ id: `suggestion.boundary.${index + 1}`, kind: 'boundary', text, state: 'suggested' }));
       }
       if (featuresResult.status === 'fulfilled') {
-        splitProposalText(featuresResult.value.data.propertyFeatures).forEach((text, index) => proposals.push({
+        splitPropertyClaimText(featuresResult.value.data.propertyFeatures).forEach((text, index) => proposals.push({
           id: `suggestion.emphasis.features.${index + 1}`,
           kind: 'selling-point',
           text,
@@ -1057,26 +1119,53 @@ const App: React.FC = () => {
         }));
       }
       const governed = governSuggestions(proposals, governance);
-      updateSession(current => ({
-        ...(getCampaignAnalysisRevision(current) === analysisRevision
-          ? {
-            ...current,
-            campaign: {
-              ...current.campaign,
-              suggestions: governed.filter(suggestion => (
-                !suggestion.dependsOnPhotoContext
-                || (current.photos.policy === 'included' && current.photos.approved)
-              )),
-            },
-          }
-          : current),
-      }));
+      const strategyCompleted = strategyResult.status === 'fulfilled';
+      const featuresCompleted = featuresResult.status === 'fulfilled';
+      const applicationOptions = {
+        coverage: {
+          audience: strategyCompleted,
+          voice: strategyCompleted,
+          emphasis: strategyCompleted || featuresCompleted,
+          boundaries: strategyCompleted,
+          tone: strategyCompleted,
+        },
+        recommendedTone: strategyCompleted
+          ? recommendCampaignTone(strategyResult.value.data.writingStyles)
+          : undefined,
+      };
+      const currentGoverned = governed.filter(suggestion => (
+        !suggestion.dependsOnPhotoContext
+        || (session.photos.policy === 'included' && session.photos.approved)
+      ));
+      const previewApplication = applyCampaignAnalysisRecommendations(
+        session.campaign,
+        currentGoverned,
+        applicationOptions,
+      );
+      updateSession(current => {
+        if (getCampaignAnalysisRevision(current) !== analysisRevision) return current;
+        const currentRecommendations = governed.filter(suggestion => (
+          !suggestion.dependsOnPhotoContext
+          || (current.photos.policy === 'included' && current.photos.approved)
+        ));
+        const application = applyCampaignAnalysisRecommendations(
+          current.campaign,
+          currentRecommendations,
+          applicationOptions,
+        );
+        const next = { ...current, campaign: application.campaign };
+        return application.governingValuesChanged
+          ? invalidateGovernedState(next, 'campaign')
+          : next;
+      });
       if (strategyResult.status === 'rejected') {
         setCampaignAnalysisError('Campaign Direction analysis did not complete. Property Features proposals were preserved.');
       } else if (featuresResult.status === 'rejected') {
         setCampaignAnalysisError('Property Features analysis did not complete. Campaign Direction proposals were preserved.');
       }
-      focusResultById('campaign-proposals-title');
+      focusResultById(previewApplication.exceptionSuggestions.length > 0
+        ? 'campaign-proposals-title'
+        : 'campaign-audience-title');
     } catch (error) {
       setCampaignAnalysisError(formatError(error, 'Campaign Direction and Property Features analysis could not complete.'));
     } finally {
@@ -1178,7 +1267,7 @@ const App: React.FC = () => {
       !session.property.approved
       || !session.campaign.primaryAudience.trim()
       || session.campaign.writingStyles.length === 0
-      || !session.campaign.tone.trim()
+      || !isCampaignToneOption(session.campaign.tone)
       || campaignApprovalIssues.length > 0
     ) return;
     updateSession(current => ({
@@ -1466,26 +1555,49 @@ const App: React.FC = () => {
     });
   };
 
+  const isPhotoHighlightGovernanceSafe = (
+    state: CampaignSessionState,
+    highlight: ReviewedPhotoHighlight,
+  ): boolean => findGovernanceConflicts(
+    highlight.approvedText || highlight.sourceText,
+    createGovernanceContext(state),
+  ).length === 0;
+
+  const handleApproveAllHighlights = () => {
+    updateSession(current => {
+      const governed = stripPhotoDependentDirection(current);
+      const photos = approveAllEligiblePhotoHighlights(
+        governed.photos,
+        highlight => isPhotoHighlightGovernanceSafe(governed, highlight),
+      );
+      if (photos === governed.photos) return governed;
+      const next = { ...governed, photos };
+      return photos.policy === 'included' ? invalidateGovernedState(next, 'photos') : next;
+    });
+  };
+
   const handleApprovePhotos = () => {
-    if (session.photos.policy === 'included') {
-      const selectedIds = new Set(session.photos.items.filter(photo => photo.selected).map(photo => photo.id));
-      const selectedPhotos = session.photos.items.filter(photo => photo.selected);
-      const unresolved = selectedIds.size === 0
-        || selectedPhotos.some(photo => photo.analysisState !== 'ready')
-        || selectedPhotos.some(photo => !session.photos.highlights.some(highlight => (
-          highlight.imageId === photo.id
-          && (highlight.state === 'approved' || highlight.state === 'corrected')
-        )))
-        || session.photos.highlights.some(highlight => (
-          selectedIds.has(highlight.imageId) && (highlight.state === 'needs-review' || highlight.state === 'failed')
-        ));
-      if (unresolved) return;
+    const visibleReview = derivePhotoReviewState(session.photos, {
+      canBulkApproveHighlight: highlight => isPhotoHighlightGovernanceSafe(session, highlight),
+      isHighlightConflict: highlight => !isPhotoHighlightGovernanceSafe(session, highlight),
+    });
+    if (!visibleReview.canApprovePolicy) {
+      const decision = visibleReview.decisions[0];
+      if (decision) handleStageSelect('photos', decision.targetId);
+      return;
     }
-    updateSession(current => ({
-      ...current,
-      photos: { ...current.photos, approved: true },
-      stage: 'brief',
-    }));
+    updateSession(current => {
+      const review = derivePhotoReviewState(current.photos, {
+        canBulkApproveHighlight: highlight => isPhotoHighlightGovernanceSafe(current, highlight),
+        isHighlightConflict: highlight => !isPhotoHighlightGovernanceSafe(current, highlight),
+      });
+      if (!review.canApprovePolicy) return current;
+      return {
+        ...current,
+        photos: { ...current.photos, approved: true },
+        stage: 'brief',
+      };
+    });
     setNotice(session.photos.policy === 'off'
       ? 'Photo context is off. No analysed photo content will enter generation.'
       : 'Reviewed photo context approved for the brief.');
@@ -1542,27 +1654,47 @@ const App: React.FC = () => {
         listingGenerationSettings: { approximateWordCount: wordCount },
       }, 'settings');
     });
-    setNotice('Approximate Listing Copy length changed. Reapprove the brief before deliberately regenerating affected outputs.');
+    const hasExistingOutput = CANONICAL_OUTPUT_ORDER.some(outputId => {
+      const output = session.outputs[outputId];
+      return (
+      output.state !== 'not-generated' || Boolean(output.content.trim() || output.generatedAt)
+      );
+    });
+    setNotice(hasExistingOutput
+      ? 'Listing Copy length changed. Reapprove the brief before deliberately updating affected drafts.'
+      : `Initial Listing Copy length set to approximately ${wordCount} words.`);
   };
 
   const handleApproveBrief = () => {
+    const approvedAt = new Date().toISOString();
     try {
-      const snapshot = buildApprovedBriefSnapshot(session, {
-        approvedAt: new Date().toISOString(),
+      buildApprovedBriefSnapshot(session, {
+        approvedAt,
         statement: 'Human approved for generation in this temporary session.',
       });
-      updateSession(current => ({
-        ...current,
-        brief: { snapshot, approved: true },
-        outputs: markOutputsNeedsRegeneration(current.outputs, snapshot.snapshotId),
-        stage: 'outputs',
-        activeOutputId: 'Full Copy',
-      }));
-      setBriefOpen(false);
-      setNotice('Approved Brief Snapshot created for this temporary session.');
     } catch (error) {
-      setNotice(formatError(error, 'The Reviewed Campaign Brief could not be approved.'));
+      setNotice(formatError(error, 'The Reviewed Brief could not be approved.'));
+      return;
     }
+    updateSession(current => {
+      try {
+        const snapshot = buildApprovedBriefSnapshot(current, {
+          approvedAt,
+          statement: 'Human approved for generation in this temporary session.',
+        });
+        return {
+          ...current,
+          brief: { snapshot, approved: true },
+          outputs: markOutputsNeedsRegeneration(current.outputs, snapshot.snapshotId),
+          stage: 'outputs',
+          activeOutputId: 'Full Copy',
+        };
+      } catch {
+        return current;
+      }
+    });
+    setBriefOpen(false);
+    setNotice('Reviewed Brief approved for this temporary session.');
   };
 
   const generateOutputDocument = async (
@@ -1659,7 +1791,7 @@ const App: React.FC = () => {
       }));
     }
     setNotice(outcome === 'ready'
-      ? 'Listing Copy foundation is ready for review.'
+      ? 'Listing Copy is ready for review.'
       : 'Listing Copy did not reach Ready. Review the named generation or integrity issue.');
     focusOutputHeading();
   };
@@ -1676,7 +1808,7 @@ const App: React.FC = () => {
       return;
     }
     if (!snapshot || !session.brief.approved || listing.state !== 'ready' || listing.boundSnapshotId !== snapshot.snapshotId) {
-      setNotice('A current, Ready Listing Copy foundation is required before Campaign Pack generation.');
+      setNotice('A current, ready Listing Copy is required before Campaign Pack generation.');
       return;
     }
     const ids = requestedIds.filter(outputId => outputId !== 'Full Copy' && (
@@ -1764,7 +1896,7 @@ const App: React.FC = () => {
     const snapshot = session.brief.snapshot;
     const listing = session.outputs['Full Copy'];
     if (!snapshot || !session.brief.approved || listing.state !== 'ready' || listing.boundSnapshotId !== snapshot.snapshotId) {
-      setNotice('Regenerate the Listing Copy foundation from the active brief before regenerating this campaign output.');
+      setNotice('Regenerate Listing Copy from the current approved brief before updating this campaign output.');
       return;
     }
     const outcome = await generateOutputDocument(activeOutputId, snapshot, listing.content);
@@ -1776,7 +1908,7 @@ const App: React.FC = () => {
 
   const handleSelectOutput = (outputId: PreviewTab) => {
     if (session.product === 'listing-copy' && outputId !== 'Full Copy') {
-      setNotice('Listing Copy contains one foundation document. Select Campaign Pack to review campaign outputs.');
+      setNotice('Listing Copy contains one document. Select Campaign Pack to review campaign outputs.');
       return;
     }
     updateSession(current => ({ ...current, activeOutputId: outputId, stage: 'outputs' }));
@@ -1792,7 +1924,7 @@ const App: React.FC = () => {
       && output.boundSnapshotId === session.brief.snapshot?.snapshotId
       && output.integrityIssues.length === 0;
     if (!canCopy) {
-      setCopyStatus('Copy is unavailable until this document is Ready and bound to the active Approved Brief Snapshot.');
+      setCopyStatus('Copy is unavailable until this document is ready and linked to the current approved brief.');
       return;
     }
     try {
@@ -1877,10 +2009,13 @@ const App: React.FC = () => {
         sessionId: createSessionId(),
         gateState: hasVerifiedBetaAccess() ? 'verified' : 'locked',
       }));
+      setPropertyDetailsFetched(false);
     } else {
       url.searchParams.set('fixture', fixtureId);
       window.history.replaceState({}, '', url);
-      setSession(getFixtureState(fixtureId as FixtureId));
+      const fixtureState = getFixtureState(fixtureId as FixtureId);
+      setSession(fixtureState);
+      setPropertyDetailsFetched(hasFetchedPropertyDetails(fixtureState));
     }
     resetTransientUi();
   };
@@ -1891,10 +2026,7 @@ const App: React.FC = () => {
     targetId?: string,
   ) => {
     setBriefOpen(false);
-    handleStageSelect(stage);
-    if (targetId) {
-      window.setTimeout(() => focusResultById(targetId), 0);
-    }
+    handleStageSelect(stage, targetId);
   };
 
   const stageItems = useMemo(() => {
@@ -1937,18 +2069,15 @@ const App: React.FC = () => {
   const campaignBarState = session.stage === 'outputs'
     ? stateLabel(session.outputs[activeOutputId].state)
     : stageItems.find(item => item.id === session.stage)?.stateLabel ?? 'Not started';
-  const propertyApprovalIssues = getApprovedBriefBlockers({
-    ...session,
-    property: { ...session.property, approved: true },
-  }).filter(blocker => blocker.governingStage === 'property');
-  const photoApprovalIssues = getApprovedBriefBlockers({
-    ...session,
-    photos: { ...session.photos, approved: true },
-  }).filter(blocker => blocker.governingStage === 'photos');
+  const photoGovernanceRules = {
+    canBulkApproveHighlight: (highlight: ReviewedPhotoHighlight) => isPhotoHighlightGovernanceSafe(session, highlight),
+    isHighlightConflict: (highlight: ReviewedPhotoHighlight) => !isPhotoHighlightGovernanceSafe(session, highlight),
+  };
+  const photoReviewState = derivePhotoReviewState(session.photos, photoGovernanceRules);
   let nextAction: React.ReactNode = null;
   if (session.stage === 'property') nextAction = session.property.approved
     ? <button className="button button--primary" type="button" onClick={() => handleStageSelect('campaign')}>Continue</button>
-    : <button className="button button--primary" type="button" onClick={handleApproveProperty} disabled={propertyApprovalIssues.length > 0} title={propertyApprovalIssues[0]?.message}>Approve facts</button>;
+    : <button className="button button--primary" type="button" onClick={handleApproveProperty} disabled={!propertyReadiness.canApprove} title={propertyApprovalIssues[0]?.message}>Approve facts</button>;
   if (session.stage === 'campaign') nextAction = session.campaign.approved
     ? <button className="button button--primary" type="button" onClick={() => handleStageSelect('photos')}>Continue</button>
     : (
@@ -1957,7 +2086,7 @@ const App: React.FC = () => {
         type="button"
         aria-label="Approve campaign direction"
         onClick={handleApproveCampaign}
-        disabled={campaignApprovalIssues.length > 0 || !session.property.approved || !session.campaign.primaryAudience.trim() || session.campaign.writingStyles.length === 0 || !session.campaign.tone.trim()}
+        disabled={campaignApprovalIssues.length > 0 || !session.property.approved || !session.campaign.primaryAudience.trim() || session.campaign.writingStyles.length === 0 || !isCampaignToneOption(session.campaign.tone)}
         title={campaignApprovalIssues[0]}
       >
         <span className="button__full-label">Approve direction</span>
@@ -1966,7 +2095,7 @@ const App: React.FC = () => {
     );
   if (session.stage === 'photos') nextAction = session.photos.approved
     ? <button className="button button--primary" type="button" onClick={() => handleStageSelect('brief')}>Review brief</button>
-    : <button className="button button--primary" type="button" onClick={handleApprovePhotos} disabled={photoApprovalIssues.length > 0} title={photoApprovalIssues[0]?.message}>Approve policy</button>;
+    : <button className="button button--primary" type="button" onClick={handleApprovePhotos} disabled={!photoReviewState.canApprovePolicy} title={photoReviewState.decisions[0]?.message}>Approve photo context</button>;
   if (session.stage === 'brief') nextAction = briefApprovalPresentation.primaryAction === 'open-outputs'
     ? <button className="button button--primary" type="button" onClick={() => handleStageSelect('outputs')}>{briefApprovalPresentation.primaryActionLabel}</button>
     : (
@@ -1984,7 +2113,7 @@ const App: React.FC = () => {
     );
   const briefSnapshotForDrawer = briefApprovalPresentation.state === 'APPROVED' ? session.brief.snapshot : null;
   const briefButtonLabel = briefApprovalPresentation.state === 'APPROVED'
-    ? 'Brief Snapshot'
+    ? 'Approved Brief'
     : session.brief.snapshot
       ? 'Reviewed Brief · Reapproval needed'
       : 'Reviewed Brief';
@@ -2028,6 +2157,8 @@ const App: React.FC = () => {
         isSuggesting={isSuggesting}
         isFetching={isFetching}
         fetchError={fetchError}
+        hasFetchedDetails={propertyDetailsFetched}
+        propertyIssues={propertyApprovalIssues}
         headingRef={stageHeadingRef}
         onProductChange={handleProductChange}
         onAddressChange={handleAddressChange}
@@ -2036,8 +2167,14 @@ const App: React.FC = () => {
         onFetch={handleFetchProperty}
         onIncludeAddressChange={included => updateSession(current => invalidateGovernedState({ ...current, address: { ...current.address, includeInCopy: included } }, 'property'))}
         onConfirmFact={handleConfirmFact}
+        onConfirmAllFacts={handleConfirmAllFacts}
         onCorrectFact={handleCorrectFact}
         onConfirmClaim={handleConfirmClaim}
+        onConfirmAllClaims={handleConfirmAllClaims}
+        canBulkConfirmClaim={claim => findGovernanceConflicts(
+          claim.sourceText,
+          createGovernanceContext(session),
+        ).length === 0}
         onCorrectClaim={handleCorrectClaim}
         onExcludeClaim={handleExcludeClaim}
         onOverviewDecision={handleOverviewDecision}
@@ -2058,6 +2195,8 @@ const App: React.FC = () => {
         onListChange={handleCampaignListChange}
         onAnalyse={handleAnalyseCampaign}
         onSuggestionAction={handleSuggestionAction}
+        onReviewProperty={targetId => handleStageSelect('property', targetId)}
+        onPrevious={() => handleStageSelect(getPreviousCampaignStage('campaign') ?? 'property')}
         onApprove={handleApproveCampaign}
       />
     );
@@ -2074,6 +2213,10 @@ const App: React.FC = () => {
         onRemovePhoto={handleRemovePhoto}
         onAnalyse={handleAnalysePhotos}
         onHighlightAction={handleHighlightAction}
+        onApproveAllHighlights={handleApproveAllHighlights}
+        canBulkApproveHighlight={photoGovernanceRules.canBulkApproveHighlight}
+        isHighlightConflict={photoGovernanceRules.isHighlightConflict}
+        onPrevious={() => handleStageSelect(getPreviousCampaignStage('photos') ?? 'campaign')}
         onApprove={handleApprovePhotos}
       />
     );
@@ -2090,6 +2233,7 @@ const App: React.FC = () => {
         onOpenHomeChange={handleOpenHomeChange}
         onListingApproximateWordCountChange={handleListingApproximateWordCountChange}
         onNavigate={handleStageSelect}
+        onPrevious={() => handleStageSelect(getPreviousCampaignStage('brief') ?? 'photos')}
         onApprove={handleApproveBrief}
         onOpenOutputs={() => handleStageSelect('outputs')}
       />
@@ -2110,24 +2254,30 @@ const App: React.FC = () => {
       />
 
       {session.stage === 'outputs' ? (
-        <OutputWorkspace
-          session={session}
-          activeOutputId={activeOutputId}
-          packState={packState}
-          copyStatus={copyStatus}
-          notice={notice}
-          onDismissNotice={() => setNotice(null)}
-          headingRef={outputHeadingRef}
-          onSelectOutput={handleSelectOutput}
-          onOpenNavigator={() => setNavigatorOpen(true)}
-          onOpenBrief={openBriefAndReset}
-          onOpenExport={handleOpenExport}
-          onGenerateListing={handleGenerateListing}
-          onGeneratePack={handleGeneratePack}
-          onRetryPack={handleRetryPack}
-          onRegenerate={handleRegenerate}
-          onCopy={handleCopy}
-        />
+        <div className="workspace preparation-layout preparation-layout--outputs">
+          <StageNavigation activeStage={session.stage} stages={stageItems} onSelect={handleStageSelect} />
+          <div className="work-pane work-pane--outputs">
+            <OutputWorkspace
+              session={session}
+              activeOutputId={activeOutputId}
+              packState={packState}
+              copyStatus={copyStatus}
+              notice={notice}
+              onDismissNotice={() => setNotice(null)}
+              headingRef={outputHeadingRef}
+              onSelectOutput={handleSelectOutput}
+              onOpenNavigator={() => setNavigatorOpen(true)}
+              onOpenBrief={openBriefAndReset}
+              onOpenExport={handleOpenExport}
+              onGenerateListing={handleGenerateListing}
+              onGeneratePack={handleGeneratePack}
+              onRetryPack={handleRetryPack}
+              onRegenerate={handleRegenerate}
+              onCopy={handleCopy}
+              onPrevious={() => handleStageSelect(getPreviousCampaignStage('outputs') ?? 'brief')}
+            />
+          </div>
+        </div>
       ) : (
         <div className="workspace preparation-layout">
           <StageNavigation activeStage={session.stage} stages={stageItems} onSelect={handleStageSelect} />
@@ -2237,7 +2387,7 @@ const App: React.FC = () => {
             <div className="notice" data-tone="review">
               <div>
                 <strong>Downstream scope</strong>
-                <p>This changes the governed brief. Any existing Listing Copy and Campaign Pack outputs will be marked Needs regeneration; no regeneration starts automatically.</p>
+                <p>This changes the approved brief. Existing drafts will require an explicit update; no regeneration starts automatically.</p>
               </div>
             </div>
           </div>
@@ -2246,7 +2396,7 @@ const App: React.FC = () => {
 
       <Overlay
         open={briefOpen}
-        title={briefSnapshotForDrawer ? 'Approved Brief Snapshot' : 'Reviewed Campaign Brief'}
+        title={briefSnapshotForDrawer ? 'Approved Brief' : 'Reviewed Brief'}
         description={briefSnapshotForDrawer
           ? 'Read-only approved decision context. Return to the governing stage to make changes.'
           : 'Current draft decision context. Reapproval is required before generation.'}
@@ -2264,8 +2414,8 @@ const App: React.FC = () => {
         onClose={() => setNavigatorOpen(false)}
       >
         <div className="document-nav__header">
-          <h2>{session.product === 'listing-copy' ? 'Listing document' : 'Listing foundation + Campaign Pack'}</h2>
-          <p>{session.product === 'listing-copy' ? 'One read-only Listing Copy foundation.' : '17 capabilities, presented as one foundation and one 16-output campaign product.'}</p>
+          <h2>{session.product === 'listing-copy' ? 'Listing document' : 'Listing Copy + Campaign Pack'}</h2>
+          <p>{session.product === 'listing-copy' ? 'One Listing Copy document.' : 'Listing Copy plus one 16-output campaign product.'}</p>
         </div>
         <DocumentNavigatorList outputs={session.outputs} activeOutputId={activeOutputId} product={session.product} onSelect={handleSelectOutput} />
       </Overlay>

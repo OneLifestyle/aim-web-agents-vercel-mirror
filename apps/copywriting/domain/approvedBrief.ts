@@ -5,6 +5,8 @@ import type {
   ReviewedFact,
 } from '../types';
 import type { CampaignSessionState } from './sessionState';
+import { isCampaignToneOption } from './campaignDirection.js';
+import { derivePhotoReviewState } from './photoReview.js';
 import {
   findGovernanceConflicts,
   normalizeHardExclusion,
@@ -21,6 +23,14 @@ export interface ApprovedBriefBlocker {
   id: string;
   message: string;
   governingStage: 'property' | 'campaign' | 'photos' | 'brief';
+  /** Stable focus target used by Review actions. */
+  targetId?: string;
+  /** Agent-facing conflict context. Internal fact keys must not be exposed here. */
+  affectedItem?: string;
+  approvedValue?: string;
+  conflictingValue?: string;
+  sourceContext?: string;
+  resolution?: string;
 }
 
 export type BriefApprovalState = 'NEEDS_ATTENTION' | 'READY_TO_APPROVE' | 'APPROVED';
@@ -77,6 +87,58 @@ const isEmptyApprovedFact = (fact: ReviewedFact): boolean => (
   typeof fact.approvedValue === 'string' && fact.approvedValue.trim() === ''
 );
 
+const formatFactValue = (
+  fact: ApprovedBriefSnapshot['factProvenance'][number],
+): string => {
+  const value = fact.approvedValue;
+  if (value === null || value === '') return 'Not supplied';
+  return fact.key === 'landValue' ? `${value} ${fact.unit ?? 'm²'}` : String(value);
+};
+
+const getFactLabel = (key: ReviewedFact['key']): string => ({
+  bedrooms: 'Bedrooms',
+  bathrooms: 'Bathrooms',
+  carSpaces: 'Car spaces',
+  landValue: 'Land',
+  propertyType: 'Property type',
+})[key];
+
+const getConflictDetails = (
+  conflict: ReturnType<typeof findGovernanceConflicts>[number],
+  factProvenance: ApprovedBriefSnapshot['factProvenance'],
+  hardExclusions: readonly HardExcludedClaim[],
+  resolution: string,
+): Pick<ApprovedBriefBlocker, 'affectedItem' | 'approvedValue' | 'conflictingValue' | 'sourceContext' | 'resolution'> => {
+  if (conflict.kind === 'superseded-fact') {
+    const fact = factProvenance.find(candidate => candidate.key === conflict.governingBriefItem);
+    return {
+      affectedItem: fact ? getFactLabel(fact.key) : 'Reviewed property fact',
+      ...(fact ? { approvedValue: formatFactValue(fact) } : {}),
+      conflictingValue: conflict.matchedText,
+      ...(fact?.provenance ? { sourceContext: fact.provenance } : {}),
+      resolution,
+    };
+  }
+  const exclusion = hardExclusions.find(candidate => candidate.id === conflict.claimId);
+  return {
+    affectedItem: 'Hard factual exclusion',
+    approvedValue: exclusion?.text ?? conflict.governingBriefItem,
+    conflictingValue: conflict.matchedText,
+    ...(exclusion?.provenance ? { sourceContext: exclusion.provenance } : {}),
+    resolution,
+  };
+};
+
+const conflictMessage = (
+  details: Pick<ApprovedBriefBlocker, 'affectedItem' | 'approvedValue' | 'conflictingValue'>,
+): string => {
+  const affectedItem = details.affectedItem ?? 'Reviewed fact';
+  if (details.approvedValue && details.conflictingValue) {
+    return `${affectedItem} conflict: approved ${details.approvedValue}; conflicting wording “${details.conflictingValue}”.`;
+  }
+  return `${affectedItem} conflicts with reviewed property information.`;
+};
+
 const stableCanonicalJson = (value: unknown): string => {
   if (value === undefined) return 'null';
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -119,6 +181,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'address.required',
       message: 'Select a property address before approving the brief.',
       governingStage: 'property',
+      targetId: 'property-address-input',
+      resolution: 'Choose an address suggestion, then fetch or review its property details.',
     });
   }
   if (!state.product) {
@@ -126,6 +190,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'product.required',
       message: 'Select Listing Copy or Campaign Pack before approving the brief.',
       governingStage: 'property',
+      targetId: 'product-intent-title',
+      resolution: 'Choose the document set required for this campaign.',
     });
   }
   const approximateWordCount = state.listingGenerationSettings.approximateWordCount;
@@ -139,6 +205,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'listing-generation.approximate-word-count',
       message: 'Choose an approximate Listing Copy length from 50 to 1,000 words in 50-word steps.',
       governingStage: 'brief',
+      targetId: 'brief-listing-length',
+      resolution: 'Choose one of the supported Listing Copy lengths.',
     });
   }
   if (!state.property.approved) {
@@ -146,6 +214,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'property.approval',
       message: 'Approve the reviewed property facts before approving the brief.',
       governingStage: 'property',
+      targetId: 'property-approval-action',
+      resolution: 'Resolve the listed Property items, then approve the Property stage.',
     });
   }
   if (state.property.overview.trim() && state.property.overviewState === 'needs-review') {
@@ -153,6 +223,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'property.overview',
       message: 'Confirm or exclude the fetched property overview before approving the brief.',
       governingStage: 'property',
+      targetId: 'property-overview-row',
+      resolution: 'Confirm the overview or exclude it from generation.',
     });
   }
   if (state.property.overviewState === 'confirmed' && !state.property.overview.trim()) {
@@ -160,6 +232,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'property.overview.empty',
       message: 'The property overview cannot be confirmed when no overview was returned.',
       governingStage: 'property',
+      targetId: 'property-overview-row',
+      resolution: 'Exclude the empty overview or refetch the property details.',
     });
   }
   if (
@@ -170,6 +244,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'property.suburb-context',
       message: 'The selected location policy requires available suburb context.',
       governingStage: 'property',
+      targetId: 'suburb-context-disclosure',
+      resolution: 'Choose an available location option or refetch the property details.',
     });
   }
   if (
@@ -180,6 +256,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'property.area-context',
       message: 'The selected location policy requires available area context.',
       governingStage: 'property',
+      targetId: 'area-context-disclosure',
+      resolution: 'Choose an available location option or refetch the property details.',
     });
   }
   if (!state.campaign.approved) {
@@ -187,6 +265,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'campaign.approval',
       message: 'Approve the campaign direction before approving the brief.',
       governingStage: 'campaign',
+      targetId: 'campaign-approval-action',
+      resolution: 'Review the final Campaign Direction, then approve it.',
     });
   }
   if (!state.campaign.primaryAudience.trim()) {
@@ -194,6 +274,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'campaign.primary-audience',
       message: 'Choose a primary audience before approving the brief.',
       governingStage: 'campaign',
+      targetId: 'campaign-primary-audience',
+      resolution: 'Choose or analyse a primary audience.',
     });
   }
   if (state.campaign.writingStyles.length === 0 || state.campaign.writingStyles.length > 2) {
@@ -201,6 +283,17 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'campaign.writing-styles',
       message: 'Choose one or two writing styles before approving the brief.',
       governingStage: 'campaign',
+      targetId: 'campaign-writing-styles',
+      resolution: 'Choose or analyse one or two writing styles.',
+    });
+  }
+  if (!isCampaignToneOption(state.campaign.tone)) {
+    blockers.push({
+      id: 'campaign.tone',
+      message: 'Choose a supported tone before approving the brief.',
+      governingStage: 'campaign',
+      targetId: 'campaign-tone',
+      resolution: 'Choose a controlled tone or analyse Campaign Direction.',
     });
   }
 
@@ -210,6 +303,15 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
         id: `fact.${fact.key}`,
         message: `${fact.label} requires an approved value.`,
         governingStage: 'property',
+        targetId: `property-fact-${fact.key}`,
+        affectedItem: fact.label,
+        approvedValue: fact.approvedValue === null || fact.approvedValue === ''
+          ? 'Not supplied'
+          : fact.key === 'landValue'
+            ? `${fact.approvedValue} ${fact.unit ?? 'm²'}`
+            : String(fact.approvedValue),
+        sourceContext: fact.provenance,
+        resolution: 'Confirm the source value or correct it explicitly.',
       });
     }
     const sourceUnit = fact.key === 'landValue' ? fact.sourceUnit ?? 'm²' : undefined;
@@ -221,6 +323,10 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
         id: `fact.${fact.key}.confirmation-mismatch`,
         message: `${fact.label} must be marked corrected when its approved value or unit differs from the source.`,
         governingStage: 'property',
+        targetId: `property-fact-${fact.key}`,
+        affectedItem: fact.label,
+        sourceContext: fact.provenance,
+        resolution: 'Open Correct and save the reviewed value.',
       });
     }
     if (fact.state === 'corrected' && !valuesDiffer && !unitsDiffer) {
@@ -228,6 +334,10 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
         id: `fact.${fact.key}.unchanged-correction`,
         message: `${fact.label} has no changed value or unit and should be confirmed instead.`,
         governingStage: 'property',
+        targetId: `property-fact-${fact.key}`,
+        affectedItem: fact.label,
+        sourceContext: fact.provenance,
+        resolution: 'Confirm the unchanged source value.',
       });
     }
     if (typeof fact.approvedValue === 'number') {
@@ -238,16 +348,25 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
           id: `fact.${fact.key}.invalid-number`,
           message: `${fact.label} is outside the supported approved range.`,
           governingStage: 'property',
+          targetId: `property-fact-${fact.key}`,
+          affectedItem: fact.label,
+          sourceContext: fact.provenance,
+          resolution: 'Correct the value to a supported non-negative property fact.',
         });
       }
     }
   }
   for (const claim of state.property.claims) {
-    if (claim.state === 'needs-review' || claim.state === 'conflict') {
+    if (claim.state === 'needs-review') {
       blockers.push({
         id: claim.id,
         message: `${claim.sourceText} requires a review decision.`,
         governingStage: 'property',
+        targetId: `property-claim-${claim.id}`,
+        affectedItem: 'Material claim',
+        conflictingValue: claim.approvedText || claim.sourceText,
+        sourceContext: claim.provenance,
+        resolution: 'Confirm, correct, or exclude this claim.',
       });
     }
   }
@@ -258,6 +377,39 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
     .map(buildHardExclusion);
   const correctedClaimsForContext = state.property.claims.filter(claim => claim.state === 'corrected');
   const contextGovernance = { factProvenance, hardExclusions };
+  for (const claim of state.property.claims) {
+    if (claim.state !== 'conflict') continue;
+    const conflict = findGovernanceConflicts(
+      claim.approvedText || claim.sourceText,
+      contextGovernance,
+    )[0];
+    if (conflict) {
+      const details = getConflictDetails(
+        conflict,
+        factProvenance,
+        hardExclusions,
+        'Correct the material claim or exclude it from the campaign.',
+      );
+      blockers.push({
+        id: claim.id,
+        message: conflictMessage(details),
+        governingStage: 'property',
+        targetId: `property-claim-${claim.id}`,
+        ...details,
+      });
+    } else {
+      blockers.push({
+        id: claim.id,
+        message: `${claim.sourceText} requires a review decision.`,
+        governingStage: 'property',
+        targetId: `property-claim-${claim.id}`,
+        affectedItem: 'Material claim',
+        conflictingValue: claim.approvedText || claim.sourceText,
+        sourceContext: claim.provenance,
+        resolution: 'Correct or exclude this claim.',
+      });
+    }
+  }
   const effectiveContext = (text: string): string => sanitizeCorrectedClaimContext(
     sanitizeLowerAuthorityText(text, contextGovernance).text,
     correctedClaimsForContext,
@@ -267,6 +419,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'property.overview.governance-empty',
       message: 'The selected property overview contains only superseded or excluded context. Exclude it or review the governing claims.',
       governingStage: 'property',
+      targetId: 'property-overview-row',
+      resolution: 'Exclude the overview or correct the related Property facts and claims.',
     });
   }
   if (
@@ -278,6 +432,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'property.suburb-context.governance-empty',
       message: 'The selected suburb context contains no approved usable context.',
       governingStage: 'property',
+      targetId: 'suburb-context-disclosure',
+      resolution: 'Exclude suburb context or correct the related Property facts and claims.',
     });
   }
   if (
@@ -289,102 +445,130 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'property.area-context.governance-empty',
       message: 'The selected area context contains no approved usable context.',
       governingStage: 'property',
+      targetId: 'area-context-disclosure',
+      resolution: 'Exclude area context or correct the related Property facts and claims.',
     });
   }
   for (const claim of state.property.claims) {
     if (claim.state !== 'confirmed' && claim.state !== 'corrected') continue;
     const conflict = findGovernanceConflicts(claim.approvedText, { factProvenance, hardExclusions })[0];
     if (conflict) {
+      const details = getConflictDetails(
+        conflict,
+        factProvenance,
+        hardExclusions,
+        'Correct the material claim or exclude it from the campaign.',
+      );
       blockers.push({
         id: claim.id,
-        message: `Approved claim conflicts with ${conflict.governingBriefItem}.`,
+        message: conflictMessage(details),
         governingStage: 'property',
+        targetId: `property-claim-${claim.id}`,
+        ...details,
       });
     }
   }
   for (const emphasis of state.campaign.emphasis) {
     const conflict = findGovernanceConflicts(emphasis, { factProvenance, hardExclusions })[0];
     if (conflict) {
+      const details = getConflictDetails(
+        conflict,
+        factProvenance,
+        hardExclusions,
+        'Correct or remove this campaign emphasis. Factual exclusions are resolved in Property.',
+      );
       blockers.push({
         id: `campaign.emphasis.${createStableSessionHash(emphasis)}`,
-        message: `Campaign emphasis conflicts with ${conflict.governingBriefItem}.`,
+        message: conflictMessage(details),
         governingStage: 'campaign',
+        targetId: 'campaign-emphasis-title',
+        ...details,
       });
     }
   }
   for (const suggestion of state.campaign.suggestions) {
-    if (suggestion.state === 'applied') {
+    // Selling-point recommendations already live in Campaign emphasis and are
+    // validated above. Do not count the same user decision twice.
+    if (suggestion.state === 'applied' && suggestion.kind !== 'selling-point') {
       const conflict = findGovernanceConflicts(suggestion.text, { factProvenance, hardExclusions })[0];
       if (conflict) {
+        const details = getConflictDetails(
+          conflict,
+          factProvenance,
+          hardExclusions,
+          'Remove the recommendation or review the governing Property item.',
+        );
         blockers.push({
           id: suggestion.id,
-          message: `Applied suggestion conflicts with ${conflict.governingBriefItem}.`,
+          message: conflictMessage(details),
           governingStage: 'campaign',
+          targetId: `campaign-suggestion-${suggestion.id}`,
+          ...details,
         });
       }
     }
   }
 
   if (state.photos.policy === 'included') {
-    if (!state.photos.approved) {
-      blockers.push({
-        id: 'photos.approval',
-        message: 'Confirm the reviewed photo context before approving the brief.',
-        governingStage: 'photos',
-      });
-    }
-    const selectedPhotos = state.photos.items.filter(photo => photo.selected);
-    const selectedPhotoIds = new Set(selectedPhotos.map(photo => photo.id));
-    if (selectedPhotoIds.size === 0) {
-      blockers.push({
-        id: 'photos.selection',
-        message: 'Select at least one reviewed photo or turn photo context off.',
-        governingStage: 'photos',
-      });
-    }
-    for (const photo of selectedPhotos) {
-      if (photo.analysisState !== 'ready') {
-        blockers.push({
-          id: `photo.${photo.id}.analysis`,
-          message: `Photo ${photo.imageNumber} must finish analysis before inclusion.`,
-          governingStage: 'photos',
-        });
-      }
-      const hasApprovedHighlight = state.photos.highlights.some(highlight => (
-        highlight.imageId === photo.id
-        && (highlight.state === 'approved' || highlight.state === 'corrected')
-      ));
-      if (!hasApprovedHighlight) {
-        blockers.push({
-          id: `photo.${photo.id}.highlight`,
-          message: `Photo ${photo.imageNumber} needs at least one approved highlight or must be deselected.`,
-          governingStage: 'photos',
-        });
-      }
-    }
+    const photoReview = derivePhotoReviewState(state.photos);
+    const selectedPhotoIds = new Set(photoReview.selectedPhotoIds);
+    const photoDecisionBlockers: ApprovedBriefBlocker[] = photoReview.decisions.map(decision => {
+      const photo = decision.photoId
+        ? state.photos.items.find(candidate => candidate.id === decision.photoId)
+        : undefined;
+      const highlight = decision.highlightId
+        ? state.photos.highlights.find(candidate => candidate.id === decision.highlightId)
+        : undefined;
+      return {
+        id: decision.id,
+        message: decision.message,
+        governingStage: 'photos' as const,
+        targetId: decision.targetId,
+        ...(photo ? { affectedItem: `Photo ${photo.imageNumber}`, sourceContext: photo.name } : {}),
+        ...(highlight ? {
+          affectedItem: `Photo ${highlight.imageNumber} highlight`,
+          conflictingValue: highlight.approvedText || highlight.sourceText,
+          sourceContext: highlight.provenance,
+        } : {}),
+        resolution: decision.kind === 'review-highlight'
+          ? 'Approve, correct, or exclude this highlight.'
+          : decision.kind === 'select-photo'
+            ? 'Select a reviewed photo or choose Photo context off.'
+            : 'Analyse or retry the photo, or remove it from review.',
+      };
+    });
     for (const highlight of state.photos.highlights) {
-      if (selectedPhotoIds.has(highlight.imageId) && (
-        highlight.state === 'needs-review' || highlight.state === 'failed'
-      )) {
-        blockers.push({
-          id: highlight.id,
-          message: `Photo ${highlight.imageNumber} highlight requires review before inclusion.`,
-          governingStage: 'photos',
-        });
-      }
       if (
-        selectedPhotoIds.has(highlight.imageId) &&
-        (highlight.state === 'approved' || highlight.state === 'corrected')
+        selectedPhotoIds.has(highlight.imageId)
+        && (highlight.state === 'approved' || highlight.state === 'corrected')
       ) {
         const conflict = findGovernanceConflicts(highlight.approvedText, { factProvenance, hardExclusions })[0];
         if (conflict) {
-          blockers.push({
+          const details = getConflictDetails(
+            conflict,
+            factProvenance,
+            hardExclusions,
+            'Correct or exclude this highlight, or deselect the photo.',
+          );
+          photoDecisionBlockers.push({
             id: highlight.id,
-            message: `Photo ${highlight.imageNumber} highlight conflicts with ${conflict.governingBriefItem}.`,
+            message: `Photo ${highlight.imageNumber}: ${conflictMessage(details)}`,
             governingStage: 'photos',
+            targetId: `photo-highlight-${highlight.id}`,
+            ...details,
           });
         }
       }
+    }
+    blockers.push(...photoDecisionBlockers);
+    if (!state.photos.approved && photoDecisionBlockers.length === 0) {
+      blockers.push({
+        id: 'photos.approval',
+        message: 'Approve the reviewed photo context before approving the brief.',
+        governingStage: 'photos',
+        targetId: 'photos-approval-action',
+        resolution: 'Approve the selected photos and reviewed highlights, or turn photo context off.',
+      });
     }
   }
 
@@ -393,6 +577,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'people.agent-name',
       message: 'Included agent context requires an approved agent name.',
       governingStage: 'brief',
+      targetId: 'brief-agent-name',
+      resolution: 'Add the agent name or turn off agent context.',
     });
   }
   if (state.people.agencyIncluded && !state.people.agencyName.trim()) {
@@ -400,6 +586,8 @@ export const getApprovedBriefBlockers = (state: CampaignSessionState): ApprovedB
       id: 'people.agency-name',
       message: 'Included agency context requires an approved agency name.',
       governingStage: 'brief',
+      targetId: 'brief-agency-name',
+      resolution: 'Add the agency name or turn off agency context.',
     });
   }
   return blockers;

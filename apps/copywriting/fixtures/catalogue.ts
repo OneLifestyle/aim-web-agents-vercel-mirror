@@ -1,5 +1,6 @@
 import type {
   ApprovedBriefSnapshot,
+  CampaignSuggestion,
   CopywritingProductId,
   PreviewTab,
   ReviewedClaim,
@@ -9,7 +10,9 @@ import {
   CAMPAIGN_PACK_OUTPUT_ORDER,
   CANONICAL_OUTPUT_ORDER,
   OUTPUT_PRESENTATION_BY_ID,
+  applyCampaignAnalysisRecommendations,
   buildApprovedBriefSnapshot,
+  buildSuggestionGovernanceContext,
   cloneCampaignSessionState,
   createInitialCampaignSessionState,
   deriveCampaignPackState,
@@ -32,14 +35,26 @@ export const REQUIRED_FIXTURE_IDS = [
   'start.product-selected',
   'address.selected',
   'property.fetched',
+  'property.land-approval-safe',
+  'property.land-approval-conflict',
+  'property.bulk-review',
   'claim.unresolved',
   'claim.corrected',
   'claim.excluded',
   'direction.approved',
+  'direction.analysed-safe',
+  'direction.blocked-exception',
   'photos.off',
   'photos.included-reviewed',
+  'photos.batch-progress',
+  'photos.highlights-unresolved',
   'brief.ready',
+  'brief.blocked',
+  'brief.photo-context',
+  'brief.long',
   'listing.ready',
+  'listing.ready-listing-only',
+  'listing.ready-no-contact',
   'listing.stale',
   'pack.generating',
   'pack.partial',
@@ -266,6 +281,197 @@ const createReviewedCampaignState = (photoPolicy: 'off' | 'included' = 'off'): C
       url: 'https://example.test/open-home/fictional-bay',
     },
   };
+  return state;
+};
+
+const createPropertyLandApprovalState = (conflicting: boolean): CampaignSessionState => {
+  const state = createReviewedCampaignState('off');
+  state.stage = 'property';
+  state.property.approved = false;
+  const land = state.property.facts.find(fact => fact.key === 'landValue')!;
+  land.sourceValue = 20_200;
+  land.approvedValue = 20_200;
+  land.sourceUnit = 'm²';
+  land.unit = 'm²';
+  land.state = 'confirmed';
+  state.property.claims.push({
+    id: conflicting ? 'claim.land-conflict' : 'claim.land-equivalent',
+    sourceText: conflicting
+      ? 'Set on 3.02 hectares (30,200 square metres)'
+      : 'Set on approximately 5 acres (20,200 square metres)',
+    approvedText: conflicting
+      ? 'Set on 3.02 hectares (30,200 square metres)'
+      : 'Set on approximately 5 acres (20,200 square metres)',
+    provenance: 'Fictional property research fixture · land description',
+    state: 'confirmed',
+    aliases: [],
+  });
+  return state;
+};
+
+const createBulkPropertyReviewState = (): CampaignSessionState => {
+  const state = createReviewedCampaignState('off');
+  state.stage = 'property';
+  state.property.approved = false;
+  state.property.facts = state.property.facts.map(fact => {
+    if (fact.key === 'bedrooms') return { ...fact, approvedValue: null, state: 'needs-review' };
+    if (fact.key === 'bathrooms') return { ...fact, sourceValue: 2, approvedValue: 1, state: 'corrected' };
+    if (fact.key === 'landValue') return { ...fact, approvedValue: null, state: 'conflict' };
+    return fact;
+  });
+  state.property.claims = [
+    { ...state.property.claims[0], approvedText: '', state: 'needs-review' },
+    { ...state.property.claims[1] },
+    { ...state.property.claims[2] },
+    {
+      id: 'claim.bulk-conflict',
+      sourceText: 'Unverified rooftop terrace',
+      approvedText: '',
+      provenance: 'Fictional conflicting source fixture',
+      state: 'conflict',
+      aliases: [],
+    },
+  ];
+  return state;
+};
+
+const createAnalysedCampaignState = (includeBlockedException: boolean): CampaignSessionState => {
+  const state = createReviewedCampaignState('off');
+  const governance = buildSuggestionGovernanceContext(buildApprovedBriefSnapshot(state, {
+    approvedAt: FIXTURE_APPROVED_AT,
+  }));
+  const rawRecommendations: CampaignSuggestion[] = [
+    {
+      id: 'analysis.audience.primary',
+      kind: 'audience',
+      text: 'Established Families',
+      state: 'suggested',
+      audienceTarget: 'primary',
+    },
+    {
+      id: 'analysis.audience.secondary',
+      kind: 'audience',
+      text: 'Empty Nesters / Downsizers',
+      state: 'suggested',
+      audienceTarget: 'secondary',
+    },
+    {
+      id: 'analysis.voice.professional',
+      kind: 'voice',
+      text: 'Professional',
+      state: 'suggested',
+    },
+    {
+      id: 'analysis.voice.descriptive',
+      kind: 'voice',
+      text: 'Descriptive',
+      state: 'suggested',
+    },
+    {
+      id: 'analysis.emphasis.garden',
+      kind: 'selling-point',
+      text: 'Lead with the north-facing rear garden',
+      state: 'suggested',
+    },
+    {
+      id: 'analysis.boundary.cliches',
+      kind: 'boundary',
+      text: 'Avoid clichés',
+      state: 'suggested',
+    },
+    ...(includeBlockedException ? [{
+      id: 'analysis.emphasis.six-car',
+      kind: 'selling-point' as const,
+      text: 'Lead with parking for six',
+      state: 'suggested' as const,
+    }] : []),
+  ];
+  const governed = governSuggestions(rawRecommendations, governance);
+  const application = applyCampaignAnalysisRecommendations({
+    ...state.campaign,
+    primaryAudience: '',
+    secondaryAudience: '',
+    writingStyles: [],
+    tone: '',
+    emphasis: [],
+    styleAvoidances: [],
+    suggestions: [],
+    approved: false,
+  }, governed);
+  state.stage = 'campaign';
+  state.campaign = { ...application.campaign, approved: false };
+  return state;
+};
+
+const createPhotoBatchProgressState = (): CampaignSessionState => {
+  const state = createReviewedCampaignState('included');
+  state.stage = 'photos';
+  state.photos.approved = false;
+  state.photos.items = state.photos.items.map((photo, index) => ({
+    ...photo,
+    selected: true,
+    analysisState: index === 0 ? 'analysing' : index === 1 ? 'not-analysed' : 'failed',
+    ...(index === 2 ? { error: 'Fictional deterministic photo analysis failure.' } : {}),
+  }));
+  state.photos.highlights = [];
+  return state;
+};
+
+const createUnresolvedPhotoHighlightsState = (): CampaignSessionState => {
+  const state = createReviewedCampaignState('included');
+  state.stage = 'photos';
+  state.photos.approved = false;
+  state.photos.items = state.photos.items.map(photo => ({
+    ...photo,
+    selected: true,
+    analysisState: 'ready',
+  }));
+  state.photos.highlights = [
+    ['photo.01', 1, 'Broad windows bring natural light into the living room'],
+    ['photo.02', 2, 'Bright kitchen with pale stone-look benchtops'],
+    ['photo.03', 3, 'Landscaped frontage with an established garden'],
+  ].map(([imageId, imageNumber, sourceText], index) => ({
+    id: `highlight.bulk.${index + 1}`,
+    imageId: String(imageId),
+    imageNumber: Number(imageNumber),
+    sourceText: String(sourceText),
+    approvedText: String(sourceText),
+    state: 'needs-review' as const,
+    provenance: 'Fictional batch photo analysis fixture',
+  }));
+  return state;
+};
+
+const createBlockedBriefState = (): CampaignSessionState => {
+  const state = createReviewedCampaignState('off');
+  state.stage = 'brief';
+  state.property.approved = false;
+  state.property.claims[0] = {
+    ...state.property.claims[0],
+    approvedText: '',
+    state: 'needs-review',
+  };
+  return state;
+};
+
+const createLongBriefState = (): CampaignSessionState => {
+  const state = createReviewedCampaignState('included');
+  state.stage = 'brief';
+  state.property.overview = [
+    'A flexible four-bedroom home arranged around connected living and dining spaces.',
+    'The updated kitchen opens towards the north-facing rear garden and supports a calm everyday rhythm.',
+    'Private rooms are separated from the main gathering areas, while two bathrooms and two car spaces support practical family use.',
+  ].join(' ');
+  state.property.suburbContext = `${state.property.suburbContext} The fictional preview is intentionally detailed enough to test long, scannable reviewed content without external data.`;
+  state.property.areaContext = `${state.property.areaContext} This extended fixture checks disclosure behaviour and responsive reading order.`;
+  state.property.claims.push(...Array.from({ length: 10 }, (_, index) => ({
+    id: `claim.long-${index + 1}`,
+    sourceText: `Reviewed fixture feature ${index + 1}`,
+    approvedText: `Reviewed fixture feature ${index + 1}`,
+    provenance: 'Fictional extended property research fixture',
+    state: 'confirmed' as const,
+    aliases: [],
+  })));
   return state;
 };
 
@@ -512,6 +718,31 @@ const createListingReadyState = (
       time: openHome.time,
       url: openHome.url,
     };
+  }
+  const state = approveFixtureBrief(reviewedState);
+  state.stage = 'outputs';
+  state.activeOutputId = 'Full Copy';
+  setReadyOutput(state, 'Full Copy');
+  return state;
+};
+
+const createListingOnlyReadyState = (withContact: boolean): CampaignSessionState => {
+  const reviewedState = createReviewedCampaignState('off');
+  reviewedState.product = 'listing-copy';
+  reviewedState.people.agentIncluded = withContact;
+  reviewedState.people.agencyIncluded = withContact;
+  reviewedState.people.openHomeIncluded = false;
+  reviewedState.people.openHome = { date: '', time: '', url: '' };
+  if (!withContact) {
+    reviewedState.people.agent = {
+      name: '',
+      title: '',
+      agency: '',
+      phone: '',
+      email: '',
+      inclusionMode: 'append',
+    };
+    reviewedState.people.agencyName = '';
   }
   const state = approveFixtureBrief(reviewedState);
   state.stage = 'outputs';
@@ -829,6 +1060,24 @@ export const FIXTURE_CATALOGUE: Readonly<Record<FixtureId, CampaignFixtureDefini
     state.campaign.approved = false;
     return state;
   }),
+  'property.land-approval-safe': fixture(
+    'property.land-approval-safe',
+    'Equivalent land approval',
+    'Confirmed 20,200 m² fact and approximately five-acre material claim are ready for Property approval.',
+    () => createPropertyLandApprovalState(false),
+  ),
+  'property.land-approval-conflict': fixture(
+    'property.land-approval-conflict',
+    'Contradictory land approval',
+    'Confirmed 20,200 m² fact and contradictory 3.02-hectare claim expose one actionable Property conflict.',
+    () => createPropertyLandApprovalState(true),
+  ),
+  'property.bulk-review': fixture(
+    'property.bulk-review',
+    'Bulk Property review with exceptions',
+    'Eligible facts and claims can be confirmed together while corrections, exclusions and conflicts remain explicit.',
+    () => createBulkPropertyReviewState(),
+  ),
   'claim.unresolved': fixture('claim.unresolved', 'Unresolved claim', 'A required sourced claim blocks approval.', () => {
     const state = createReviewedCampaignState('off');
     state.stage = 'property';
@@ -853,6 +1102,18 @@ export const FIXTURE_CATALOGUE: Readonly<Record<FixtureId, CampaignFixtureDefini
     state.stage = 'campaign';
     return state;
   }),
+  'direction.analysed-safe': fixture(
+    'direction.analysed-safe',
+    'AI-populated Campaign Direction',
+    'Safe analysed recommendations already populate editable final controls without individual Apply actions.',
+    () => createAnalysedCampaignState(false),
+  ),
+  'direction.blocked-exception': fixture(
+    'direction.blocked-exception',
+    'Campaign analysis exception',
+    'Safe recommendations populate final controls while a six-car factual conflict remains unapplied for review.',
+    () => createAnalysedCampaignState(true),
+  ),
   'photos.off': fixture('photos.off', 'Photo context off', 'Analysed photos remain inspectable but are not used.', () => {
     const state = createReviewedCampaignState('off');
     state.stage = 'photos';
@@ -863,8 +1124,50 @@ export const FIXTURE_CATALOGUE: Readonly<Record<FixtureId, CampaignFixtureDefini
     state.stage = 'photos';
     return state;
   }),
+  'photos.batch-progress': fixture(
+    'photos.batch-progress',
+    'Batch photo analysis progress',
+    'Three selected photos visibly represent analysing, waiting and failed batch states.',
+    () => createPhotoBatchProgressState(),
+  ),
+  'photos.highlights-unresolved': fixture(
+    'photos.highlights-unresolved',
+    'Three photo highlight decisions',
+    'Three safe reviewed highlights require exactly three user decisions and support bulk approval.',
+    () => createUnresolvedPhotoHighlightsState(),
+  ),
   'brief.ready': fixture('brief.ready', 'Reviewed Brief ready', 'Complete reviewed context ready for human session approval.', () => createBriefReadyState('off')),
+  'brief.blocked': fixture(
+    'brief.blocked',
+    'Reviewed Brief with blocker',
+    'The readiness summary exposes an unresolved Property claim and its exact review target.',
+    () => createBlockedBriefState(),
+  ),
+  'brief.photo-context': fixture(
+    'brief.photo-context',
+    'Reviewed Brief with photo context',
+    'Approved selected photos and item-level highlights remain present after navigation to the Reviewed Brief.',
+    () => createBriefReadyState('included'),
+  ),
+  'brief.long': fixture(
+    'brief.long',
+    'Long scannable Reviewed Brief',
+    'Extended overview, location context, claims and photo highlights exercise professional proof hierarchy.',
+    () => createLongBriefState(),
+  ),
   'listing.ready': fixture('listing.ready', 'Listing Copy ready', 'Read-only Listing Copy passes current integrity checks.', () => createListingReadyState('included')),
+  'listing.ready-listing-only': fixture(
+    'listing.ready-listing-only',
+    'Listing-only output with contact',
+    'A current Listing Copy has one useful export scope and an approved contact signature.',
+    () => createListingOnlyReadyState(true),
+  ),
+  'listing.ready-no-contact': fixture(
+    'listing.ready-no-contact',
+    'Listing-only output without contact',
+    'A current Listing Copy explains why contact signature export is unavailable.',
+    () => createListingOnlyReadyState(false),
+  ),
   'listing.stale': fixture('listing.stale', 'Listing Copy stale', 'A governing fact changed after Listing Copy generation.', () => {
     const state = createListingReadyState('off');
     const carSpaces = state.property.facts.find(fact => fact.key === 'carSpaces')!;

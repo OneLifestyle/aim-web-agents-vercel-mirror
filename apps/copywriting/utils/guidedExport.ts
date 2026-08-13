@@ -16,6 +16,25 @@ export type GuidedExportFormat = 'word' | 'txt' | 'pdf';
 export type GuidedExportOmissionKind = 'missing' | 'stale' | 'blocked' | 'failed';
 export type GuidedExportEligibilityStatus = 'included' | GuidedExportOmissionKind;
 
+export interface GuidedExportScopeOption {
+    id: GuidedExportScope;
+    label: string;
+    description: string;
+}
+
+export const GUIDED_EXPORT_SCOPE_OPTIONS: readonly GuidedExportScopeOption[] = [
+    { id: 'current_output', label: 'Current document', description: 'Only the document open in the reader.' },
+    { id: 'current_group', label: 'Current group', description: 'Eligible generated documents in this navigator group.' },
+    { id: 'campaign_pack', label: 'Full campaign document', description: 'Eligible generated Listing Copy and Campaign Pack documents together.' },
+];
+
+/** Listing Copy has one document, so duplicate group scopes are intentionally hidden. */
+export const getAvailableGuidedExportScopeOptions = (
+    campaignPackAvailable: boolean,
+): readonly GuidedExportScopeOption[] => campaignPackAvailable
+    ? GUIDED_EXPORT_SCOPE_OPTIONS
+    : GUIDED_EXPORT_SCOPE_OPTIONS.filter(option => option.id === 'current_output');
+
 export interface GuidedExportFormatDefinition {
     id: GuidedExportFormat;
     label: string;
@@ -331,17 +350,18 @@ const getScopeLabel = (
 const buildFallbackFileBaseName = (
     input: BuildGuidedExportPlanInput,
     currentGroup: string | undefined,
+    labels: Readonly<Record<PreviewTab, string>>,
 ): string => {
     const propertySlug = sanitizeFileNamePart(input.address || 'property');
     const dateSlug = input.generatedAt.toISOString().slice(0, 10);
 
     if (input.scope === 'current_output') {
-        return `real-estate-aim-copywriting-current-output-${propertySlug}-${sanitizeFileNamePart(input.selectedTab)}-${dateSlug}`;
+        return `${propertySlug}-${sanitizeFileNamePart(labels[input.selectedTab])}-${dateSlug}`;
     }
     if (input.scope === 'current_group') {
-        return `real-estate-aim-copywriting-category-${propertySlug}-${sanitizeFileNamePart(currentGroup || 'group')}-${dateSlug}`;
+        return `${propertySlug}-${sanitizeFileNamePart(currentGroup || 'campaign-documents')}-${dateSlug}`;
     }
-    return `real-estate-aim-copywriting-campaign-${propertySlug}-${dateSlug}`;
+    return `${propertySlug}-Listing-Copy-and-Campaign-Pack-${dateSlug}`;
 };
 
 const removeLegacyVersionLine = (content: string): string => (
@@ -370,13 +390,16 @@ const prepareDocumentForGuidedExport = (
 ): CampaignExportDocument => {
     const omissionAppendix = scope === 'current_output' ? '' : buildOmissionAppendix(omissions);
     const content = removeLegacyVersionLine(document.content)
+        .replace('Export scope: Current output', `Export scope: ${scopeLabel}`)
         .replace('Export scope: Current category', `Export scope: ${scopeLabel}`)
         .replace('Export scope: Campaign document', `Export scope: ${scopeLabel}`);
 
     return {
         ...document,
-        title: scope === 'current_group'
-                ? `${scopeLabel.replace(/^Current group ·\s*/, '')} group`
+        title: scope === 'current_output'
+            ? scopeLabel.replace(/^Current document ·\s*/, '')
+            : scope === 'current_group'
+                ? `${scopeLabel.replace(/^Current group ·\s*/, '')} documents`
                 : document.title,
         content: omissionAppendix ? `${content}\n\n${omissionAppendix}\n` : `${content}\n`,
     };
@@ -488,7 +511,7 @@ export const buildGuidedExportPlan = (input: BuildGuidedExportPlanInput): Guided
         ...input,
         includeContactDetails: input.includeContactDetails && contactSignatureAvailable,
     };
-    const document = buildEligibleDocument(
+    const assembledDocument = buildEligibleDocument(
         effectiveInput,
         currentGroup,
         includedDocuments.map(included => included.id),
@@ -497,7 +520,9 @@ export const buildGuidedExportPlan = (input: BuildGuidedExportPlanInput): Guided
         scopeLabel,
     );
     const format = GUIDED_EXPORT_FORMATS[input.format];
-    const fileBaseName = document?.fileBaseName ?? buildFallbackFileBaseName(input, currentGroup);
+    const userFileBaseName = buildFallbackFileBaseName(input, currentGroup, labels);
+    const document = assembledDocument ? { ...assembledDocument, fileBaseName: userFileBaseName } : null;
+    const fileBaseName = document?.fileBaseName ?? userFileBaseName;
     const filenamePreview = `${fileBaseName}${format.extension}`;
     const hasCurrentGroup = Boolean(
         currentGroup && input.categories.some(category => category.title === currentGroup),

@@ -6,6 +6,7 @@ import {
   CANONICAL_OUTPUT_GROUPS,
   OUTPUT_PRESENTATION_BY_ID,
 } from '../domain/outputInventory';
+import { deriveOutputRegenerationAction } from '../utils/outputActions';
 import { DocumentBody } from './DocumentBody';
 
 type DocumentNavigatorListProps = {
@@ -20,9 +21,35 @@ const outputStateLabel = (document: CampaignOutputDocument): string => {
   if (document.state === 'queued') return 'Queued';
   if (document.state === 'generating') return 'Generating';
   if (document.state === 'ready') return 'Ready';
-  if (document.state === 'needs-review') return 'Integrity conflict';
-  if (document.state === 'needs-regeneration') return 'Needs regeneration';
+  if (document.state === 'needs-review') return 'Review required';
+  if (document.state === 'needs-regeneration') return 'Brief changed';
   return 'Failed';
+};
+
+const GOVERNING_ITEM_LABELS: Readonly<Record<string, string>> = {
+  landValue: 'Land',
+  bedrooms: 'Bedrooms',
+  bathrooms: 'Bathrooms',
+  carSpaces: 'Car spaces',
+  propertyType: 'Property type',
+  'Listing Copy foundation': 'Listing Copy',
+};
+
+const governingItemLabel = (value: string): string => {
+  if (GOVERNING_ITEM_LABELS[value]) return GOVERNING_ITEM_LABELS[value];
+  if (/^brief[-.]/i.test(value)) return 'Reviewed Brief';
+  if (/^(?:claim|highlight|photo)\./i.test(value)) return 'Reviewed property or photo detail';
+  return value;
+};
+
+const userFacingIssueMessage = (message: string, governingItem: string): string => {
+  const labelledMessage = governingItem
+    ? message.replaceAll(governingItem, governingItemLabel(governingItem))
+    : message;
+  return labelledMessage
+    .replaceAll('landValue', 'Land')
+    .replaceAll('Approved Brief Snapshot', 'approved brief')
+    .replaceAll('Listing Copy foundation', 'Listing Copy');
 };
 
 const handleDisclosureKeyDown: React.KeyboardEventHandler<HTMLElement> = event => {
@@ -89,6 +116,7 @@ type OutputWorkspaceProps = {
   onSelectOutput: (outputId: PreviewTab) => void;
   onOpenNavigator: () => void;
   onOpenBrief: () => void;
+  onPrevious?: () => void;
   onOpenExport: () => void;
   onGenerateListing: () => void;
   onGeneratePack: () => void;
@@ -108,6 +136,7 @@ export const OutputWorkspace: React.FC<OutputWorkspaceProps> = ({
   onSelectOutput,
   onOpenNavigator,
   onOpenBrief,
+  onPrevious,
   onOpenExport,
   onGenerateListing,
   onGeneratePack,
@@ -122,6 +151,8 @@ export const OutputWorkspace: React.FC<OutputWorkspaceProps> = ({
   const listing = session.outputs['Full Copy'];
   const isBusy = document.state === 'generating' || document.state === 'queued';
   const isPackGenerating = packState.state === 'generating';
+  const regenerationAction = deriveOutputRegenerationAction(document);
+  const regenerationDisabled = isBusy || isPackGenerating || !session.brief.approved;
   const canCopy = document.state === 'ready'
     && Boolean(session.brief.snapshot)
     && document.boundSnapshotId === session.brief.snapshot?.snapshotId
@@ -138,16 +169,22 @@ export const OutputWorkspace: React.FC<OutputWorkspaceProps> = ({
     `${packReadyCount} of 16 ready`,
     packFailureCount > 0 ? `${packFailureCount} failed` : null,
     packBlockedCount > 0 ? `${packBlockedCount} blocked` : null,
-    packStaleCount > 0 ? `${packStaleCount} stale` : null,
+    packStaleCount > 0 ? `${packStaleCount} need updating` : null,
     `${packRemainingCount} remaining`,
   ].filter(Boolean).join(' · ');
+  const approvedSnapshot = session.brief.snapshot;
+  const agentLabel = approvedSnapshot?.agentContext.included
+    ? [approvedSnapshot.agentContext.name, approvedSnapshot.agentContext.title].filter(Boolean).join(' · ')
+    : '';
+  const agencyLabel = approvedSnapshot?.agencyContext.included ? approvedSnapshot.agencyContext.name : '';
+  const groupLabel = CANONICAL_OUTPUT_GROUPS.find(group => group.id === presentation.groupId)?.label ?? 'Campaign output';
 
   return (
     <div className="output-layout">
       <nav className="document-nav" aria-label={session.product === 'listing-copy' ? 'Listing document' : 'Campaign documents'}>
         <div className="document-nav__header">
           <h2>{session.product === 'listing-copy' ? 'Listing document' : 'Campaign documents'}</h2>
-          <p>{session.product === 'listing-copy' ? 'Listing Copy foundation · 1' : 'Listing foundation + Campaign Pack · 16'}</p>
+          <p>{session.product === 'listing-copy' ? 'Listing Copy · 1 document' : 'Listing Copy + 16 campaign outputs'}</p>
         </div>
         <DocumentNavigatorList outputs={session.outputs} activeOutputId={activeOutputId} product={session.product} onSelect={onSelectOutput} />
       </nav>
@@ -160,9 +197,10 @@ export const OutputWorkspace: React.FC<OutputWorkspaceProps> = ({
           </div>
           <button className="button button--secondary mobile-only" type="button" onClick={onOpenNavigator}>Documents</button>
           <div className="document-toolbar__actions">
+            {onPrevious ? <button className="button button--quiet" type="button" onClick={onPrevious}>Previous: Reviewed Brief</button> : null}
             <button className="button button--quiet" type="button" onClick={onOpenBrief}>Review brief</button>
-            {hasContent || document.state === 'needs-regeneration' || document.state === 'failed' || document.state === 'needs-review' ? (
-              <button className="button button--secondary" type="button" aria-label={`Regenerate ${presentation.label}`} onClick={onRegenerate} disabled={isBusy || isPackGenerating || !session.brief.approved}>Regenerate</button>
+            {regenerationAction.visible ? (
+              <button className="button button--secondary" type="button" aria-label={regenerationAction.accessibleName} onClick={onRegenerate} disabled={regenerationDisabled}>Regenerate</button>
             ) : null}
             <button className="button button--secondary" type="button" aria-label={`Copy ${presentation.label}`} onClick={onCopy} disabled={!canCopy} aria-describedby={!canCopy ? 'copy-disabled-reason' : undefined}>Copy</button>
             <button className="button button--primary" type="button" aria-label={`Open export options for ${presentation.label}`} onClick={onOpenExport}>Export</button>
@@ -193,31 +231,35 @@ export const OutputWorkspace: React.FC<OutputWorkspaceProps> = ({
 
           {hasContent ? (
             <article className="document-sheet">
-              <p className="document-kicker">{isListing ? 'Listing Copy foundation' : presentation.groupId.replaceAll('-', ' ')}</p>
+              <p className="document-kicker">{isListing ? 'Listing Copy' : groupLabel}</p>
               <h1 ref={headingRef} tabIndex={-1}>{presentation.label}</h1>
               <div className="document-metadata">
                 <span>Generated draft · Read-only</span>
+                <span>{approvedSnapshot?.selectedAddress || session.address.selectedLabel || session.address.query || 'Property address not supplied'}</span>
+                {agentLabel ? <span>{agentLabel}</span> : null}
+                {agencyLabel ? <span>{agencyLabel}</span> : null}
                 <span>{outputStateLabel(document)}</span>
-                {document.generatedAt ? <span>{new Date(document.generatedAt).toLocaleString('en-AU')}</span> : null}
+                {document.generatedAt ? <span>Created {new Date(document.generatedAt).toLocaleString('en-AU')}</span> : null}
+                <span>Regeneration replaces this draft; previous drafts are not kept as versions</span>
               </div>
               {document.integrityIssues.length > 0 ? (
                 <div className="notice" data-tone="risk" role="alert">
                   <div>
-                    <strong>Integrity conflict</strong>
-                    {document.integrityIssues.map(issue => <p key={`${issue.code}-${issue.governingBriefItem}`}>{issue.message} Governing brief item: {issue.governingBriefItem}.</p>)}
+                    <strong>Review required</strong>
+                    {document.integrityIssues.map(issue => <p key={`${issue.code}-${issue.governingBriefItem}`}>{userFacingIssueMessage(issue.message, issue.governingBriefItem)} Review: {governingItemLabel(issue.governingBriefItem)}.</p>)}
                   </div>
                 </div>
               ) : null}
               {document.state === 'failed' ? <div className="notice" data-tone="risk" role="alert"><div><strong>Generation failed</strong><p>{document.error || 'Replacement content was not generated.'} The existing draft remains visible for inspection only.</p></div></div> : null}
-              {document.state === 'needs-regeneration' ? <div className="notice" data-tone="review"><div><strong>Brief changed</strong><p>This document is bound to an earlier Approved Brief Snapshot. Regenerate deliberately before copying or exporting.</p></div></div> : null}
+              {document.state === 'needs-regeneration' ? <div className="notice" data-tone="review"><div><strong>Brief changed</strong><p>This draft was created from an earlier reviewed brief. Regenerate to replace the current draft before copying or exporting. Previous drafts are not kept as versions.</p></div></div> : null}
               <DocumentBody content={document.content} />
             </article>
           ) : (
             <section className="document-empty">
-              <p className="document-kicker">{isListing ? 'Listing Copy foundation' : presentation.groupId.replaceAll('-', ' ')}</p>
+              <p className="document-kicker">{isListing ? 'Listing Copy' : groupLabel}</p>
               <h1 ref={headingRef} tabIndex={-1}>{presentation.label}</h1>
               <p>{isListing
-                ? 'Generate the read-only Listing Copy from the active Approved Brief Snapshot.'
+                ? 'Generate a read-only Listing Copy draft from the approved brief.'
                 : 'This document has not been generated. Selecting it never starts generation.'}</p>
               {isListing ? <button className="button button--primary" type="button" onClick={onGenerateListing} disabled={!session.brief.approved || isBusy}>{isBusy ? 'Generating Listing Copy…' : 'Generate Listing Copy'}</button> : null}
               {document.state === 'failed' ? <div className="notice" data-tone="risk" role="alert"><div><strong>Generation failed</strong><p>{document.error || 'Content was not generated.'}</p></div></div> : null}
@@ -228,17 +270,19 @@ export const OutputWorkspace: React.FC<OutputWorkspaceProps> = ({
         <div className="document-mobile-actions mobile-only">
           {hasContent ? (
             <>
+              {onPrevious ? <button className="button button--secondary" type="button" aria-label="Previous: Reviewed Brief" onClick={onPrevious}>Previous</button> : null}
+              {regenerationAction.visible ? <button className="button button--secondary" type="button" aria-label={regenerationAction.accessibleName} onClick={onRegenerate} disabled={regenerationDisabled}>Regenerate</button> : null}
               <button className="button button--secondary" type="button" aria-label={`Copy ${presentation.label}`} onClick={onCopy} disabled={!canCopy} aria-describedby={!canCopy ? 'copy-disabled-reason' : undefined}>Copy</button>
               <button className="button button--primary" type="button" aria-label={`Open export options for ${presentation.label}`} onClick={onOpenExport}>Export</button>
             </>
           ) : (
             <>
-              <button className="button button--secondary" type="button" onClick={onOpenBrief}>Brief Snapshot</button>
+              <button className="button button--secondary" type="button" onClick={onPrevious ?? onOpenBrief}>{onPrevious ? 'Reviewed Brief' : 'Review brief'}</button>
               <button className="button button--primary" type="button" onClick={isListing ? onGenerateListing : onOpenNavigator} disabled={isListing && (!session.brief.approved || isBusy)}>{isListing ? 'Generate' : 'Documents'}</button>
             </>
           )}
         </div>
-        {!canCopy ? <span className="sr-only" id="copy-disabled-reason">Copy is available when this document is Ready and bound to the active Approved Brief Snapshot.</span> : null}
+        {!canCopy ? <span className="sr-only" id="copy-disabled-reason">Copy is available when this document is ready and matches the approved brief.</span> : null}
         <div className="sr-only" role="status" aria-live="polite">{copyStatus}</div>
       </main>
     </div>

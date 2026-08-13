@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   GUIDED_EXPORT_FORMATS,
+  getAvailableGuidedExportScopeOptions,
   type GuidedExportFormat,
   type GuidedExportPlan,
   type GuidedExportReceipt,
@@ -20,12 +21,6 @@ type ExportPanelProps = {
   onExport: () => void;
 };
 
-const scopeOptions: Array<{ id: GuidedExportScope; label: string; description: string }> = [
-  { id: 'current_output', label: 'Current document', description: 'Only the document open in the reader.' },
-  { id: 'current_group', label: 'Current group', description: 'Eligible generated documents in this navigator group.' },
-  { id: 'campaign_pack', label: 'Full campaign document', description: 'Eligible generated Listing Copy and Campaign Pack documents together.' },
-];
-
 export const ExportPanel: React.FC<ExportPanelProps> = ({
   plan,
   scope,
@@ -38,13 +33,11 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   onContactDetailsChange,
   onExport,
 }) => {
-  const visibleScopeOptions = campaignPackAvailable
-    ? scopeOptions
-    : scopeOptions.filter(option => option.id !== 'campaign_pack');
-  const scopeUnavailable = !campaignPackAvailable && scope === 'campaign_pack';
+  const visibleScopeOptions = getAvailableGuidedExportScopeOptions(campaignPackAvailable);
+  const scopeUnavailable = !campaignPackAvailable && scope !== 'current_output';
   const canExport = plan.canExport && !scopeUnavailable;
   const disabledReason = scopeUnavailable
-    ? 'Campaign Pack export is unavailable for the Listing Copy product. Choose Current document or Current group.'
+    ? 'Listing Copy has one useful export scope. Choose Current document.'
     : plan.disabledReason;
 
   return (
@@ -83,6 +76,20 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
       <div className="export-count"><span>Blocked</span><strong>{plan.counts.blocked}</strong></div>
       <div className="export-count"><span>Failed</span><strong>{plan.counts.failed}</strong></div>
     </div>
+
+    <section className="surface surface--quiet" aria-labelledby="export-included-title">
+      <div className="surface__body" style={{ paddingTop: 18 }}>
+        <h3 id="export-included-title">Included in this export</h3>
+        <p className="field-help">{plan.scopeLabel}</p>
+        {plan.includedDocuments.length > 0 ? (
+          <ul>
+            {plan.includedDocuments.map(document => (
+              <li key={document.id}><strong>{document.name}</strong>{document.group && document.group !== document.name ? ` · ${document.group}` : ''}</li>
+            ))}
+          </ul>
+        ) : <p>No current generated documents are included.</p>}
+      </div>
+    </section>
 
     {plan.omissions.length > 0 ? (
       <div className="notice" data-tone="review">

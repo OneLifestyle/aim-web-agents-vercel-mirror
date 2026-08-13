@@ -1,6 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { ReviewedPhotoHighlight } from '../../types';
 import type { CampaignSessionState } from '../../domain/sessionState';
+import {
+  derivePhotoReviewState,
+  getPhotoAnalysisStateLabel,
+  getPhotoHighlightElementId,
+  getPhotoThumbnailElementId,
+  isPhotoAdministrationVisible,
+} from '../../domain/photoReview';
 import { StatusRow } from '../StatusRow';
 
 type PhotosStageProps = {
@@ -18,6 +25,10 @@ type PhotosStageProps = {
   onRemovePhoto: (id: string) => void;
   onAnalyse: (photoId?: string) => void;
   onHighlightAction: (highlight: ReviewedPhotoHighlight, action: 'approve' | 'correct' | 'exclude') => void;
+  canBulkApproveHighlight?: (highlight: ReviewedPhotoHighlight) => boolean;
+  isHighlightConflict?: (highlight: ReviewedPhotoHighlight) => boolean;
+  onApproveAllHighlights?: () => void;
+  onPrevious?: () => void;
   onApprove: () => void;
 };
 
@@ -40,16 +51,20 @@ export const PhotosStage: React.FC<PhotosStageProps> = ({
   onRemovePhoto,
   onAnalyse,
   onHighlightAction,
+  canBulkApproveHighlight,
+  isHighlightConflict,
+  onApproveAllHighlights,
+  onPrevious,
   onApprove,
 }) => {
   const [activePhotoId, setActivePhotoId] = useState<string | null>(null);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [offControlsExpanded, setOffControlsExpanded] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const photoThumbnailRefs = useRef(new Map<string, HTMLButtonElement>());
   const selectedPhotos = session.photos.items.filter(photo => photo.selected);
   const photosAwaitingAnalysis = selectedPhotos.filter(photo => photo.analysisState !== 'ready');
   const selectedIds = new Set(selectedPhotos.map(photo => photo.id));
-  const relevantHighlights = session.photos.highlights.filter(highlight => selectedIds.has(highlight.imageId));
   const activeAnalysingPhoto = analysisProgress?.currentPhotoId
     ? session.photos.items.find(photo => photo.id === analysisProgress.currentPhotoId) ?? null
     : null;
@@ -60,14 +75,14 @@ export const PhotosStage: React.FC<PhotosStageProps> = ({
   const activePhotoHighlights = activePhoto
     ? session.photos.highlights.filter(highlight => highlight.imageId === activePhoto.id)
     : [];
-  const unresolved = session.photos.policy === 'included' && (
-    selectedPhotos.length === 0
-    || selectedPhotos.some(photo => photo.analysisState !== 'ready')
-    || selectedPhotos.some(photo => !relevantHighlights.some(highlight => (
-      highlight.imageId === photo.id
-      && (highlight.state === 'approved' || highlight.state === 'corrected')
-    )))
-    || relevantHighlights.some(highlight => highlight.state === 'needs-review')
+  const reviewState = derivePhotoReviewState(session.photos, {
+    canBulkApproveHighlight,
+    isHighlightConflict,
+  });
+  const bulkApprovableCount = reviewState.bulkApprovableHighlightIds.length;
+  const showPhotoAdministration = isPhotoAdministrationVisible(
+    session.photos.policy,
+    offControlsExpanded,
   );
 
   useEffect(() => {
@@ -107,19 +122,20 @@ export const PhotosStage: React.FC<PhotosStageProps> = ({
       <header className="stage-header">
         <div className="stage-header__copy">
           <h1 ref={headingRef} tabIndex={-1}>Photos</h1>
-          <p>Choose whether reviewed photo context may govern generation. Analysis alone never includes a highlight.</p>
+          <p>Choose whether reviewed photo context may be used in generation. Analysis alone never includes a highlight.</p>
         </div>
+        {onPrevious ? <div className="stage-header__actions"><button className="button button--quiet" type="button" onClick={onPrevious}>Previous: Campaign</button></div> : null}
       </header>
 
       <div className="section-stack">
         <section className="surface" aria-labelledby="photo-policy-title">
           <div className="surface__header">
-            <div><h2 id="photo-policy-title">Photo context policy</h2><p>This is a genuine binary generation policy, not a display preference.</p></div>
+            <div><h2 id="photo-policy-title">Photo context</h2><p>Choose whether reviewed photo observations may be included in generation.</p></div>
           </div>
           <div className="surface__body">
             <div className="photo-policy" role="radiogroup" aria-label="Photo context policy">
               <label className="photo-policy__option" data-selected={session.photos.policy === 'off'}>
-                <input type="radio" name="photo-policy" checked={session.photos.policy === 'off'} onChange={() => onPolicyChange('off')} />
+                <input type="radio" name="photo-policy" checked={session.photos.policy === 'off'} onChange={() => { setOffControlsExpanded(false); onPolicyChange('off'); }} />
                 <span><strong>Photo context off</strong><span>Analysis may remain visible, but no photo content enters generation.</span></span>
               </label>
               <label className="photo-policy__option" data-selected={session.photos.policy === 'included'}>
@@ -127,18 +143,42 @@ export const PhotosStage: React.FC<PhotosStageProps> = ({
                 <span><strong>Use reviewed photo context</strong><span>Only selected photos and approved highlights enter the brief.</span></span>
               </label>
             </div>
+            {session.photos.policy === 'off' ? (
+              <div className="notice photo-controls-disclosure">
+                <div>
+                  <strong>Photos will not influence this campaign’s copy.</strong>
+                  <p>Uploaded photos, analysis and review decisions remain in this temporary session.</p>
+                  <div className="action-row photo-controls-disclosure">
+                    <button
+                      className="button button--secondary"
+                      type="button"
+                      aria-expanded={offControlsExpanded}
+                      aria-controls="photo-administration"
+                      onClick={() => setOffControlsExpanded(expanded => !expanded)}
+                    >
+                      {offControlsExpanded ? 'Hide photo controls' : 'Show photo controls'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </section>
 
+        <div
+          className="section-stack photo-administration"
+          id="photo-administration"
+          hidden={!showPhotoAdministration}
+        >
         <section className="surface" aria-labelledby="photo-upload-title">
           <div className="surface__header">
-            <div><h2 id="photo-upload-title">Campaign photos</h2><p>Up to 20 JPG, PNG, WebP, HEIC or HEIF images. Analysis is explicit and runs per image.</p></div>
-            <button className="button button--secondary" type="button" disabled={photosAwaitingAnalysis.length === 0 || isAnalysing} onClick={() => onAnalyse()}>
+            <div><h2 id="photo-upload-title">Campaign photos</h2><p>Up to 20 JPG, PNG, WebP, HEIC or HEIF images. Analyse the selected batch, then review exceptions.</p></div>
+            <button className="button button--primary" type="button" disabled={photosAwaitingAnalysis.length === 0 || isAnalysing} onClick={() => onAnalyse()}>
               {isAnalysing
                 ? 'Analysing photos…'
                 : photosAwaitingAnalysis.length > 0
-                  ? `Analyse ${photosAwaitingAnalysis.length} unready photo${photosAwaitingAnalysis.length === 1 ? '' : 's'}`
-                  : 'Selected photos analysed'}
+                  ? `Analyse ${photosAwaitingAnalysis.length} Photo${photosAwaitingAnalysis.length === 1 ? '' : 's'}`
+                  : 'Selected photos ready'}
             </button>
           </div>
           <div className="surface__body section-stack">
@@ -172,7 +212,7 @@ export const PhotosStage: React.FC<PhotosStageProps> = ({
               <div className="photo-contact">
                 <div className="photo-strip" role="group" aria-label="Uploaded photo thumbnails">
                   {session.photos.items.map(photo => {
-                    const stateLabel = photo.analysisState === 'ready' ? 'Analysed' : photo.analysisState === 'failed' ? 'Failed' : photo.analysisState === 'analysing' ? 'Analysing' : 'Not analysed';
+                    const stateLabel = getPhotoAnalysisStateLabel(photo.analysisState);
                     return (
                       <button
                         ref={element => {
@@ -180,6 +220,7 @@ export const PhotosStage: React.FC<PhotosStageProps> = ({
                           else photoThumbnailRefs.current.delete(photo.id);
                         }}
                         className="photo-thumb"
+                        id={getPhotoThumbnailElementId(photo.id)}
                         data-active={activePhoto?.id === photo.id}
                         data-selected={photo.selected}
                         key={photo.id}
@@ -202,16 +243,16 @@ export const PhotosStage: React.FC<PhotosStageProps> = ({
                     <div className="photo-detail__copy">
                       <p className="document-kicker">Selected image</p>
                       <h3 id={`photo-detail-title-${activePhoto.id}`}>Photo {activePhoto.imageNumber}</h3>
-                      <p>{activePhoto.name} · {activePhoto.analysisState === 'ready' ? 'Analysed' : activePhoto.analysisState === 'failed' ? 'Failed' : activePhoto.analysisState === 'analysing' ? 'Analysing' : 'Not analysed'}</p>
+                      <p>{activePhoto.name} · {getPhotoAnalysisStateLabel(activePhoto.analysisState)}</p>
                       {activePhoto.error ? <div className="notice" data-tone="risk" role="alert"><div><strong>Photo issue</strong><p>{activePhoto.error}</p></div></div> : null}
                       <p className="field-help">{activePhotoHighlights.length} linked highlight{activePhotoHighlights.length === 1 ? '' : 's'} · inclusion is independent from keeping the uploaded photo.</p>
                       <label className="choice" data-selected={activePhoto.selected}>
                         <input type="checkbox" checked={activePhoto.selected} onChange={event => onPhotoSelected(activePhoto.id, event.target.checked)} />
                         <span><strong>Use Photo {activePhoto.imageNumber} for review</strong><span>Only approved highlights from included photos can enter the brief.</span></span>
                       </label>
-                      {activePhoto.selected && activePhoto.analysisState !== 'ready' ? (
+                      {activePhoto.selected && activePhoto.analysisState === 'failed' ? (
                         <button className="button button--secondary" type="button" disabled={isAnalysing} onClick={() => onAnalyse(activePhoto.id)}>
-                          {activePhoto.analysisState === 'failed' ? 'Retry this photo' : 'Analyse this photo'}
+                          Retry this photo
                         </button>
                       ) : null}
                       <button className="button button--risk" type="button" disabled={activePhoto.analysisState === 'analysing'} aria-label={`Delete Photo ${activePhoto.imageNumber}: ${activePhoto.name}`} onClick={handleDeleteActivePhoto}>Delete photo</button>
@@ -251,35 +292,56 @@ export const PhotosStage: React.FC<PhotosStageProps> = ({
           <section className="surface" aria-labelledby="visual-highlights-title">
             <div className="surface__header">
               <div><h2 id="visual-highlights-title">Visual Highlights</h2><p>Each highlight stays linked to its source image and requires an explicit review state.</p></div>
+              {bulkApprovableCount > 0 && onApproveAllHighlights ? (
+                <button className="button button--secondary" type="button" onClick={onApproveAllHighlights}>
+                  Approve all {bulkApprovableCount} reviewed highlight{bulkApprovableCount === 1 ? '' : 's'}
+                </button>
+              ) : null}
             </div>
             <div>
-              {session.photos.highlights.map(highlight => (
-                <StatusRow
-                  key={highlight.id}
-                  state={highlight.state === 'failed' ? 'failed' : highlight.state === 'approved' ? 'approved' : highlight.state}
-                  stateLabel={highlightLabel(highlight)}
-                  title={highlight.approvedText || highlight.sourceText}
-                  meta={`Photo ${highlight.imageNumber} · ${session.photos.policy === 'off' || !selectedIds.has(highlight.imageId) ? 'Not included in generation' : highlight.provenance}`}
-                  actions={highlight.state === 'failed' ? undefined : highlight.state === 'excluded' ? (
-                    <button className="row-action" type="button" aria-label={`Review exclusion for Photo ${highlight.imageNumber} highlight: ${highlight.approvedText || highlight.sourceText}`} onClick={() => onHighlightAction(highlight, 'correct')}>Review exclusion</button>
-                  ) : (
-                    <>
-                      {highlight.state === 'needs-review' ? <button className="row-action" type="button" aria-label={`Approve Photo ${highlight.imageNumber} highlight: ${highlight.approvedText || highlight.sourceText}`} onClick={() => onHighlightAction(highlight, 'approve')}>Approve</button> : null}
-                      <button className="row-action" type="button" aria-label={`Correct Photo ${highlight.imageNumber} highlight: ${highlight.approvedText || highlight.sourceText}`} onClick={() => onHighlightAction(highlight, 'correct')}>Correct</button>
-                      <button className="row-action" type="button" aria-label={`Exclude Photo ${highlight.imageNumber} highlight: ${highlight.approvedText || highlight.sourceText}`} onClick={() => onHighlightAction(highlight, 'exclude')}>Exclude</button>
-                    </>
-                  )}
-                />
-              ))}
+              {session.photos.highlights.map(highlight => {
+                const hasFactualConflict = isHighlightConflict?.(highlight) ?? false;
+                return (
+                <div key={highlight.id} id={getPhotoHighlightElementId(highlight.id)}>
+                  <StatusRow
+                    state={highlight.state === 'failed' ? 'failed' : highlight.state === 'approved' ? 'approved' : highlight.state}
+                    stateLabel={hasFactualConflict ? 'Factual conflict' : highlightLabel(highlight)}
+                    title={highlight.approvedText || highlight.sourceText}
+                    meta={`Photo ${highlight.imageNumber} · ${session.photos.policy === 'off' || !selectedIds.has(highlight.imageId) ? 'Not included in generation' : highlight.provenance}`}
+                    actions={highlight.state === 'failed' ? undefined : highlight.state === 'excluded' ? (
+                      <button className="row-action" type="button" aria-label={`Review exclusion for Photo ${highlight.imageNumber} highlight: ${highlight.approvedText || highlight.sourceText}`} onClick={() => onHighlightAction(highlight, 'correct')}>Review exclusion</button>
+                    ) : (
+                      <>
+                        {highlight.state === 'needs-review' && !hasFactualConflict ? <button className="row-action" type="button" aria-label={`Approve Photo ${highlight.imageNumber} highlight: ${highlight.approvedText || highlight.sourceText}`} onClick={() => onHighlightAction(highlight, 'approve')}>Approve</button> : null}
+                        <button className="row-action" type="button" aria-label={`Correct Photo ${highlight.imageNumber} highlight: ${highlight.approvedText || highlight.sourceText}`} onClick={() => onHighlightAction(highlight, 'correct')}>Correct</button>
+                        <button className="row-action" type="button" aria-label={`Exclude Photo ${highlight.imageNumber} highlight: ${highlight.approvedText || highlight.sourceText}`} onClick={() => onHighlightAction(highlight, 'exclude')}>Exclude</button>
+                      </>
+                    )}
+                  />
+                  <details className="disclosure">
+                    <summary>
+                      <span><strong>Source Context</strong><span>Photo {highlight.imageNumber} analysis · {highlight.provenance}</span></span>
+                    </summary>
+                    <div className="disclosure__body">
+                      <p>{highlight.sourceText || 'No usable source observation was returned.'}</p>
+                    </div>
+                  </details>
+                </div>
+              );})}
             </div>
           </section>
         ) : null}
+        </div>
 
         <div className="action-row">
-          <button className="button button--primary" type="button" onClick={onApprove} disabled={unresolved} aria-describedby={unresolved ? 'photos-approval-reason' : undefined}>
-            Approve photo policy
+          <button id="photos-approval-action" className="button button--secondary" type="button" onClick={onApprove} disabled={!reviewState.canApprovePolicy} aria-describedby={!reviewState.canApprovePolicy ? 'photos-approval-reason' : undefined}>
+            Approve photo context
           </button>
-          {unresolved ? <span className="disabled-reason" id="photos-approval-reason">Select a photo and resolve every selected photo highlight, or turn photo context off.</span> : null}
+          {!reviewState.canApprovePolicy ? (
+            <span className="disabled-reason" id="photos-approval-reason">
+              {reviewState.unresolvedCount} decision{reviewState.unresolvedCount === 1 ? '' : 's'} remaining. {reviewState.decisions[0]?.message}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>

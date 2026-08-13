@@ -1,6 +1,19 @@
 import React, { useRef } from 'react';
 import type { CopywritingProductId, ReviewedClaim, ReviewedFact } from '../../types';
+import type { ApprovedBriefBlocker } from '../../domain/approvedBrief';
 import type { CampaignSessionState } from '../../domain/sessionState';
+import {
+  countBulkConfirmablePropertyClaims,
+  countBulkConfirmablePropertyFacts,
+  derivePropertyAddressState,
+  derivePropertyReviewReadiness,
+  getPropertyBlockerReviewAccessibleName,
+  propertyClaimTargetId,
+  propertyFactAgentLabel,
+  propertyFactTargetId,
+  resolvePropertyBlockerTargetId,
+  selectedPropertyAddressMatchesQuery,
+} from '../../domain/propertyReview';
 import { StatusRow } from '../StatusRow';
 
 type PropertyStageProps = {
@@ -10,6 +23,8 @@ type PropertyStageProps = {
   isSuggesting: boolean;
   isFetching: boolean;
   fetchError: string | null;
+  hasFetchedDetails: boolean;
+  propertyIssues: readonly ApprovedBriefBlocker[];
   headingRef: React.Ref<HTMLHeadingElement>;
   onProductChange: (product: CopywritingProductId) => void;
   onAddressChange: (value: string) => void;
@@ -18,8 +33,11 @@ type PropertyStageProps = {
   onFetch: () => void;
   onIncludeAddressChange: (included: boolean) => void;
   onConfirmFact: (fact: ReviewedFact) => void;
+  onConfirmAllFacts: () => void;
   onCorrectFact: (fact: ReviewedFact) => void;
   onConfirmClaim: (claim: ReviewedClaim) => void;
+  onConfirmAllClaims: () => void;
+  canBulkConfirmClaim?: (claim: ReviewedClaim) => boolean;
   onCorrectClaim: (claim: ReviewedClaim) => void;
   onExcludeClaim: (claim: ReviewedClaim) => void;
   onOverviewDecision: (state: CampaignSessionState['property']['overviewState']) => void;
@@ -54,6 +72,46 @@ const claimStateLabel = (claim: ReviewedClaim): string => {
 
 const PRODUCT_OPTIONS: CopywritingProductId[] = ['listing-copy', 'campaign-pack'];
 
+const sharedProvenance = (items: readonly { provenance: string }[]): string | null => {
+  const counts = new Map<string, number>();
+  items.forEach(item => {
+    const value = item.provenance.trim();
+    if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+  });
+  const [mostCommon, count = 0] = [...counts.entries()].sort((left, right) => right[1] - left[1])[0] ?? [];
+  return mostCommon && count > 1 ? mostCommon : null;
+};
+
+const contextPreview = (value: string, maximumLength = 110): string => {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  if (!compact) return 'Not supplied';
+  return compact.length <= maximumLength ? compact : `${compact.slice(0, maximumLength - 1).trimEnd()}…`;
+};
+
+const agentFacingIssueText = (value: string): string => value
+  .replace(/\blandValue\b/g, 'Land')
+  .replace(/\bcarSpaces\b/g, 'Car spaces')
+  .replace(/\bpropertyType\b/g, 'Property type');
+
+type PropertyIssueDetails = {
+  affectedItem?: unknown;
+  approvedValue?: unknown;
+  conflictingValue?: unknown;
+  sourceContext?: unknown;
+  resolution?: unknown;
+};
+
+const issueDetailText = (issue: ApprovedBriefBlocker): string => {
+  const details = issue as ApprovedBriefBlocker & PropertyIssueDetails;
+  const parts: string[] = [];
+  if (details.affectedItem !== undefined) parts.push(`Affected item: ${propertyFactAgentLabel(String(details.affectedItem))}`);
+  if (details.approvedValue !== undefined) parts.push(`Approved: ${String(details.approvedValue)}`);
+  if (details.conflictingValue !== undefined) parts.push(`Conflicting claim: ${String(details.conflictingValue)}`);
+  if (details.sourceContext !== undefined) parts.push(`Source: ${String(details.sourceContext)}`);
+  if (details.resolution !== undefined) parts.push(`Resolve by: ${String(details.resolution)}`);
+  return parts.map(agentFacingIssueText).join(' · ');
+};
+
 export const PropertyStage: React.FC<PropertyStageProps> = ({
   session,
   suggestions,
@@ -61,6 +119,8 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
   isSuggesting,
   isFetching,
   fetchError,
+  hasFetchedDetails,
+  propertyIssues,
   headingRef,
   onProductChange,
   onAddressChange,
@@ -69,22 +129,37 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
   onFetch,
   onIncludeAddressChange,
   onConfirmFact,
+  onConfirmAllFacts,
   onCorrectFact,
   onConfirmClaim,
+  onConfirmAllClaims,
+  canBulkConfirmClaim,
   onCorrectClaim,
   onExcludeClaim,
   onOverviewDecision,
   onProfileInclusionChange,
   onApprove,
 }) => {
-  const hasFetchedContext = session.property.overview || session.property.claims.length > 0 || session.property.facts.some(fact => fact.sourceValue !== null && fact.sourceValue !== '');
-  const selectedAddressMatches = Boolean(
-    session.address.selectedLabel &&
-    session.address.selectedLabel.trim().toLocaleLowerCase('en-AU') === session.address.query.trim().toLocaleLowerCase('en-AU'),
+  const hasFetchedContext = hasFetchedDetails;
+  const selectedAddressMatches = selectedPropertyAddressMatchesQuery(
+    session.address.query,
+    session.address.selectedLabel,
   );
-  const hasUnresolved = session.property.facts.some(fact => fact.state === 'needs-review' || fact.state === 'conflict' || fact.approvedValue === null || fact.approvedValue === '')
-    || session.property.claims.some(claim => claim.state === 'needs-review' || claim.state === 'conflict')
-    || (Boolean(session.property.overview.trim()) && session.property.overviewState === 'needs-review');
+  const addressState = derivePropertyAddressState({
+    query: session.address.query,
+    selectedLabel: session.address.selectedLabel,
+    isFetching,
+    fetchError,
+    hasFetchedContext,
+  });
+  const readiness = derivePropertyReviewReadiness(session, propertyIssues);
+  const confirmableFactCount = countBulkConfirmablePropertyFacts(session.property.facts);
+  const confirmableClaimCount = countBulkConfirmablePropertyClaims(
+    session.property.claims,
+    canBulkConfirmClaim,
+  );
+  const factProvenance = sharedProvenance(session.property.facts);
+  const claimProvenance = sharedProvenance(session.property.claims);
   const listboxId = 'property-address-suggestions';
   const addressInputId = 'property-address-input';
   const addressHelpId = 'fetch-details-reason';
@@ -94,9 +169,27 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
     ? 'Looking for matching addresses…'
     : !session.product
       ? 'Choose Listing Copy or Campaign Pack, then select a suggested address.'
-      : selectedAddressMatches
-        ? 'Selected suggestion is ready for Fetch Details.'
-        : 'Select a suggested address before fetching property details.';
+      : addressState === 'fetching'
+        ? 'Fetching property details for the selected address…'
+        : addressState === 'fetched'
+          ? 'Property details fetched. Refetch only when you need to replace the current research.'
+          : addressState === 'failed-retry'
+            ? selectedAddressMatches
+              ? 'Property details could not be fetched. The selected address is ready to retry.'
+              : 'Address lookup failed. Try the address again.'
+            : addressState === 'selected'
+              ? 'Address selected. Fetch Details is ready.'
+              : addressState === 'typed'
+                ? 'Choose a suggested address before fetching property details.'
+                : 'Start typing, then choose a suggested address.';
+
+  const focusIssueTarget = (issue: ApprovedBriefBlocker) => {
+    const target = document.getElementById(resolvePropertyBlockerTargetId(issue, session));
+    if (!target) return;
+    target.setAttribute('tabindex', '-1');
+    target.focus();
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
 
   const handleProductKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     let nextIndex: number | null = null;
@@ -115,7 +208,7 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
       <header className="stage-header">
         <div className="stage-header__copy">
           <h1 ref={headingRef} tabIndex={-1}>Property</h1>
-          <p>Choose the campaign product, select a property, then approve the facts and claims that will govern the copy.</p>
+          <p>Choose the campaign product, select a property, then approve the facts and claims that will guide the copy.</p>
         </div>
       </header>
 
@@ -124,7 +217,7 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
           <div className="surface__header">
             <div>
               <h2 id="product-intent-title">What are you creating?</h2>
-              <p>Choose once. Campaign Pack includes the Listing Copy foundation and all 16 campaign outputs.</p>
+              <p>Choose once. Campaign Pack includes Listing Copy and all 16 campaign outputs.</p>
             </div>
           </div>
           <div className="surface__body">
@@ -143,7 +236,7 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
                 <span className="brand-mark" aria-hidden="true">L</span>
                 <span>
                   <strong>Listing Copy</strong>
-                  <span>One primary property document · lower-cost entry product.</span>
+                  <span>Create the main property listing description.</span>
                 </span>
               </button>
               <button
@@ -161,7 +254,7 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
                 <span>
                   <span className="product-choice__recommended">Recommended</span>
                   <strong>Campaign Pack</strong>
-                  <span>Listing Copy foundation + 16 campaign outputs in one product.</span>
+                  <span>Listing Copy plus 16 campaign outputs in one product.</span>
                 </span>
               </button>
             </div>
@@ -226,12 +319,18 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
               ) : null}
               <small id={addressHelpId}>{addressHelp}</small>
               {hasFetchedContext ? (
-                <small id="refetch-details-consequence">Refetch replaces returned research and source fact values. Review and reapprove governed changes before using current outputs.</small>
+                <small id="refetch-details-consequence">Refetch replaces returned research and source fact values. Review and reapprove changes before using current outputs.</small>
               ) : null}
             </div>
 
             {selectedAddressMatches ? (
-              <div className="selected-address">Selected property · {session.address.selectedLabel}</div>
+              <div className="selected-address">
+                {addressState === 'fetched'
+                  ? 'Property details fetched'
+                  : addressState === 'failed-retry'
+                    ? 'Fetch needs retry'
+                    : 'Selected property'} · {session.address.selectedLabel}
+              </div>
             ) : null}
 
             <label className="choice" data-selected={session.address.includeInCopy}>
@@ -267,18 +366,40 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
                 <div>
                   <h2 id="core-facts-title">Core facts</h2>
                   <p>Approved values are dominant. Source values remain inspectable when corrected.</p>
+                  {factProvenance ? <p>Primary source · {factProvenance}. Exceptions retain their own source below.</p> : null}
                 </div>
+                {confirmableFactCount > 0 ? (
+                  <button
+                    className="button button--secondary"
+                    type="button"
+                    aria-label={`Confirm all ${confirmableFactCount} unresolved Core Facts`}
+                    onClick={onConfirmAllFacts}
+                  >
+                    Confirm all ({confirmableFactCount})
+                  </button>
+                ) : null}
               </div>
               <div>
-                {session.property.facts.map(fact => (
+                {session.property.facts.map(fact => {
+                  const hasDistinctProvenance = Boolean(
+                    fact.provenance.trim()
+                    && fact.provenance.trim() !== factProvenance,
+                  );
+                  return (
                   <StatusRow
                     key={fact.key}
+                    id={propertyFactTargetId(fact.key)}
                     state={fact.state}
                     stateLabel={factStateLabel(fact)}
                     title={<><span>{fact.label}</span><span className="fact-value">{formatFactValue(fact, fact.approvedValue)}</span></>}
-                    meta={fact.state === 'corrected' || fact.sourceValue !== fact.approvedValue
-                      ? <>Source: <span className="fact-source">{formatFactValue(fact, fact.sourceValue, fact.sourceUnit ?? 'm²')}</span> · {fact.provenance}</>
-                      : fact.provenance}
+                    meta={fact.state === 'corrected'
+                      || fact.sourceValue !== fact.approvedValue
+                      || (fact.key === 'landValue' && (fact.sourceUnit ?? 'm²') !== (fact.unit ?? 'm²'))
+                      ? <>
+                          Source: <span className="fact-source">{formatFactValue(fact, fact.sourceValue, fact.sourceUnit ?? 'm²')}</span>
+                          {hasDistinctProvenance ? <> · {fact.provenance}</> : null}
+                        </>
+                      : hasDistinctProvenance ? fact.provenance : undefined}
                     actions={(
                       <>
                         {fact.state === 'needs-review' ? <button className="row-action" type="button" aria-label={`Confirm ${fact.label}: ${formatFactValue(fact, fact.approvedValue)}`} onClick={() => onConfirmFact(fact)}>Confirm</button> : null}
@@ -286,7 +407,7 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
                       </>
                     )}
                   />
-                ))}
+                );})}
               </div>
             </section>
 
@@ -294,21 +415,38 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
               <div className="surface__header">
                 <div>
                   <h2 id="property-claims-title">Material claims</h2>
-                  <p>Only confirmed or corrected claims enter the Reviewed Campaign Brief. Exclusions govern every suggestion and output.</p>
+                  <p>Only confirmed or corrected claims enter the Reviewed Campaign Brief. Exclusions apply to every suggestion and output.</p>
+                  {claimProvenance ? <p>Primary source · {claimProvenance}. Exceptions retain their own source below.</p> : null}
                 </div>
+                {confirmableClaimCount > 0 ? (
+                  <button
+                    className="button button--secondary"
+                    type="button"
+                    aria-label={`Confirm all ${confirmableClaimCount} unresolved Material Claims`}
+                    onClick={onConfirmAllClaims}
+                  >
+                    Confirm all ({confirmableClaimCount})
+                  </button>
+                ) : null}
               </div>
               <div>
-                {session.property.claims.length > 0 ? session.property.claims.map(claim => (
+                {session.property.claims.length > 0 ? session.property.claims.map(claim => {
+                  const hasDistinctProvenance = Boolean(
+                    claim.provenance.trim()
+                    && claim.provenance.trim() !== claimProvenance,
+                  );
+                  return (
                   <StatusRow
                     key={claim.id}
+                    id={propertyClaimTargetId(claim.id)}
                     state={claim.state}
                     stateLabel={claimStateLabel(claim)}
                     title={claim.approvedText || claim.sourceText}
                     meta={claim.state === 'excluded'
-                      ? `${claim.provenance} · Enforced in Campaign Direction, Listing Copy and all 16 Campaign Pack outputs.`
+                      ? `${hasDistinctProvenance ? `${claim.provenance} · ` : ''}Excluded from Campaign Direction, Listing Copy and Campaign Pack outputs.`
                       : claim.state === 'corrected'
-                        ? `Source: ${claim.sourceText} · ${claim.provenance}`
-                        : claim.provenance}
+                        ? `Source: ${claim.sourceText}${hasDistinctProvenance ? ` · ${claim.provenance}` : ''}`
+                        : hasDistinctProvenance ? claim.provenance : undefined}
                     actions={claim.state === 'excluded' ? (
                       <button
                         className="row-action"
@@ -326,7 +464,7 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
                       </>
                     )}
                   />
-                )) : (
+                );}) : (
                   <div className="surface__body"><p className="field-help">No material sourced claims were returned.</p></div>
                 )}
               </div>
@@ -336,12 +474,13 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
               <div className="surface__header">
                 <div><h2 id="property-context-title">Property and location context</h2><p>Confirm the overview and choose exactly which fetched location context may enter generation.</p></div>
               </div>
-              {session.property.overview ? (
+              {session.property.overview || session.property.overviewState === 'confirmed' ? (
                 <StatusRow
-                  state={session.property.overviewState}
-                  stateLabel={session.property.overviewState === 'confirmed' ? 'Confirmed' : session.property.overviewState === 'excluded' ? 'Excluded' : 'Needs review'}
-                  title="Property overview"
-                  meta="Property research · selected overview policy applies to Listing Copy and every Campaign Pack output."
+                  id="property-overview-row"
+                  state={!session.property.overview && session.property.overviewState === 'confirmed' ? 'conflict' : session.property.overviewState}
+                  stateLabel={!session.property.overview && session.property.overviewState === 'confirmed' ? 'Needs attention' : session.property.overviewState === 'confirmed' ? 'Confirmed' : session.property.overviewState === 'excluded' ? 'Excluded' : 'Needs review'}
+                  title={session.property.overview ? 'Property overview' : 'Property overview · Not supplied'}
+                  meta="The selected overview decision applies to Listing Copy and Campaign Pack outputs."
                   actions={(
                     <>
                       {session.property.overviewState !== 'confirmed' ? <button className="row-action" type="button" aria-label="Confirm property overview" onClick={() => onOverviewDecision('confirmed')}>Confirm</button> : null}
@@ -351,48 +490,91 @@ export const PropertyStage: React.FC<PropertyStageProps> = ({
                 />
               ) : null}
               <details className="disclosure" open={!session.property.approved}>
-                <summary>Property overview source <span>{session.property.overview ? (session.property.overviewState === 'excluded' ? 'Not included' : session.property.overviewState === 'confirmed' ? 'Confirmed' : 'Needs review') : 'Not supplied'}</span></summary>
+                <summary>
+                  <span><span aria-hidden="true">▾</span> Property overview · {contextPreview(session.property.overview)}</span>
+                  <span>{session.property.overview ? (session.property.overviewState === 'excluded' ? 'Not included' : session.property.overviewState === 'confirmed' ? 'Confirmed' : 'Needs review') : 'Not supplied'}</span>
+                </summary>
                 <div className="disclosure__body">{session.property.overview || 'No property overview returned.'}</div>
               </details>
-              <details className="disclosure">
-                <summary>Suburb context <span>{session.property.suburbContext ? 'Available' : 'Not supplied'}</span></summary>
+              <details className="disclosure" id="suburb-context-disclosure">
+                <summary>
+                  <span><span aria-hidden="true">▾</span> Suburb context · {contextPreview(session.property.suburbContext)}</span>
+                  <span>{session.property.suburbContext ? (session.property.profileInclusion === 'suburb' || session.property.profileInclusion === 'both' ? 'Included' : 'Available') : 'Not supplied'}</span>
+                </summary>
                 <div className="disclosure__body">{session.property.suburbContext || 'No suburb context returned.'}</div>
               </details>
-              <details className="disclosure">
-                <summary>Area context <span>{session.property.areaContext ? 'Available' : 'Not supplied'}</span></summary>
+              <details className="disclosure" id="area-context-disclosure">
+                <summary>
+                  <span><span aria-hidden="true">▾</span> Area context · {contextPreview(session.property.areaContext)}</span>
+                  <span>{session.property.areaContext ? (session.property.profileInclusion === 'area' || session.property.profileInclusion === 'both' ? 'Included' : 'Available') : 'Not supplied'}</span>
+                </summary>
                 <div className="disclosure__body">{session.property.areaContext || 'No area context returned.'}</div>
               </details>
               <div className="surface__body" style={{ paddingTop: 18 }}>
-                <fieldset className="fieldset">
-                  <legend><strong>Location context included in copy</strong></legend>
-                  <div className="photo-policy">
-                    {([
-                      ['none', 'None', 'No suburb or broader-area context enters generation.'],
-                      ['suburb', 'Suburb only', 'Use the fetched suburb context only.'],
-                      ['area', 'Area only', 'Use the fetched broader-area context only.'],
-                      ['both', 'Suburb and area', 'Use both fetched location contexts.'],
-                    ] as const).map(([value, label, description]) => {
-                      const unavailable = (value === 'suburb' && !session.property.suburbContext)
-                        || (value === 'area' && !session.property.areaContext)
-                        || (value === 'both' && (!session.property.suburbContext || !session.property.areaContext));
-                      return (
-                        <label className="photo-policy__option" data-selected={session.property.profileInclusion === value} key={value}>
-                          <input type="radio" name="profile-inclusion" value={value} checked={session.property.profileInclusion === value} disabled={unavailable} onChange={() => onProfileInclusionChange(value)} />
-                          <span><strong>{label}</strong><span>{description}{unavailable ? ' Not available from this fetch.' : ''}</span></span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </fieldset>
+                <label className="field">
+                  <span>Location context included in copy</span>
+                  <select
+                    value={session.property.profileInclusion}
+                    onChange={event => onProfileInclusionChange(event.target.value as CampaignSessionState['property']['profileInclusion'])}
+                  >
+                    <option value="none">None</option>
+                    <option value="suburb" disabled={!session.property.suburbContext}>Suburb only</option>
+                    <option value="area" disabled={!session.property.areaContext}>Area only</option>
+                    <option value="both" disabled={!session.property.suburbContext || !session.property.areaContext}>Suburb and area</option>
+                  </select>
+                  <small>Expand either context above to read the full fetched source before including it.</small>
+                </label>
               </div>
             </section>
 
-            <div className="action-row">
-              <button className="button button--primary" type="button" onClick={onApprove} disabled={hasUnresolved} aria-describedby={hasUnresolved ? 'property-approval-reason' : undefined}>
-                Approve property facts
-              </button>
-              {hasUnresolved ? <span className="disabled-reason" id="property-approval-reason">Resolve every required fact, material claim and property overview decision before approval.</span> : null}
-            </div>
+            {readiness.issues.length > 0 ? (
+              <section className="surface" aria-labelledby="property-issues-title">
+                <div className="surface__header">
+                  <div>
+                    <h2 id="property-issues-title">Property decisions to resolve</h2>
+                    <p>{readiness.unresolvedActionCount} user decision{readiness.unresolvedActionCount === 1 ? '' : 's'} {readiness.unresolvedActionCount === 1 ? 'remains' : 'remain'} before approval.</p>
+                  </div>
+                </div>
+                <div>
+                  {readiness.issues.map(issue => {
+                    const details = issueDetailText(issue);
+                    return (
+                      <div className="status-row" data-state="failed" key={`${issue.id}-${issue.message}`}>
+                        <div>
+                          <div className="status-row__title">{agentFacingIssueText(issue.message)}</div>
+                          {details ? <div className="status-row__meta">{details}</div> : null}
+                        </div>
+                        <div className="status-row__actions">
+                          <span className="status-row__state">Needs attention</span>
+                          <button className="row-action" type="button" aria-label={getPropertyBlockerReviewAccessibleName(issue, session)} onClick={() => focusIssueTarget(issue)}>Review</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+
+            {!session.property.approved ? (
+              <div className="action-row">
+                <button
+                  className="button button--secondary"
+                  id="property-approval-action"
+                  type="button"
+                  onClick={onApprove}
+                  disabled={!readiness.canApprove}
+                  title={readiness.issues[0] ? agentFacingIssueText(readiness.issues[0].message) : undefined}
+                  aria-describedby={!readiness.canApprove ? 'property-approval-reason' : undefined}
+                >
+                  Approve property facts
+                </button>
+                {!readiness.canApprove ? (
+                  <span className="disabled-reason" id="property-approval-reason">
+                    Resolve the listed Property decisions before approval.
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </>
         ) : null}
       </div>

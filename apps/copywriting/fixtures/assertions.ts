@@ -3,6 +3,10 @@ import {
   CAMPAIGN_PACK_OUTPUT_ORDER,
   CANONICAL_OUTPUT_GROUPS,
   CANONICAL_OUTPUT_ORDER,
+  approveAllEligiblePhotoHighlights,
+  cleanPropertyClaimText,
+  confirmAllEligiblePropertyClaims,
+  confirmAllEligiblePropertyFacts,
   LAND_APPROXIMATION_RELATIVE_TOLERANCE,
   LAND_NORMAL_ROUNDING_RELATIVE_TOLERANCE,
   LAND_SQUARE_METRES_PER_UNIT,
@@ -15,17 +19,28 @@ import {
   computeApprovedBriefSnapshotId,
   deriveBriefApprovalPresentation,
   deriveCampaignPackState,
+  derivePhotoReviewState,
+  derivePropertyAddressState,
+  derivePropertyReviewReadiness,
   findExcludedClaimConflict,
   findLandMeasurementMentions,
   findSupersededFactConflicts,
   getApprovedBriefBlockers,
+  getCampaignAnalysisExceptions,
+  getPhotoAnalysisStateLabel,
+  getPropertyBlockerReviewAccessibleName,
+  getPreviousCampaignStage,
   getOutputEligibility,
   markOutputsNeedsRegeneration,
   markPackChildrenNeedsRegenerationForFoundation,
   mergeScopedRetryOutputs,
   normalizeHardExclusion,
+  isCampaignToneOption,
+  isPhotoAdministrationVisible,
+  recommendCampaignTone,
   sanitizeLowerAuthorityText,
   splitGovernanceListItems,
+  splitPropertyClaimText,
   stripPhotoDependentDirection,
   validateReturnedOutput,
 } from '../domain';
@@ -42,7 +57,11 @@ import {
   assertNetworkAllowed,
   isNoNetworkFixtureState,
 } from './runtime';
-import { buildGuidedExportPlan } from '../utils/guidedExport';
+import {
+  buildGuidedExportPlan,
+  getAvailableGuidedExportScopeOptions,
+} from '../utils/guidedExport';
+import { deriveOutputRegenerationAction } from '../utils/outputActions';
 
 export interface FixtureAssertionReport {
   passed: true;
@@ -109,6 +128,434 @@ export const runFixtureAssertions = (): FixtureAssertionReport => {
     networkGuardThrew = error instanceof FixtureNetworkAccessError;
   }
   assert(networkGuardThrew, 'fixture mode must fail loudly before a provider/network fallback');
+
+  // Founder remediation: Property approval must consume the canonical
+  // structured-fact semantics used by generation and output validation.
+  const equivalentLandApproval = getFixtureState('property.land-approval-safe');
+  const equivalentLandCandidate = {
+    ...equivalentLandApproval,
+    property: { ...equivalentLandApproval.property, approved: true },
+  };
+  const equivalentLandBlockers = getApprovedBriefBlockers(equivalentLandCandidate)
+    .filter(blocker => blocker.governingStage === 'property');
+  const equivalentLandReadiness = derivePropertyReviewReadiness(equivalentLandApproval);
+  assert(
+    compareLandMeasurements(
+      { value: 20_200, unit: 'm²' },
+      { value: 5, unit: 'acres', approximate: true },
+    ).equivalent,
+    '20,200 m² and approximately five acres must be canonically equivalent',
+  );
+  assert(equivalentLandBlockers.length === 0, 'equivalent land claim must not block the Property approval candidate');
+  assert(
+    equivalentLandReadiness.status === 'ready'
+      && equivalentLandReadiness.canApprove
+      && equivalentLandReadiness.issues.length === 0,
+    'canonical Property readiness must mark equivalent land representations ready',
+  );
+
+  const contradictoryLandApproval = getFixtureState('property.land-approval-conflict');
+  const contradictoryLandCandidate = {
+    ...contradictoryLandApproval,
+    property: { ...contradictoryLandApproval.property, approved: true },
+  };
+  const contradictoryLandBlocker = getApprovedBriefBlockers(contradictoryLandCandidate)
+    .find(blocker => blocker.id === 'claim.land-conflict');
+  const contradictoryLandReadiness = derivePropertyReviewReadiness(contradictoryLandApproval);
+  assert(Boolean(contradictoryLandBlocker), 'a genuine 30,200 m² / 3.02 ha claim must block Property approval');
+  assert(
+    contradictoryLandBlocker?.affectedItem === 'Land'
+      && contradictoryLandBlocker.approvedValue === '20200 m²'
+      && Boolean(contradictoryLandBlocker.conflictingValue),
+    'land blocker must identify the agent-facing fact, approved value and conflicting wording',
+  );
+  assert(
+    contradictoryLandBlocker?.targetId === 'property-claim-claim.land-conflict'
+      && Boolean(contradictoryLandBlocker.sourceContext)
+      && Boolean(contradictoryLandBlocker.resolution?.toLocaleLowerCase('en-AU').match(/correct|exclude/)),
+    'genuine land blocker must carry exact review target, source context and explicit resolution',
+  );
+  assert(
+    !contradictoryLandBlocker?.message.includes('landValue')
+      && !contradictoryLandBlocker?.affectedItem?.includes('landValue'),
+    'unexplained landValue implementation language must not reach the user-facing blocker',
+  );
+  assert(
+    contradictoryLandReadiness.status === 'blocked'
+      && !contradictoryLandReadiness.canApprove
+      && contradictoryLandReadiness.issues.some(issue => issue.id === 'claim.land-conflict'),
+    'the same canonical Property readiness must block a genuine contradictory land claim',
+  );
+  assert(
+    contradictoryLandBlocker
+      ? getPropertyBlockerReviewAccessibleName(contradictoryLandBlocker, contradictoryLandApproval)
+        === `Review material claim ${contradictoryLandApproval.property.claims.findIndex(claim => claim.id === contradictoryLandBlocker.id) + 1}: ${contradictoryLandApproval.property.claims.find(claim => claim.id === contradictoryLandBlocker.id)?.approvedText}`
+      : false,
+    'a conflicting Property claim Review name must identify the exact claim rather than only its governing fact',
+  );
+
+  const addressSelectedFixture = getFixtureState('address.selected');
+  const addressStateInput = {
+    query: addressSelectedFixture.address.query,
+    selectedLabel: addressSelectedFixture.address.selectedLabel,
+    isFetching: false,
+    fetchError: null,
+    hasFetchedContext: false,
+  };
+  assert(derivePropertyAddressState(addressStateInput) === 'selected', 'selected address must derive Selected before fetch');
+  assert(derivePropertyAddressState({ ...addressStateInput, isFetching: true }) === 'fetching', 'selected address must derive Fetching during fetch');
+  assert(derivePropertyAddressState({ ...addressStateInput, hasFetchedContext: true }) === 'fetched', 'completed property context must derive Fetched');
+  assert(
+    derivePropertyAddressState({ ...addressStateInput, fetchError: 'Fictional fetch failure' }) === 'failed-retry',
+    'failed address fetch must remain explicitly eligible to retry',
+  );
+
+  const fetchedPropertyReview = getFixtureState('property.fetched');
+  const fetchedPropertyIssues = derivePropertyReviewReadiness(fetchedPropertyReview).issues;
+  const fetchedPropertyReviewNames = fetchedPropertyIssues.map(issue => (
+    getPropertyBlockerReviewAccessibleName(issue, fetchedPropertyReview)
+  ));
+  assert(fetchedPropertyIssues.length === 9, 'fetched Property fixture must expose its nine real review decisions');
+  assert(
+    fetchedPropertyReviewNames.every(name => name.startsWith('Review ') && name !== 'Review')
+      && new Set(fetchedPropertyReviewNames).size === fetchedPropertyReviewNames.length,
+    'every repeated Property Review control must have a unique contextual accessible name',
+  );
+  for (const fact of fetchedPropertyReview.property.facts) {
+    assert(
+      fetchedPropertyReviewNames.includes(`Review ${fact.label}`),
+      `Property Review accessible names must identify ${fact.label}`,
+    );
+  }
+  fetchedPropertyReview.property.claims.forEach((claim, claimIndex) => {
+    assert(
+      fetchedPropertyReviewNames.includes(`Review material claim ${claimIndex + 1}: ${claim.approvedText || claim.sourceText}`),
+      `Property Review accessible names must identify material claim ${claim.id}`,
+    );
+  });
+  assert(
+    fetchedPropertyReviewNames.includes('Review Property overview'),
+    'Property Review accessible names must identify Property overview',
+  );
+
+  const duplicateClaimTextProperty = getFixtureState('property.fetched');
+  const duplicatedClaimText = duplicateClaimTextProperty.property.claims[0]!.sourceText;
+  duplicateClaimTextProperty.property.claims[0] = {
+    ...duplicateClaimTextProperty.property.claims[0]!,
+    sourceText: duplicatedClaimText,
+    approvedText: duplicatedClaimText,
+  };
+  duplicateClaimTextProperty.property.claims[1] = {
+    ...duplicateClaimTextProperty.property.claims[1]!,
+    sourceText: duplicatedClaimText,
+    approvedText: duplicatedClaimText,
+  };
+  const duplicateClaimReviewNames = derivePropertyReviewReadiness(duplicateClaimTextProperty).issues
+    .map(issue => getPropertyBlockerReviewAccessibleName(issue, duplicateClaimTextProperty))
+    .filter(name => name.includes(duplicatedClaimText));
+  assert(
+    duplicateClaimReviewNames.length === 2
+      && new Set(duplicateClaimReviewNames).size === 2
+      && duplicateClaimReviewNames.includes(`Review material claim 1: ${duplicatedClaimText}`)
+      && duplicateClaimReviewNames.includes(`Review material claim 2: ${duplicatedClaimText}`),
+    'duplicate Material Claim text must still produce unique target-specific Review accessible names',
+  );
+
+  const bulkProperty = getFixtureState('property.bulk-review');
+  const originalCorrectedFact = bulkProperty.property.facts.find(fact => fact.key === 'bathrooms')!;
+  const originalConflictFact = bulkProperty.property.facts.find(fact => fact.key === 'landValue')!;
+  const bulkConfirmedFacts = confirmAllEligiblePropertyFacts(bulkProperty.property.facts);
+  assert(
+    bulkConfirmedFacts.find(fact => fact.key === 'bedrooms')?.state === 'confirmed'
+      && bulkConfirmedFacts.find(fact => fact.key === 'bedrooms')?.approvedValue === 4,
+    'bulk Core Fact confirmation must confirm an eligible unresolved fact using its source value',
+  );
+  assert(
+    comparableJson(bulkConfirmedFacts.find(fact => fact.key === 'bathrooms')) === comparableJson(originalCorrectedFact),
+    'bulk Core Fact confirmation must preserve an explicit correction',
+  );
+  assert(
+    comparableJson(bulkConfirmedFacts.find(fact => fact.key === 'landValue')) === comparableJson(originalConflictFact),
+    'bulk Core Fact confirmation must preserve a conflict for explicit resolution',
+  );
+
+  const originalCorrectedClaim = bulkProperty.property.claims.find(claim => claim.state === 'corrected')!;
+  const originalExcludedClaim = bulkProperty.property.claims.find(claim => claim.state === 'excluded')!;
+  const originalConflictClaim = bulkProperty.property.claims.find(claim => claim.state === 'conflict')!;
+  const bulkConfirmedClaims = confirmAllEligiblePropertyClaims(bulkProperty.property.claims);
+  assert(
+    bulkConfirmedClaims.find(claim => claim.id === 'claim.north-facing-garden')?.state === 'confirmed',
+    'bulk Material Claim confirmation must confirm an eligible unresolved claim',
+  );
+  assert(
+    comparableJson(bulkConfirmedClaims.find(claim => claim.state === 'corrected')) === comparableJson(originalCorrectedClaim),
+    'bulk Material Claim confirmation must preserve a corrected claim',
+  );
+  assert(
+    comparableJson(bulkConfirmedClaims.find(claim => claim.state === 'excluded')) === comparableJson(originalExcludedClaim),
+    'bulk Material Claim confirmation must preserve an excluded claim',
+  );
+  assert(
+    comparableJson(bulkConfirmedClaims.find(claim => claim.state === 'conflict')) === comparableJson(originalConflictClaim),
+    'bulk Material Claim confirmation must preserve a conflicting claim',
+  );
+
+  const cleanGroupedClaim = cleanPropertyClaimText('[1.1.5] 1. 20,200 square metres (approximately 5 acres)');
+  assert(!cleanGroupedClaim.includes('[1.1.5]'), 'raw source marker [1.1.5] must be removed from user-facing claim text');
+  assert(
+    cleanGroupedClaim === '20,200 square metres (approximately 5 acres)',
+    'claim cleanup must preserve legitimate grouped land numbers while removing list and citation artifacts',
+  );
+  assert(
+    comparableJson(splitPropertyClaimText('1. 20,200 square metres (approximately 5 acres)'))
+      === comparableJson(['20,200 square metres (approximately 5 acres)']),
+    'claim splitting must not truncate a leading grouped number to 200 square metres',
+  );
+  assert(
+    cleanPropertyClaimText('[742] m² of land') === '[742] m² of land',
+    'claim cleanup must preserve a bracketed legitimate Property number',
+  );
+  const detectedBulkConflict = confirmAllEligiblePropertyClaims(
+    [{
+      id: 'claim.detected-conflict',
+      sourceText: 'Set on 30,200 square metres',
+      approvedText: 'Set on 30,200 square metres',
+      provenance: 'Fictional conflict detection fixture',
+      state: 'needs-review',
+      aliases: [],
+    }],
+    () => false,
+    () => true,
+  );
+  assert(
+    detectedBulkConflict[0].state === 'conflict',
+    'bulk Material Claim review must surface a detected factual conflict instead of silently confirming it',
+  );
+
+  const analysedSafeCampaign = getFixtureState('direction.analysed-safe');
+  assert(
+    analysedSafeCampaign.campaign.primaryAudience === 'Established Families'
+      && analysedSafeCampaign.campaign.secondaryAudience === 'Empty Nesters / Downsizers',
+    'safe AI audience recommendations must populate final editable audience controls',
+  );
+  assert(
+    comparableJson(analysedSafeCampaign.campaign.writingStyles) === comparableJson(['Professional', 'Descriptive'])
+      && analysedSafeCampaign.campaign.emphasis.includes('Lead with the north-facing rear garden')
+      && analysedSafeCampaign.campaign.styleAvoidances.includes('Avoid clichés'),
+    'safe AI voice, emphasis and boundary recommendations must populate final Campaign Direction',
+  );
+  assert(
+    analysedSafeCampaign.campaign.suggestions.every(suggestion => suggestion.state === 'applied')
+      && getCampaignAnalysisExceptions(analysedSafeCampaign.campaign).length === 0,
+    'safe analysed recommendations must not require individual Apply actions',
+  );
+  assert(
+    isCampaignToneOption(analysedSafeCampaign.campaign.tone)
+      && analysedSafeCampaign.campaign.tone === recommendCampaignTone(analysedSafeCampaign.campaign.writingStyles),
+    'Tone must remain a controlled, deterministic modifier derived from analysed writing style',
+  );
+
+  const blockedCampaign = getFixtureState('direction.blocked-exception');
+  const blockedRecommendation = blockedCampaign.campaign.suggestions.find(suggestion => suggestion.id === 'analysis.emphasis.six-car');
+  assert(blockedRecommendation?.state === 'blocked', 'factual conflict from Campaign analysis must remain blocked');
+  assert(
+    !blockedCampaign.campaign.emphasis.includes('Lead with parking for six')
+      && getCampaignAnalysisExceptions(blockedCampaign.campaign).some(suggestion => suggestion.id === blockedRecommendation?.id),
+    'blocked Campaign recommendation must remain unapplied in the compact exception set',
+  );
+  assert(
+    blockedCampaign.campaign.styleAvoidances.includes('Avoid clichés')
+      && blockedRecommendation?.kind === 'selling-point',
+    'style boundaries must populate writing guidance without turning a factual conflict into a style boundary',
+  );
+
+  const photoBatchProgress = getFixtureState('photos.batch-progress');
+  assert(
+    comparableJson(photoBatchProgress.photos.items.map(photo => getPhotoAnalysisStateLabel(photo.analysisState)))
+      === comparableJson(['Analysing', 'Waiting', 'Failed']),
+    'batch fixture must expose per-photo analysing, waiting and failed states',
+  );
+  const photoOffDisclosure = getFixtureState('photos.off');
+  const photoOnDisclosure = getFixtureState('photos.included-reviewed');
+  const photoOffStateBeforeDisclosure = comparableJson(photoOffDisclosure.photos);
+  assert(
+    !isPhotoAdministrationVisible(photoOffDisclosure.photos.policy, false),
+    'Photo Context Off must collapse photo administration by default',
+  );
+  assert(
+    isPhotoAdministrationVisible(photoOffDisclosure.photos.policy, true),
+    'Photo Context Off disclosure must reveal preserved photo administration on request',
+  );
+  assert(
+    isPhotoAdministrationVisible(photoOnDisclosure.photos.policy, false),
+    'Photo Context On must expose the normal photo workflow without an extra disclosure step',
+  );
+  assert(
+    comparableJson(photoOffDisclosure.photos) === photoOffStateBeforeDisclosure,
+    'opening or closing Photo Context Off administration must not mutate uploaded photos or review decisions',
+  );
+  const unresolvedPhotoHighlights = getFixtureState('photos.highlights-unresolved');
+  const unresolvedPhotoReview = derivePhotoReviewState(unresolvedPhotoHighlights.photos);
+  assert(
+    unresolvedPhotoReview.unresolvedCount === 3
+      && unresolvedPhotoReview.decisions.length === 3
+      && unresolvedPhotoReview.bulkApprovableHighlightIds.length === 3,
+    'three unresolved highlights must present exactly three user decisions rather than duplicated invariants',
+  );
+  const bulkPhotoInput = {
+    ...unresolvedPhotoHighlights.photos,
+    highlights: [
+      unresolvedPhotoHighlights.photos.highlights[0],
+      {
+        ...unresolvedPhotoHighlights.photos.highlights[1],
+        approvedText: 'Corrected pale stone-look kitchen highlight',
+        state: 'corrected' as const,
+      },
+      {
+        ...unresolvedPhotoHighlights.photos.highlights[2],
+        state: 'excluded' as const,
+      },
+      {
+        ...unresolvedPhotoHighlights.photos.highlights[2],
+        id: 'highlight.bulk.conflict',
+        sourceText: 'Unverified six-car garage',
+        approvedText: 'Unverified six-car garage',
+        state: 'needs-review' as const,
+      },
+    ],
+  };
+  const bulkApprovedPhotos = approveAllEligiblePhotoHighlights(
+    bulkPhotoInput,
+    highlight => highlight.id !== 'highlight.bulk.conflict',
+  );
+  assert(bulkApprovedPhotos.highlights[0].state === 'approved', 'bulk photo approval must approve an eligible reviewed highlight');
+  assert(
+    bulkApprovedPhotos.highlights[1].state === 'corrected'
+      && bulkApprovedPhotos.highlights[1].approvedText === 'Corrected pale stone-look kitchen highlight',
+    'bulk photo approval must preserve a corrected highlight',
+  );
+  assert(bulkApprovedPhotos.highlights[2].state === 'excluded', 'bulk photo approval must preserve an excluded highlight');
+  assert(
+    bulkApprovedPhotos.highlights[3].state === 'needs-review',
+    'bulk photo approval must leave a factual conflict unresolved',
+  );
+
+  const briefPhotoContext = getFixtureState('brief.photo-context');
+  const briefPhotoSnapshot = buildApprovedBriefSnapshot(briefPhotoContext, { approvedAt: FIXTURE_APPROVED_AT });
+  assert(
+    briefPhotoContext.stage === 'brief'
+      && briefPhotoContext.photos.policy === 'included'
+      && briefPhotoContext.photos.approved,
+    'approved Photo Context selection must survive navigation to Reviewed Brief',
+  );
+  assert(
+    briefPhotoSnapshot.photoContext.policy === 'included'
+      && briefPhotoSnapshot.photoContext.selectedPhotos.length === 2
+      && briefPhotoSnapshot.photoContext.approvedHighlights.length === 2,
+    'Approved Brief construction must use the same included Photo Context visible to the user',
+  );
+
+  const blockedBriefFixture = getFixtureState('brief.blocked');
+  const blockedBriefDecisions = getApprovedBriefBlockers(blockedBriefFixture);
+  const exactClaimDecision = blockedBriefDecisions.find(blocker => blocker.id === 'claim.north-facing-garden');
+  assert(blockedBriefDecisions.length > 0, 'blocked Reviewed Brief fixture must expose its unresolved actions');
+  assert(
+    exactClaimDecision?.targetId === 'property-claim-claim.north-facing-garden'
+      && exactClaimDecision.resolution?.includes('Confirm'),
+    'Reviewed Brief readiness input must surface the blocker with an exact review target and resolution',
+  );
+  const longBrief = getFixtureState('brief.long');
+  assert(
+    getApprovedBriefBlockers(longBrief).length === 0
+      && longBrief.property.claims.length >= 13
+      && longBrief.photos.policy === 'included',
+    'long Reviewed Brief fixture must remain valid while exercising scannable claims and photo sections',
+  );
+
+  const listingWithContact = getFixtureState('listing.ready-listing-only');
+  const listingWithoutContact = getFixtureState('listing.ready-no-contact');
+  const listingRegenerationAction = deriveOutputRegenerationAction(listingWithContact.outputs['Full Copy']);
+  const campaignRegenerationAction = deriveOutputRegenerationAction(getFixtureState('pack.complete').outputs.Flyer);
+  assert(
+    listingRegenerationAction.visible
+      && listingRegenerationAction.accessibleName === 'Regenerate Listing Copy and replace the current draft',
+    'ready mobile Listing Copy must expose a meaningful replacement Regenerate action',
+  );
+  assert(
+    campaignRegenerationAction.visible
+      && campaignRegenerationAction.accessibleName === 'Regenerate Flyer and replace the current draft',
+    'ready Campaign Pack documents must share the same contextual desktop/mobile Regenerate contract',
+  );
+  const emptyOptionalSnapshot = listingWithoutContact.brief.snapshot!;
+  assert(
+    !emptyOptionalSnapshot.agentContext.included
+      && !emptyOptionalSnapshot.agencyContext.included
+      && !emptyOptionalSnapshot.openHomeContext.included
+      && !emptyOptionalSnapshot.agentContext.name
+      && !emptyOptionalSnapshot.agencyContext.name,
+    'empty optional Agent, Agency and Open Home context must remain concise, explicitly not included data',
+  );
+  assert(
+    comparableJson(getAvailableGuidedExportScopeOptions(false).map(option => option.id))
+      === comparableJson(['current_output']),
+    'Listing-only export must expose no meaningless Current group scope',
+  );
+  assert(
+    comparableJson(getAvailableGuidedExportScopeOptions(true).map(option => option.id))
+      === comparableJson(['current_output', 'current_group', 'campaign_pack']),
+    'Campaign Pack export must retain its useful document scopes',
+  );
+
+  const buildListingFixtureExport = (
+    fixture: typeof listingWithContact,
+    contactCard?: string,
+  ) => buildGuidedExportPlan({
+    address: fixture.brief.snapshot!.selectedAddress,
+    documents: [fixture.outputs['Full Copy']],
+    orderedTabs: ['Full Copy'],
+    categories: [{ title: 'Listing Copy', tabs: ['Full Copy'] }],
+    selectedTab: 'Full Copy',
+    selectedGroup: 'Listing Copy',
+    scope: 'current_output',
+    format: 'word',
+    activeSnapshotId: fixture.brief.snapshot!.snapshotId,
+    generatedAt: new Date(FIXTURE_GENERATED_AT),
+    includeContactDetails: true,
+    ...(contactCard ? { contactCard } : {}),
+    includeAddressInCopy: fixture.brief.snapshot!.includeAddressInCopy,
+  });
+  const contactSnapshot = listingWithContact.brief.snapshot!;
+  const contactExport = buildListingFixtureExport(listingWithContact, [
+    contactSnapshot.agentContext.name,
+    contactSnapshot.agentContext.title,
+    contactSnapshot.agencyContext.name,
+    contactSnapshot.agentContext.phone,
+    contactSnapshot.agentContext.email,
+  ].filter(Boolean).join('\n'));
+  const noContactExport = buildListingFixtureExport(listingWithoutContact);
+  assert(
+    contactExport.counts.included === 1
+      && contactExport.presentation.contactSignatureAvailable
+      && contactExport.presentation.contactSignatureIncluded,
+    'valid approved contact data must make Include contact signature usable for Listing Copy export',
+  );
+  assert(
+    !noContactExport.presentation.contactSignatureAvailable
+      && !noContactExport.presentation.contactSignatureIncluded
+      && noContactExport.presentation.contactSignatureLabel.includes('Add agent or agency details'),
+    'missing contact data must disable signature inclusion and explain how to enable it',
+  );
+  assert(
+    contactExport.includedDocuments.length === 1
+      && contactExport.includedDocuments[0].id === 'Full Copy'
+      && contactExport.scope === 'current_output',
+    'Listing-only export plan must describe exactly one current Listing Copy and never generate another output',
+  );
+
+  assert(getPreviousCampaignStage('campaign') === 'property', 'Campaign Previous must return to Property');
+  assert(getPreviousCampaignStage('photos') === 'campaign', 'Photos Previous must return to Campaign');
+  assert(getPreviousCampaignStage('brief') === 'photos', 'Reviewed Brief Previous must return to Photos');
+  assert(getPreviousCampaignStage('outputs') === 'brief', 'Outputs Previous must return to Reviewed Brief');
 
   const readyBrief = getFixtureState('brief.ready');
   const readyBriefBlockers = getApprovedBriefBlockers(readyBrief);
