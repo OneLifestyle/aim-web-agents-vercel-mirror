@@ -1,5 +1,5 @@
 import type { CampaignSuggestion, ReviewedFact } from '../types';
-import { propertyClaimTargetId, propertyFactTargetId } from './propertyReview';
+import { propertyClaimTargetId, propertyFactTargetId } from './propertyReview.js';
 import type { CampaignSessionState } from './sessionState';
 
 export const CAMPAIGN_TONE_OPTIONS = [

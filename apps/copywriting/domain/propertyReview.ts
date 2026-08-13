@@ -2,7 +2,7 @@ import type { ReviewedClaim, ReviewedFact } from '../types';
 import {
   getApprovedBriefBlockers,
   type ApprovedBriefBlocker,
-} from './approvedBrief';
+} from './approvedBrief.js';
 import type { CampaignSessionState } from './sessionState';
 
 const DOTTED_SOURCE_CITATION_TOKEN = /\[\d+(?:\.\d+)+\]/g;
